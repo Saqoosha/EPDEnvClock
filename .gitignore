@@ -1,9 +1,7 @@
 # Wi-Fi configuration (contains sensitive credentials)
 wifi_config.h
-EPDClock/wifi_config.h
 
 # Build artifacts
-EPDClock/.build/
 *.build/
 
 # Python cache
