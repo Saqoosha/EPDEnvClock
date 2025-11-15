@@ -77,9 +77,26 @@ void drawNumber(uint32_t num, uint16_t x, uint16_t y) {
   }
 }
 
-// Global counter variable
-uint32_t counter = 0;
-unsigned long lastUpdateTime = 0;
+// Draw colon using bitmap image
+void drawColon(uint16_t x, uint16_t y)
+{
+  drawBitmapCorrect(x, y, NumberColon_WIDTH, NumberColon_HEIGHT, NumberColon, WHITE);
+}
+
+// Draw time in format "HH:MM" using bitmap images
+void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
+{
+  // Draw hour (2 digits)
+  drawDigit(hour / 10, x, y);
+  drawDigit(hour % 10, x + Number0_WIDTH, y);
+
+  // Draw colon
+  drawColon(x + 2 * Number0_WIDTH, y);
+
+  // Draw minute (2 digits)
+  drawDigit(minute / 10, x + 2 * Number0_WIDTH + NumberColon_WIDTH, y);
+  drawDigit(minute % 10, x + 3 * Number0_WIDTH + NumberColon_WIDTH, y);
+}
 
 void setup() {
   // Set the screen power control pin.
@@ -96,41 +113,19 @@ void setup() {
 
   EPD_FastMode1Init();  // Initialize the fast mode 1 of the EPD.
   EPD_Display_Clear();  // Clear the EPD display content.
+  EPD_Update();         // Complete update
   EPD_PartUpdate(); // This is super important! It's required for partial update to work properly
   delay(1000);  // Wait for display to stabilize
 
-  lastUpdateTime = millis();
+  // Draw "12:34" using custom bitmaps
+  drawTime(12, 34, 8, 8);
+
+  // Update the display using partial update (faster and lower power consumption)
+  EPD_Display(ImageBW);
+  EPD_PartUpdate(); // Use partial update instead of full update for better performance
 }
 
-void loop() {
-  // Check if 1 second has passed
-  if (millis() - lastUpdateTime >= 1000) {
-    // Calculate number of digits for proper clearing
-    uint32_t temp = counter;
-    uint8_t digits = 1;
-    if (temp == 0) {
-      digits = 1;
-    } else {
-      while (temp >= 10) {
-        temp /= 10;
-        digits++;
-      }
-    }
-
-    // Clear area for the number (enough space for up to 10 digits)
-    // Each digit is 100 pixels wide
-    EPD_ClearWindows(8, 8, 8 + (digits * Number0_WIDTH), 8 + Number0_HEIGHT, WHITE);
-
-    // Draw the counter value (counts up infinitely)
-    drawNumber(counter, 8, 8);
-
-    counter++;
-
-    // Update the display using partial update (faster and lower power consumption)
-    EPD_Display(ImageBW);
-    EPD_PartUpdate();  // Use partial update instead of full update for better performance
-
-    // Update the last update time
-    lastUpdateTime = millis();
-  }
+void loop()
+{
+  // Do nothing - display is shown once at startup
 }
