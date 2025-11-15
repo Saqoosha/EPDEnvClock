@@ -15,15 +15,14 @@ void setup() {
   Paint_NewImage(ImageBW, EPD_W, EPD_H, Rotation, WHITE);  // Create a new canvas with size EPD_W x EPD_H and background color white.
   Paint_Clear(WHITE);  // Clear the canvas with background color white.
 
-  // Copy image data from PROGMEM to buffer (fast method)
-  // DocumentImage is 800x272 = 27200 bytes, same as ImageBW buffer
-  for (uint32_t i = 0; i < DocumentImage_SIZE; i++) {
-    ImageBW[i] = pgm_read_byte(&DocumentImage[i]);
-  }
-
   EPD_FastMode1Init();  // Initialize the fast mode 1 of the EPD.
   EPD_Display_Clear();  // Clear the EPD display content.
-  EPD_Display(ImageBW);  // Display the image.
+  EPD_Update();  // Update the display.
+
+  // Display image using EPD_ShowPicture (792x272 actual display area)
+  // This avoids the 4px gap issue in the center
+  EPD_ShowPicture(0, 0, 792, 272, DocumentImage, WHITE);
+  EPD_Display(ImageBW);  // Display the buffer.
   EPD_Update();  // Update the display.
 }
 

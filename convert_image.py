@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
 Convert PNG image to EPD bitmap array for Arduino
-EPD resolution: 800x272 pixels
+EPD actual display: 792x272 pixels
+EPD buffer size: 800x272 pixels (for address offset)
 Format: 1 bit per pixel, 1 byte = 8 pixels horizontally
+
+Note: The EPD display uses master/slave dual controllers (396px each).
+There is a 4px gap at the center where the controllers meet.
+EPD_Display() function requires 800x272 bitmap data.
+EPD_ShowPicture() function requires 792x272 bitmap data.
 """
 
 from PIL import Image
@@ -15,11 +21,15 @@ def convert_image_to_bitmap(image_path, output_width=800, output_height=272):
 
     Args:
         image_path: Path to input PNG image
-        output_width: Target width (default 800)
+        output_width: Target width (default 800 for EPD_Display, use 792 for EPD_ShowPicture)
         output_height: Target height (default 272)
 
     Returns:
         C array string and byte array
+
+    Note:
+        - Use 800x272 for EPD_Display() function (full screen with address offset)
+        - Use 792x272 for EPD_ShowPicture() function (actual display area)
     """
     # Open and convert image
     img = Image.open(image_path)
@@ -48,15 +58,14 @@ def convert_image_to_bitmap(image_path, output_width=800, output_height=272):
             for bit in range(8):
                 x = x_byte * 8 + bit
                 if x < output_width:
-                    # In EPD format: 0 = black, 1 = white
+                    # EPD_ShowPicture format: bit 1 = black, bit 0 = white
                     # PIL '1' mode: 0 = black, 1 = white
                     pixel = pixels[x, y]
-                    if pixel == 0:  # Black pixel
-                        byte_val |= (0x80 >> bit)  # Set bit to 1 for black in EPD format
-            # Invert: EPD buffer uses 0xFF = white, 0x00 = black
-            # But Paint_SetPixel uses: bit 0 = black, bit 1 = white
-            # So we need to invert
-            bitmap_data.append(byte_val ^ 0xFF)
+                    if pixel == 0:  # Black pixel in source image
+                        byte_val |= (0x80 >> bit)  # Set bit to 1 for black
+                    # White pixel (pixel == 1) leaves bit as 0 (white)
+            # No inversion needed: bit 1 = black, bit 0 = white matches EPD_ShowPicture
+            bitmap_data.append(byte_val)
 
     return bitmap_data, width_byte, output_height
 

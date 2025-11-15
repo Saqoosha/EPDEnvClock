@@ -4,7 +4,9 @@
 
 ## 概要
 
-ESP32-S3 Dev ModuleとEPDディスプレイ（800x272ピクセル）を使用したプロジェクトのビルド・アップロード手順。
+ESP32-S3 Dev ModuleとEPDディスプレイ（792x272ピクセル）を使用したプロジェクトのビルド・アップロード手順。
+
+**注意**: EPDディスプレイは実際には792x272ピクセルですが、マスター/スレーブの2つのコントローラー（各396px）で制御されており、中央に4pxのギャップがあります。そのため、プログラムでは`EPD_W`を800として定義していますが、実際の表示領域は792x272です。
 
 ## 必要な環境
 
@@ -26,7 +28,23 @@ brew install arduino-cli
 arduino-cli board details -b esp32:esp32:esp32s3
 ```
 
-## コンパイル手順
+## コンパイル・アップロード手順
+
+### arduino-cliの動作について
+
+`arduino-cli upload`コマンドの動作：
+
+- **公式ヘルプ**: "This does NOT compile the sketch prior to upload"と明記されている
+- **実際の動作**: ビルドディレクトリ（`.build/`）に既存のバイナリがある場合、それを使用してアップロードする
+- **バイナリがない場合**: バージョンによっては自動的にコンパイルを実行する場合があるが、**保証されていない**
+
+**推奨方法**:
+
+1. **確実な方法**: `compile --upload`を使用（コンパイルとアップロードを一度に実行）
+2. **分離したい場合**: `compile`を実行してから`upload`を実行
+3. **`upload`のみ**: 既存のバイナリがある場合のみ使用（コード変更後は再コンパイルが必要）
+
+## コンパイル手順（オプション）
 
 ### 1. プロジェクトディレクトリに移動
 
@@ -57,7 +75,9 @@ Sketch uses 279665 bytes (8%) of program storage space. Maximum is 3145728 bytes
 Global variables use 46916 bytes (14%) of dynamic memory, leaving 280764 bytes for local variables. Maximum is 327680 bytes.
 ```
 
-## アップロード手順
+## アップロード手順（推奨）
+
+通常はこの手順だけでコンパイルとアップロードが完了します。
 
 ### 1. USBシリアルポートの確認
 
@@ -96,15 +116,30 @@ Hash of data verified.
 Hard resetting via RTS pin...
 ```
 
-## ワンライナー（コンパイル + アップロード）
+## ワンライナー（推奨方法）
 
-一度にコンパイルとアップロードを実行：
+### 方法1: compile --upload（推奨）
+
+コンパイルとアップロードを一度に実行（最も確実）：
+
+```bash
+cd /path/to/Desktop/sketch_nov15a && \
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 sketch_nov15a.ino
+```
+
+### 方法2: 分離実行
+
+コンパイルとアップロードを分けて実行：
 
 ```bash
 cd /path/to/Desktop/sketch_nov15a && \
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino && \
 arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
 ```
+
+### 方法3: uploadのみ（既存バイナリがある場合）
+
+**注意**: コードを変更した場合は、必ず`compile`を実行してから`upload`してください。`upload`コマンドは自動的にコンパイルを実行することを保証していません。
 
 ## トラブルシューティング
 
@@ -148,17 +183,47 @@ arduino-cli board details -b esp32:esp32:esp32s3
 arduino-cli core list
 ```
 
-### コンパイルのみ（アップロードしない）
+### コンパイル + アップロード（推奨）
+
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 sketch_nov15a.ino
+```
+
+### コンパイルのみ
 
 ```bash
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
 ```
 
-### アップロードのみ（コンパイル済みバイナリを使用）
+### アップロードのみ（既存バイナリを使用）
+
+**注意**: コード変更後は必ず`compile`を実行してから使用してください。
 
 ```bash
 arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
 ```
+
+## EPDディスプレイの解像度について
+
+### 実際の表示領域
+
+- **実際の解像度**: 792x272ピクセル
+- **コントローラー構成**: マスター/スレーブの2つのSSD1683 IC
+  - 各コントローラー: 396x272ピクセルを担当
+  - 中央に4pxのギャップ（コントローラー間の接続部分）
+
+### プログラムでの定義
+
+- **EPD_W**: 800ピクセル（アドレスオフセット用）
+- **EPD_H**: 272ピクセル
+- **バッファサイズ**: 800x272 = 27,200バイト
+
+### 画像表示関数の違い
+
+- **EPD_Display()**: 800x272のビットマップデータが必要（全画面表示用）
+- **EPD_ShowPicture()**: 792x272のビットマップデータが必要（実際の表示領域）
+
+詳細は`EPD_Init.h`のコメントを参照。
 
 ## プロジェクト構成
 
