@@ -195,9 +195,10 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
   drawDigitL(digit, currentX, y);
   currentX += NumberL0_WIDTH;
 
-  // Draw colon
+  // Draw colon with 6px spacing before and after
+  currentX += 6; // 6px spacing before colon
   drawColon(currentX, y);
-  currentX += NumberColon_WIDTH;
+  currentX += NumberColon_WIDTH + 6; // 6px spacing after colon
 
   // Draw minute (2 digits)
   digit = minute / 10;
