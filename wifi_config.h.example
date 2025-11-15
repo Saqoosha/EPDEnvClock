@@ -1,0 +1,11 @@
+#ifndef WIFI_CONFIG_H
+#define WIFI_CONFIG_H
+
+// Wi-Fi認証情報を設定してください
+// このファイルをコピーして wifi_config.h を作成してください
+// wifi_config.h は .gitignore に含まれているため、コミットされません
+
+#define WIFI_SSID "your_wifi_ssid"
+#define WIFI_PASSWORD "your_wifi_password"
+
+#endif

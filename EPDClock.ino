@@ -1,9 +1,24 @@
 #include "EPD.h"         // Includes library files for electronic paper screens
 #include "Number_bitmap.h"  // Include the converted number image data
 #include <pgmspace.h>
+#include <WiFi.h>
+#include <time.h>
+#include "wifi_config.h" // Wi-Fi認証情報（gitignoreに含まれています）
 
 // Define an array to store image data, with a size of 27200 bytes
 uint8_t ImageBW[27200];
+
+// Variables for time tracking
+uint8_t lastDisplayedMinute = 255; // Initialize to invalid value
+unsigned long lastNtpSync = 0;
+const unsigned long NTP_SYNC_INTERVAL = 3600000; // Re-sync every hour (in milliseconds)
+
+// State variables for display
+bool wifiConnected = false;
+bool ntpSynced = false;
+unsigned long wifiConnectTime = 0;
+unsigned long ntpSyncTime = 0;
+unsigned long lastUpdateTime = 0;
 
 // Custom function to draw bitmap correctly handling row boundaries
 // This fixes EPD_ShowPicture's issue with row boundaries
@@ -98,6 +113,291 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
   drawDigit(minute % 10, x + 3 * Number0_WIDTH + NumberColon_WIDTH, y);
 }
 
+// Draw setup status message
+void drawSetupStatus(const char *message)
+{
+  // Clear status area (bottom 60 pixels)
+  EPD_ClearWindows(0, EPD_H - 20, EPD_W, EPD_H, WHITE);
+
+  uint16_t fontSize = 16;
+  int yPos = EPD_H - 18; // Position from bottom
+
+  EPD_ShowString(8, yPos, message, fontSize, BLACK);
+
+  // Update display immediately
+  EPD_Display(ImageBW);
+  EPD_PartUpdate();
+}
+
+// Draw internal state at the bottom of the screen
+void drawStatus()
+{
+  // Clear status area (bottom 40 pixels)
+  EPD_ClearWindows(0, EPD_H - 20, EPD_W, EPD_H, WHITE);
+
+  char statusLine[80];
+  int yPos = EPD_H - 18; // Position from bottom
+  uint16_t fontSize = 16;
+
+  // Wi-Fi status
+  if (wifiConnected)
+  {
+    snprintf(statusLine, sizeof(statusLine), "WiFi:OK");
+  }
+  else
+  {
+    snprintf(statusLine, sizeof(statusLine), "WiFi:--");
+  }
+  EPD_ShowString(8, yPos, statusLine, fontSize, BLACK);
+
+  // NTP status
+  if (ntpSynced)
+  {
+    snprintf(statusLine, sizeof(statusLine), "NTP:OK");
+  }
+  else
+  {
+    snprintf(statusLine, sizeof(statusLine), "NTP:--");
+  }
+  EPD_ShowString(120, yPos, statusLine, fontSize, BLACK);
+
+  // Show timing info (if available)
+  if (wifiConnectTime > 0)
+  {
+    snprintf(statusLine, sizeof(statusLine), "W:%lums", wifiConnectTime);
+    EPD_ShowString(200, yPos, statusLine, fontSize, BLACK);
+  }
+
+  if (ntpSyncTime > 0)
+  {
+    snprintf(statusLine, sizeof(statusLine), "N:%lums", ntpSyncTime);
+    EPD_ShowString(300, yPos, statusLine, fontSize, BLACK);
+  }
+
+  // Show uptime in minutes
+  unsigned long uptimeMinutes = millis() / 60000;
+  snprintf(statusLine, sizeof(statusLine), "U:%lum", uptimeMinutes);
+  EPD_ShowString(400, yPos, statusLine, fontSize, BLACK);
+}
+
+// Connect to Wi-Fi
+bool connectWiFi()
+{
+  Serial.begin(115200);
+  Serial.print("Connecting to Wi-Fi: ");
+  Serial.println(WIFI_SSID);
+
+  drawSetupStatus("Connecting WiFi...");
+
+  unsigned long startTime = millis();
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20)
+  {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+
+    // Update status every 2 seconds
+    if (attempts % 4 == 0)
+    {
+      char statusMsg[40];
+      snprintf(statusMsg, sizeof(statusMsg), "WiFi connecting... %d", attempts);
+      drawSetupStatus(statusMsg);
+    }
+  }
+  Serial.println();
+
+  unsigned long connectionTime = millis() - startTime;
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    wifiConnected = true;
+    wifiConnectTime = connectionTime;
+    Serial.print("Wi-Fi connected! IP address: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("[TIMING] Wi-Fi connection time: ");
+    Serial.print(connectionTime);
+    Serial.println(" ms");
+
+    char statusMsg[40];
+    snprintf(statusMsg, sizeof(statusMsg), "WiFi OK! (%lums)", connectionTime);
+    drawSetupStatus(statusMsg);
+    delay(500);
+    return true;
+  }
+  else
+  {
+    wifiConnected = false;
+    wifiConnectTime = 0;
+    Serial.println("Wi-Fi connection failed!");
+    Serial.print("[TIMING] Wi-Fi connection attempt time: ");
+    Serial.print(connectionTime);
+    Serial.println(" ms");
+
+    drawSetupStatus("WiFi FAILED!");
+    delay(1000);
+    return false;
+  }
+}
+
+// Sync time with NTP server
+bool syncNTP()
+{
+  const char *ntpServer = "ntp.nict.jp";
+  const long gmtOffset_sec = 9 * 3600; // JST (UTC+9)
+  const int daylightOffset_sec = 0;    // No daylight saving time in Japan
+
+  drawSetupStatus("Syncing NTP...");
+
+  unsigned long startTime = millis();
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  Serial.print("Waiting for NTP time sync");
+  struct tm timeinfo;
+  int attempts = 0;
+  while (!getLocalTime(&timeinfo) && attempts < 10)
+  {
+    Serial.print(".");
+    delay(1000);
+    attempts++;
+
+    // Update status every second
+    char statusMsg[40];
+    snprintf(statusMsg, sizeof(statusMsg), "NTP syncing... %d", attempts);
+    drawSetupStatus(statusMsg);
+  }
+  Serial.println();
+
+  unsigned long syncTime = millis() - startTime;
+
+  if (attempts < 10)
+  {
+    ntpSynced = true;
+    ntpSyncTime = syncTime;
+    Serial.println("Time synchronized!");
+    Serial.print("Current time: ");
+    Serial.print(timeinfo.tm_hour);
+    Serial.print(":");
+    Serial.println(timeinfo.tm_min);
+    Serial.print("[TIMING] NTP sync time: ");
+    Serial.print(syncTime);
+    Serial.println(" ms");
+
+    char statusMsg[40];
+    snprintf(statusMsg, sizeof(statusMsg), "NTP OK! (%lums)", syncTime);
+    drawSetupStatus(statusMsg);
+    delay(500);
+    return true;
+  }
+  else
+  {
+    ntpSynced = false;
+    ntpSyncTime = 0;
+    Serial.println("NTP time sync failed!");
+    Serial.print("[TIMING] NTP sync attempt time: ");
+    Serial.print(syncTime);
+    Serial.println(" ms");
+
+    drawSetupStatus("NTP FAILED!");
+    delay(1000);
+    return false;
+  }
+}
+
+// Update display with current time
+void updateDisplay()
+{
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo))
+  {
+    uint8_t currentMinute = timeinfo.tm_min;
+
+    // Only update if minute has changed
+    if (currentMinute != lastDisplayedMinute)
+    {
+      uint8_t hour = timeinfo.tm_hour;
+
+      unsigned long startTime = micros();
+
+      // Clear the time area (optional, for cleaner updates)
+      // Or just redraw the entire time
+      Paint_Clear(WHITE);
+
+      // Draw current time using custom bitmaps
+      drawTime(hour, currentMinute, 8, 8);
+
+      // Draw status at the bottom
+      drawStatus();
+
+      // Update the display using partial update (faster and lower power consumption)
+      unsigned long drawTime = micros() - startTime;
+
+      startTime = micros();
+      EPD_Display(ImageBW);
+      unsigned long displayTime = micros() - startTime;
+
+      startTime = micros();
+      EPD_PartUpdate();
+      unsigned long updateTime = micros() - startTime;
+
+      lastDisplayedMinute = currentMinute;
+      lastUpdateTime = millis();
+
+      Serial.print("Display updated: ");
+      Serial.print(hour);
+      Serial.print(":");
+      Serial.println(currentMinute);
+      Serial.print("[TIMING] Draw time: ");
+      Serial.print(drawTime);
+      Serial.print(" us, EPD_Display: ");
+      Serial.print(displayTime);
+      Serial.print(" us, EPD_PartUpdate: ");
+      Serial.print(updateTime);
+      Serial.print(" us, Total: ");
+      Serial.print(drawTime + displayTime + updateTime);
+      Serial.println(" us");
+    }
+  }
+}
+
+// Re-sync with NTP periodically to maintain accuracy
+void checkNtpResync()
+{
+  unsigned long currentTime = millis();
+
+  // Update Wi-Fi connection status
+  wifiConnected = (WiFi.status() == WL_CONNECTED);
+
+  // Check if it's time to re-sync (every hour)
+  if (currentTime - lastNtpSync >= NTP_SYNC_INTERVAL)
+  {
+    Serial.println("Re-syncing with NTP server...");
+
+    // Reconnect Wi-Fi if disconnected
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      connectWiFi();
+    }
+
+    // Sync with NTP
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      if (syncNTP())
+      {
+        lastNtpSync = currentTime;
+        Serial.println("NTP re-sync successful!");
+        // Update display to show new status
+        updateDisplay();
+      }
+    }
+  }
+}
+
 void setup() {
   // Set the screen power control pin.
   pinMode(7, OUTPUT);  // Set pin 7 as output mode.
@@ -111,21 +411,44 @@ void setup() {
   Paint_NewImage(ImageBW, EPD_W, EPD_H, Rotation, WHITE);  // Create a new canvas with size EPD_W x EPD_H and background color white.
   Paint_Clear(WHITE);  // Clear the canvas with background color white.
 
+  // Initialize EPD hardware (must be done before any display operations)
   EPD_FastMode1Init();  // Initialize the fast mode 1 of the EPD.
   EPD_Display_Clear();  // Clear the EPD display content.
   EPD_Update();         // Complete update
   EPD_PartUpdate(); // This is super important! It's required for partial update to work properly
-  delay(1000);  // Wait for display to stabilize
 
-  // Draw "12:34" using custom bitmaps
-  drawTime(12, 34, 8, 8);
+  delay(500); // Wait for display to stabilize
 
-  // Update the display using partial update (faster and lower power consumption)
-  EPD_Display(ImageBW);
-  EPD_PartUpdate(); // Use partial update instead of full update for better performance
+  // Now EPD is initialized, we can display status
+  drawSetupStatus("EPD Ready!");
+
+  // Connect to Wi-Fi and sync with NTP
+  if (connectWiFi())
+  {
+    syncNTP();
+    lastNtpSync = millis();
+    // Wi-Fi can be disconnected after NTP sync to save power
+    // WiFi.disconnect(true); // Uncomment to disconnect Wi-Fi after sync
+  }
+  else
+  {
+    wifiConnected = false;
+    ntpSynced = false;
+  }
+
+  // Final display update
+  drawSetupStatus("Starting...");
+  updateDisplay();
 }
 
 void loop()
 {
-  // Do nothing - display is shown once at startup
+  // Check if we need to re-sync with NTP
+  checkNtpResync();
+
+  // Update display if minute has changed
+  updateDisplay();
+
+  // Small delay to avoid excessive CPU usage
+  delay(1000); // Check every second
 }
