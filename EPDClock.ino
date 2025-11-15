@@ -3,8 +3,10 @@
 #include "Number_L_bitmap.h" // Number L font (for clock display)
 #include <pgmspace.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <time.h>
 #include "wifi_config.h" // Wi-Fi認証情報（gitignoreに含まれています）
+#include "server_config.h" // Python server configuration
 
 // Define an array to store image data, with a size of 27200 bytes
 uint8_t ImageBW[27200];
@@ -21,6 +23,11 @@ bool ntpSynced = false;
 unsigned long wifiConnectTime = 0;
 unsigned long ntpSyncTime = 0;
 unsigned long lastUpdateTime = 0;
+
+// ImageBW export settings
+bool enableImageBWExport = true; // Set to false to disable export
+unsigned long lastImageBWExport = 0;
+const unsigned long IMAGEBW_EXPORT_INTERVAL = 60000; // Export every 60 seconds (0 = disable auto export)
 
 // Custom function to draw bitmap correctly handling row boundaries
 // This fixes EPD_ShowPicture's issue with row boundaries
@@ -468,8 +475,71 @@ void updateDisplay()
       Serial.print(" us, Total: ");
       Serial.print(drawTime + displayTime + updateTime);
       Serial.println(" us");
+
+      // Send ImageBW to server after display update
+      if (enableImageBWExport && WiFi.status() == WL_CONNECTED)
+      {
+        sendImageBWToServer();
+        lastImageBWExport = millis();
+      }
     }
   }
+}
+
+// Send ImageBW to Python server
+bool sendImageBWToServer()
+{
+  if (!wifiConnected || WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("[ImageBW] WiFi not connected, skipping export");
+    return false;
+  }
+
+  if (!enableImageBWExport)
+  {
+    return false;
+  }
+
+  HTTPClient http;
+  String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/imagebw";
+
+  Serial.print("[ImageBW] Sending to server: ");
+  Serial.println(url);
+
+  http.begin(url);
+  http.addHeader("Content-Type", "application/octet-stream");
+  http.addHeader("Content-Length", String(27200));
+
+  unsigned long startTime = millis();
+  int httpResponseCode = http.POST((uint8_t *)ImageBW, 27200);
+  unsigned long sendTime = millis() - startTime;
+
+  bool success = false;
+
+  if (httpResponseCode > 0)
+  {
+    String response = http.getString();
+    Serial.print("[ImageBW] Response code: ");
+    Serial.println(httpResponseCode);
+    Serial.print("[ImageBW] Response: ");
+    Serial.println(response);
+    Serial.print("[ImageBW] Send time: ");
+    Serial.print(sendTime);
+    Serial.println(" ms");
+
+    if (httpResponseCode == 200)
+    {
+      success = true;
+    }
+  }
+  else
+  {
+    Serial.print("[ImageBW] Error: ");
+    Serial.println(httpResponseCode);
+  }
+
+  http.end();
+  return success;
 }
 
 // Re-sync with NTP periodically to maintain accuracy
@@ -555,6 +625,17 @@ void loop()
 
   // Update display if minute has changed
   updateDisplay();
+
+  // Periodically send ImageBW to server (if auto export is enabled)
+  if (enableImageBWExport && IMAGEBW_EXPORT_INTERVAL > 0 && WiFi.status() == WL_CONNECTED)
+  {
+    unsigned long currentTime = millis();
+    if (currentTime - lastImageBWExport >= IMAGEBW_EXPORT_INTERVAL)
+    {
+      sendImageBWToServer();
+      lastImageBWExport = currentTime;
+    }
+  }
 
   // Small delay to avoid excessive CPU usage
   delay(1000); // Check every second
