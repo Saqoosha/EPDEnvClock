@@ -225,6 +225,71 @@ arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:Partiti
 
 詳細は`EPD_Init.h`のコメントを参照。
 
+## ImageBW WiFi Export サーバー
+
+### サーバーの起動
+
+Python HTTPサーバーを起動して、ArduinoからImageBWデータを受信します：
+
+```bash
+cd /path/to/Desktop/EPDClock
+python3 scripts/imagebw_server.py --port 8080
+```
+
+**オプション**:
+- `--port`: サーバーポート（デフォルト: 8080）
+- `--host`: サーバーホスト（デフォルト: 0.0.0.0）
+
+**バックグラウンドで起動**:
+```bash
+python3 scripts/imagebw_server.py --port 8080 &
+```
+
+### サーバーの停止
+
+実行中のサーバーを停止：
+
+```bash
+pkill -f "imagebw_server.py"
+```
+
+または、プロセスIDを確認して停止：
+
+```bash
+ps aux | grep "imagebw_server.py" | grep -v grep
+kill <PID>
+```
+
+### サーバー状態の確認
+
+サーバーが動作しているか確認：
+
+```bash
+curl http://localhost:8080/status
+```
+
+### エンドポイント
+
+- `POST /imagebw` - バイナリImageBWデータ（27,200バイト）を受信
+- `POST /imagebw/base64` - Base64エンコードされたImageBWデータを受信
+- `GET /status` - サーバー状態を確認
+
+### 設定
+
+サーバーのIPアドレスとポートは`EPDClock/server_config.h`で設定：
+
+```c
+#define ENABLE_IMAGEBW_EXPORT 1  // 1で有効、0で無効
+#define SERVER_IP "192.168.11.9"  // MacのIPアドレス
+#define SERVER_PORT 8080           // サーバーポート
+```
+
+### 出力
+
+受信したImageBWデータは`output/`ディレクトリにPNGファイルとして保存されます：
+- ファイル名形式: `imagebw_YYYYMMDD_HHMMSS.png`
+- 画像サイズ: 792x272ピクセル（1ビット白黒）
+
 ## プロジェクト構成
 
 ```
@@ -250,7 +315,7 @@ EPDClock/
 ├── assets/                    # アセット（画像ファイルなど）
 │   ├── Number L/              # 大きい数字フォント画像
 │   └── Number S/              # 小さい数字フォント画像
-├── output/                    # 生成された画像出力
+├── output/                    # 生成された画像出力（gitignore）
 ├── docs/                      # ドキュメント
 │   └── README_IMAGEBW.md      # ImageBW関連ドキュメント
 ├── AGENTS.md                  # このファイル（Arduino CLI手順書）
