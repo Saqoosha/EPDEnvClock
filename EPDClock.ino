@@ -25,7 +25,11 @@ unsigned long ntpSyncTime = 0;
 unsigned long lastUpdateTime = 0;
 
 // ImageBW export settings
-bool enableImageBWExport = true; // Set to false to disable export
+#if ENABLE_IMAGEBW_EXPORT
+bool enableImageBWExport = true;
+#else
+bool enableImageBWExport = false;
+#endif
 unsigned long lastImageBWExport = 0;
 const unsigned long IMAGEBW_EXPORT_INTERVAL = 60000; // Export every 60 seconds (0 = disable auto export)
 
