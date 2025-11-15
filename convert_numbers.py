@@ -93,7 +93,13 @@ def generate_c_array(bitmap_data, array_name="ImageData"):
     return "\n".join(lines)
 
 def main():
-    number_dir = "assets/Number L"
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Convert PNG number images to EPD bitmap arrays')
+    parser.add_argument('--dir', default='assets/Number L', help='Directory containing PNG files (default: assets/Number L)')
+    args = parser.parse_args()
+
+    number_dir = args.dir
 
     if not os.path.exists(number_dir):
         print(f"Error: Directory not found: {number_dir}")
@@ -132,6 +138,8 @@ def main():
                 array_name = f"Number{base_name}"
             elif base_name == "colon":
                 array_name = "NumberColon"
+            elif base_name == "period":
+                array_name = "NumberPeriod"
             else:
                 array_name = f"Number{base_name.capitalize()}"
 

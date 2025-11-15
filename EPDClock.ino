@@ -1,5 +1,6 @@
 #include "EPD.h"         // Includes library files for electronic paper screens
-#include "Number_bitmap.h"  // Include the converted number image data
+#include "Number_S_bitmap.h" // Number S font (for date display)
+#include "Number_L_bitmap.h" // Number L font (for clock display)
 #include <pgmspace.h>
 #include <WiFi.h>
 #include <time.h>
@@ -10,6 +11,7 @@ uint8_t ImageBW[27200];
 
 // Variables for time tracking
 uint8_t lastDisplayedMinute = 255; // Initialize to invalid value
+uint8_t lastDisplayedDay = 255;    // Initialize to invalid value
 unsigned long lastNtpSync = 0;
 const unsigned long NTP_SYNC_INTERVAL = 3600000; // Re-sync every hour (in milliseconds)
 
@@ -50,16 +52,42 @@ void drawBitmapCorrect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, 
   }
 }
 
-// Array of number bitmap pointers (all numbers are same size: 100x116)
+// Array of number bitmap pointers (Number S font - for date display)
 const uint8_t* NumberBitmaps[] = {
   Number0, Number1, Number2, Number3, Number4,
   Number5, Number6, Number7, Number8, Number9
 };
 
-// Draw a single digit using bitmap images
+// Array of number widths (Number S font)
+const uint16_t NumberWidths[] = {
+    Number0_WIDTH, Number1_WIDTH, Number2_WIDTH, Number3_WIDTH, Number4_WIDTH,
+    Number5_WIDTH, Number6_WIDTH, Number7_WIDTH, Number8_WIDTH, Number9_WIDTH};
+
+// Array of number bitmap pointers (Number L font - for clock display)
+const uint8_t *NumberLBitmaps[] = {
+    NumberL0, NumberL1, NumberL2, NumberL3, NumberL4,
+    NumberL5, NumberL6, NumberL7, NumberL8, NumberL9};
+
+// Draw a single digit using Number S font (for date display)
 void drawDigit(uint8_t digit, uint16_t x, uint16_t y) {
   if (digit > 9) return;  // Invalid digit
-  drawBitmapCorrect(x, y, Number0_WIDTH, Number0_HEIGHT, NumberBitmaps[digit], WHITE);
+  drawBitmapCorrect(x, y, NumberWidths[digit], Number0_HEIGHT, NumberBitmaps[digit], WHITE);
+}
+
+// Draw a single digit using Number L font (for clock display)
+void drawDigitL(uint8_t digit, uint16_t x, uint16_t y)
+{
+  if (digit > 9)
+    return; // Invalid digit
+  drawBitmapCorrect(x, y, NumberL0_WIDTH, NumberL0_HEIGHT, NumberLBitmaps[digit], WHITE);
+}
+
+// Get width of a digit (Number S font)
+uint16_t getDigitWidth(uint8_t digit)
+{
+  if (digit > 9)
+    return 0;
+  return NumberWidths[digit];
 }
 
 // Draw a multi-digit number using bitmap images
@@ -92,25 +120,92 @@ void drawNumber(uint32_t num, uint16_t x, uint16_t y) {
   }
 }
 
-// Draw colon using bitmap image
+// Draw colon using bitmap image (for Number L font)
 void drawColon(uint16_t x, uint16_t y)
 {
   drawBitmapCorrect(x, y, NumberColon_WIDTH, NumberColon_HEIGHT, NumberColon, WHITE);
 }
 
-// Draw time in format "HH:MM" using bitmap images
+// Draw period using bitmap image (for Number S font)
+void drawPeriod(uint16_t x, uint16_t y)
+{
+  drawBitmapCorrect(x, y, NumberPeriod_WIDTH, NumberPeriod_HEIGHT, NumberPeriod, WHITE);
+}
+
+// Draw date in format "YYYY.MM.DD" using Number S font bitmaps (6px spacing)
+void drawDate(uint16_t year, uint8_t month, uint8_t day, uint16_t x, uint16_t y)
+{
+  const uint16_t CHAR_SPACING = 6; // 6px spacing between characters
+  uint16_t currentX = x;
+
+  // Draw year (4 digits)
+  uint8_t digit = (year / 1000) % 10;
+  drawDigit(digit, currentX, y);
+  currentX += getDigitWidth(digit) + CHAR_SPACING;
+
+  digit = (year / 100) % 10;
+  drawDigit(digit, currentX, y);
+  currentX += getDigitWidth(digit) + CHAR_SPACING;
+
+  digit = (year / 10) % 10;
+  drawDigit(digit, currentX, y);
+  currentX += getDigitWidth(digit) + CHAR_SPACING;
+
+  digit = year % 10;
+  drawDigit(digit, currentX, y);
+  currentX += getDigitWidth(digit) + CHAR_SPACING;
+
+  // Draw period
+  drawPeriod(currentX, y);
+  currentX += NumberPeriod_WIDTH + CHAR_SPACING;
+
+  // Draw month (2 digits)
+  digit = month / 10;
+  drawDigit(digit, currentX, y);
+  currentX += getDigitWidth(digit) + CHAR_SPACING;
+
+  digit = month % 10;
+  drawDigit(digit, currentX, y);
+  currentX += getDigitWidth(digit) + CHAR_SPACING;
+
+  // Draw period
+  drawPeriod(currentX, y);
+  currentX += NumberPeriod_WIDTH + CHAR_SPACING;
+
+  // Draw day (2 digits)
+  digit = day / 10;
+  drawDigit(digit, currentX, y);
+  currentX += getDigitWidth(digit) + CHAR_SPACING;
+
+  digit = day % 10;
+  drawDigit(digit, currentX, y);
+}
+
+// Draw time in format "HH:MM" using Number L font bitmaps (no spacing)
 void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
 {
+  uint16_t currentX = x;
+
   // Draw hour (2 digits)
-  drawDigit(hour / 10, x, y);
-  drawDigit(hour % 10, x + Number0_WIDTH, y);
+  uint8_t digit = hour / 10;
+  drawDigitL(digit, currentX, y);
+  currentX += NumberL0_WIDTH;
+
+  digit = hour % 10;
+  drawDigitL(digit, currentX, y);
+  currentX += NumberL0_WIDTH;
 
   // Draw colon
-  drawColon(x + 2 * Number0_WIDTH, y);
+  drawColon(currentX, y);
+  currentX += NumberColon_WIDTH;
 
   // Draw minute (2 digits)
-  drawDigit(minute / 10, x + 2 * Number0_WIDTH + NumberColon_WIDTH, y);
-  drawDigit(minute % 10, x + 3 * Number0_WIDTH + NumberColon_WIDTH, y);
+  digit = minute / 10;
+  drawDigitL(digit, currentX, y);
+  currentX += NumberL0_WIDTH;
+
+  digit = minute % 10;
+  drawDigitL(digit, currentX, y);
 }
 
 // Draw setup status message
@@ -324,12 +419,23 @@ void updateDisplay()
 
       unsigned long startTime = micros();
 
-      // Clear the time area (optional, for cleaner updates)
-      // Or just redraw the entire time
+      // Clear the display
       Paint_Clear(WHITE);
 
-      // Draw current time using custom bitmaps
-      drawTime(hour, currentMinute, 8, 8);
+      // Draw current time using custom bitmaps at (330, 53)
+      // Clock width: ~433px (4 digits × 100px + colon 33px, no spacing)
+      // Screen width: 800px, so max start position: 800 - 433 = 367px
+      // Using 330px (moved 30px right from 300px)
+      drawTime(hour, currentMinute, 330, 53);
+
+      // Draw current date using Number S font at (15, 125)
+      uint16_t year = timeinfo.tm_year + 1900;
+      uint8_t month = timeinfo.tm_mon + 1;
+      uint8_t day = timeinfo.tm_mday;
+
+      // Update date (always redraw when time updates)
+      drawDate(year, month, day, 15, 125);
+      lastDisplayedDay = day;
 
       // Draw status at the bottom
       drawStatus();
