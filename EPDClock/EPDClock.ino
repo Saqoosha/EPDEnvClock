@@ -1,6 +1,6 @@
 #include "EPD.h"         // Includes library files for electronic paper screens
-#include "Number_S_bitmap.h" // Number S font (for date display)
-#include "Number_L_bitmap.h" // Number L font (for clock display)
+#include "bitmaps/Number_S_bitmap.h" // Number S font (for date display)
+#include "bitmaps/Number_L_bitmap.h" // Number L font (for clock display)
 #include <pgmspace.h>
 #include <WiFi.h>
 #include <HTTPClient.h>

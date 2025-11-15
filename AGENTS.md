@@ -49,7 +49,7 @@ arduino-cli board details -b esp32:esp32:esp32s3
 ### 1. プロジェクトディレクトリに移動
 
 ```bash
-cd /path/to/Desktop/sketch_nov15a
+cd /path/to/Desktop/EPDClock
 ```
 
 ### 2. コンパイル実行
@@ -57,7 +57,7 @@ cd /path/to/Desktop/sketch_nov15a
 ESP32-S3 Dev Module用にコンパイル：
 
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDClock
 ```
 
 **重要な設定パラメータ：**
@@ -100,7 +100,7 @@ Port                            Protocol Type              Board Name FQBN Core
 適切なポートを指定してアップロード：
 
 ```bash
-arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
+arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDClock
 ```
 
 **注意**: ポート名は環境によって異なる可能性がある。`arduino-cli board list`で確認すること。
@@ -123,8 +123,8 @@ Hard resetting via RTS pin...
 コンパイルとアップロードを一度に実行（最も確実）：
 
 ```bash
-cd /path/to/Desktop/sketch_nov15a && \
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 sketch_nov15a.ino
+cd /path/to/Desktop/EPDClock && \
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDClock
 ```
 
 ### 方法2: 分離実行
@@ -132,9 +132,9 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 コンパイルとアップロードを分けて実行：
 
 ```bash
-cd /path/to/Desktop/sketch_nov15a && \
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino && \
-arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
+cd /path/to/Desktop/EPDClock && \
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDClock && \
+arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDClock
 ```
 
 ### 方法3: uploadのみ（既存バイナリがある場合）
@@ -186,13 +186,13 @@ arduino-cli core list
 ### コンパイル + アップロード（推奨）
 
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 sketch_nov15a.ino
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDClock
 ```
 
 ### コンパイルのみ
 
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDClock
 ```
 
 ### アップロードのみ（既存バイナリを使用）
@@ -200,7 +200,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 **注意**: コード変更後は必ず`compile`を実行してから使用してください。
 
 ```bash
-arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi sketch_nov15a.ino
+arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDClock
 ```
 
 ## EPDディスプレイの解像度について
@@ -228,15 +228,36 @@ arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:Partiti
 ## プロジェクト構成
 
 ```
-sketch_nov15a/
-├── sketch_nov15a.ino          # メインスケッチ
-├── EPD.h / EPD.cpp            # EPDライブラリ
-├── EPD_Init.h / EPD_Init.cpp  # EPD初期化ライブラリ
-├── spi.h / spi.cpp            # SPIライブラリ
-├── EPDfont.h                  # フォントデータ
-├── convert_image.py           # 画像変換スクリプト（別トピック）
-└── AGENTS.md                  # このファイル
+EPDClock/
+├── EPDClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
+│   ├── EPDClock.ino          # メインスケッチ
+│   ├── EPD.h / EPD.cpp       # EPDライブラリ
+│   ├── EPD_Init.h / EPD_Init.cpp  # EPD初期化ライブラリ
+│   ├── spi.h / spi.cpp       # SPIライブラリ
+│   ├── EPDfont.h             # フォントデータ
+│   ├── wifi_config.h          # Wi-Fi設定（gitignore）
+│   ├── server_config.h        # サーバー設定
+│   └── bitmaps/               # ビットマップヘッダーファイル
+│       ├── Number_S_bitmap.h  # 数字フォント（小）
+│       ├── Number_L_bitmap.h  # 数字フォント（大）
+│       └── ...
+├── scripts/                   # Pythonスクリプト
+│   ├── convert_image.py       # 画像変換スクリプト
+│   ├── convert_imagebw.py     # ImageBW変換スクリプト
+│   ├── convert_numbers.py     # 数字画像変換スクリプト
+│   ├── create_number_bitmaps.py  # 数字ビットマップ生成スクリプト
+│   └── imagebw_server.py      # ImageBW受信サーバー
+├── assets/                    # アセット（画像ファイルなど）
+│   ├── Number L/              # 大きい数字フォント画像
+│   └── Number S/              # 小さい数字フォント画像
+├── output/                    # 生成された画像出力
+├── docs/                      # ドキュメント
+│   └── README_IMAGEBW.md      # ImageBW関連ドキュメント
+├── AGENTS.md                  # このファイル（Arduino CLI手順書）
+└── README.md                  # プロジェクトREADME
 ```
+
+**注意**: arduino-cliを使用する場合、スケッチディレクトリ`EPDClock`を指定してコンパイル・アップロードを実行します。スケッチディレクトリ名と`.ino`ファイル名（`EPDClock.ino`）が一致している必要があります。
 
 ## 参考情報
 
@@ -280,7 +301,8 @@ esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi
 ## メモ
 
 - コンパイルとアップロードは別々に実行できる
-- コンパイル成功後、`.build/`ディレクトリにバイナリが生成される
+- コンパイル成功後、`EPDClock/.build/`ディレクトリにバイナリが生成される
 - ポート名は環境によって異なるため、毎回`arduino-cli board list`で確認することを推奨
 - アップロード前にボードが正しく接続されているか確認すること
-- Arduino IDEを使用する場合は、[公式チュートリアル](https://www.elecrow.com/wiki/CrowPanel_ESP32_E-Paper_5.79inch_Arduino_Tutorial.html#upload-the-code)を参照
+- **重要**: arduino-cliコマンドはプロジェクトルート（`EPDClock/`）から実行し、スケッチディレクトリ`EPDClock`を指定する。スケッチディレクトリ名と`.ino`ファイル名（`EPDClock.ino`）が一致している必要がある
+- Arduino IDEを使用する場合は、`EPDClock/`ディレクトリをスケッチフォルダとして開くか、[公式チュートリアル](https://www.elecrow.com/wiki/CrowPanel_ESP32_E-Paper_5.79inch_Arduino_Tutorial.html#upload-the-code)を参照

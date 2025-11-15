@@ -99,7 +99,13 @@ def main():
     parser.add_argument('--dir', default='assets/Number L', help='Directory containing PNG files (default: assets/Number L)')
     args = parser.parse_args()
 
-    number_dir = args.dir
+    # Resolve path relative to project root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    if os.path.isabs(args.dir):
+        number_dir = args.dir
+    else:
+        number_dir = os.path.join(project_root, args.dir)
 
     if not os.path.exists(number_dir):
         print(f"Error: Directory not found: {number_dir}")
@@ -174,8 +180,11 @@ def main():
 
     header_content.append("#endif")
 
-    # Write header file
-    output_file = "Number_bitmap.h"
+    # Write header file (to firmware/bitmaps directory)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    output_file = os.path.join(project_root, "firmware", "bitmaps", "Number_bitmap.h")
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, 'w') as f:
         f.write("\n".join(header_content))
 

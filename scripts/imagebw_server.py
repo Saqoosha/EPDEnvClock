@@ -7,7 +7,14 @@ Receives binary ImageBW array (27,200 bytes) and saves as PNG image
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import os
+import sys
 from datetime import datetime
+
+# Add scripts directory to path for imports
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
 from convert_imagebw import convert_imagebw_to_png
 
 class ImageBWHandler(BaseHTTPRequestHandler):

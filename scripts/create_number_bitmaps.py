@@ -278,7 +278,14 @@ def main():
     font_size_px = args.font_size_px
     font_path = args.font_path
     dpi = args.dpi
-    output_dir = args.output_dir
+
+    # Resolve output directory path relative to project root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    if os.path.isabs(args.output_dir):
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join(project_root, args.output_dir)
 
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)

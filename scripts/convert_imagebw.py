@@ -102,8 +102,10 @@ def convert_imagebw_to_png(imagebw_data, output_filename=None):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_filename = f"imagebw_{timestamp}.png"
 
-    # Ensure output directory exists
-    output_dir = "output"
+    # Ensure output directory exists (relative to project root)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    output_dir = os.path.join(project_root, "output")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
