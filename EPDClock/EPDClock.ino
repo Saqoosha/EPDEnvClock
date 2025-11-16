@@ -256,14 +256,11 @@ void drawSetupStatus(const char *message)
   EPD_PartUpdate();
 }
 
-// Draw internal state at the bottom of the screen
+// Draw internal state at the top of the screen
 void drawStatus()
 {
-  // Clear status area (bottom 40 pixels)
-  EPD_ClearWindows(0, EPD_H - 20, EPD_W, EPD_H, WHITE);
-
   char statusLine[80];
-  int yPos = EPD_H - 18; // Position from bottom
+  int yPos = 2; // Position from top
   uint16_t fontSize = 16;
 
   // Wi-Fi status
@@ -469,7 +466,7 @@ void updateDisplay()
       drawDate(year, month, day, 15, 125);
       lastDisplayedDay = day;
 
-      // Draw status at the bottom
+      // Draw status at the top
       drawStatus();
 
       // Update the display using partial update (faster and lower power consumption)
@@ -778,6 +775,8 @@ void loop()
   checkNtpResync();
 
   // Read sensor when minute changes (same timing as clock update)
+  // Temporarily disabled to debug reboot issue
+  /*
   struct tm timeinfo;
   if (getLocalTime(&timeinfo))
   {
@@ -793,6 +792,7 @@ void loop()
       lastSensorMinute = currentMinute;
     }
   }
+  */
 
   // Update display if minute has changed
   updateDisplay();
