@@ -40,10 +40,12 @@ bool SensorManager_Begin()
 
   delay(1000);
 
-  error = scd4x.startPeriodicMeasurement();
+  // Start low power periodic measurement mode
+  // This mode reduces self-heating and improves temperature accuracy
+  error = scd4x.startLowPowerPeriodicMeasurement();
   if (error)
   {
-    Serial.print("Error trying to execute startPeriodicMeasurement(): ");
+    Serial.print("Error trying to execute startLowPowerPeriodicMeasurement(): ");
     errorToString(error, errorMessage, sizeof(errorMessage));
     Serial.println(errorMessage);
     sensorInitialized = false;
