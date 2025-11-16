@@ -40,6 +40,36 @@ bool SensorManager_Begin()
 
   delay(1000);
 
+  // Set temperature offset to 0°C
+  // Serial.println("Setting temperature offset to 0°C...");
+  // error = scd4x.setTemperatureOffset(0.0f);
+  // if (error)
+  // {
+  //   Serial.print("Warning: Failed to set temperature offset: ");
+  //   errorToString(error, errorMessage, sizeof(errorMessage));
+  //   Serial.println(errorMessage);
+  // }
+  // else
+  {
+    // Serial.println("Temperature offset set to 0°C successfully.");
+
+    // Read back the temperature offset value
+    float tempOffset = 0.0f;
+    error = scd4x.getTemperatureOffset(tempOffset);
+    if (!error)
+    {
+      Serial.print("Read back temperature offset: ");
+      Serial.print(tempOffset);
+      Serial.println(" °C");
+    }
+    else
+    {
+      Serial.print("Warning: Failed to read temperature offset: ");
+      errorToString(error, errorMessage, sizeof(errorMessage));
+      Serial.println(errorMessage);
+    }
+  }
+
   // Start low power periodic measurement mode
   // This mode reduces self-heating and improves temperature accuracy
   error = scd4x.startLowPowerPeriodicMeasurement();
