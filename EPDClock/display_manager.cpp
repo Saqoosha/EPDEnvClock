@@ -125,6 +125,40 @@ uint16_t getDigitMWidth(uint8_t digit)
   return NumberMWidths[digit];
 }
 
+uint16_t calculateTemperatureWidth(float temp)
+{
+  const uint16_t CHAR_SPACING = 5;
+  uint16_t width = 0;
+
+  // Format: "23.5" (rounded to 1 decimal place)
+  int tempInt = (int)temp;
+  int tempDecimal = (int)((temp - tempInt) * 10 + 0.5f); // Round to nearest
+
+  // Handle carry-over when decimal rounds to 10
+  if (tempDecimal >= 10)
+  {
+    tempInt++;
+    tempDecimal = 0;
+  }
+
+  // First digit (tens)
+  uint8_t digit = tempInt / 10;
+  width += getDigitMWidth(digit) + CHAR_SPACING;
+
+  // Second digit (ones)
+  digit = tempInt % 10;
+  width += getDigitMWidth(digit) + CHAR_SPACING;
+
+  // Period
+  width += NumberMPeriod_WIDTH + CHAR_SPACING;
+
+  // Decimal digit
+  digit = tempDecimal;
+  width += getDigitMWidth(digit);
+
+  return width;
+}
+
 uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
 {
   const uint16_t CHAR_SPACING = 5;
@@ -161,6 +195,51 @@ uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
   currentX += getDigitMWidth(digit);
 
   return currentX; // Return end position
+}
+
+uint16_t calculateIntegerWidth(int value)
+{
+  const uint16_t CHAR_SPACING = 5;
+  uint16_t width = 0;
+
+  // Handle negative values
+  if (value < 0)
+  {
+    value = 0; // Clamp to 0 for display
+  }
+
+  // Extract digits
+  int remaining = value;
+  int digits[4] = {0}; // Max 4 digits (e.g., 9999)
+  int digitCount = 0;
+
+  // Extract digits from right to left
+  if (remaining == 0)
+  {
+    digits[0] = 0;
+    digitCount = 1;
+  }
+  else
+  {
+    while (remaining > 0 && digitCount < 4)
+    {
+      digits[digitCount] = remaining % 10;
+      remaining /= 10;
+      digitCount++;
+    }
+  }
+
+  // Calculate width from left to right (reverse order)
+  for (int i = digitCount - 1; i >= 0; i--)
+  {
+    width += getDigitMWidth(digits[i]);
+    if (i > 0) // Add spacing except after last digit
+    {
+      width += CHAR_SPACING;
+    }
+  }
+
+  return width;
 }
 
 uint16_t drawInteger(int value, uint16_t x, uint16_t y)
@@ -377,27 +456,50 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   if (SensorManager_IsInitialized())
   {
     const uint16_t UNIT_Y_OFFSET = 26; // Unit icons are 26px below values
+    const uint16_t ICON_VALUE_SPACING = 6; // Spacing between icon and value
+    const uint16_t VALUE_UNIT_SPACING = 5; // Spacing between value and unit (same as digit spacing)
+    const uint16_t SCREEN_WIDTH = 792;     // Actual display width
+    const uint16_t SIDE_MARGIN = 16;       // Margin from screen edges
+    const uint16_t SENSOR_Y = 200;         // Y position for sensor data
 
-    // Draw temperature icon at (16, 200) and value at (51, 200)
-    drawBitmapCorrect(16, 200, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
+    // Get sensor values
     float temp = SensorManager_GetTemperature();
-    uint16_t tempEndX = drawTemperature(temp, 51, 200);
-    // Draw unit C icon after temperature value, y offset by 26px
-    drawBitmapCorrect(tempEndX + 5, 200 + UNIT_Y_OFFSET, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
-
-    // Draw humidity icon at (245, 200) and value at (308, 200)
-    drawBitmapCorrect(245, 200, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
     float humidity = SensorManager_GetHumidity();
-    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), 308, 200); // Round to nearest integer
-    // Draw unit percent icon after humidity value, y offset by 26px
-    drawBitmapCorrect(humidityEndX + 5, 200 + UNIT_Y_OFFSET, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
-
-    // Draw CO2 icon at (473, 200) and value at (536, 200)
-    drawBitmapCorrect(473, 200, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
     uint16_t co2 = SensorManager_GetCO2();
-    uint16_t co2EndX = drawInteger(co2, 536, 200);
-    // Draw unit ppm icon after CO2 value, y offset by 26px
-    drawBitmapCorrect(co2EndX + 5, 200 + UNIT_Y_OFFSET, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
+
+    // Calculate value widths
+    uint16_t tempValueWidth = calculateTemperatureWidth(temp);
+    uint16_t humidityValueWidth = calculateIntegerWidth((int)(humidity + 0.5f));
+    uint16_t co2ValueWidth = calculateIntegerWidth(co2);
+
+    // Calculate total display widths (icon + spacing + value + spacing + unit)
+    uint16_t tempDisplayWidth = IconTemp_WIDTH + ICON_VALUE_SPACING + tempValueWidth + VALUE_UNIT_SPACING + UnitC_WIDTH;
+    uint16_t humidityDisplayWidth = IconHumidity_WIDTH + ICON_VALUE_SPACING + humidityValueWidth + VALUE_UNIT_SPACING + UnitPercent_WIDTH;
+    uint16_t co2DisplayWidth = IconCO2_WIDTH + ICON_VALUE_SPACING + co2ValueWidth + VALUE_UNIT_SPACING + UnitPpm_WIDTH;
+
+    // Calculate X positions
+    uint16_t tempX = SIDE_MARGIN;
+    uint16_t co2X = SCREEN_WIDTH - SIDE_MARGIN - co2DisplayWidth;
+    uint16_t availableSpace = co2X - (tempX + tempDisplayWidth);
+    uint16_t humidityX = tempX + tempDisplayWidth + (availableSpace - humidityDisplayWidth) / 2;
+
+    // Draw temperature
+    drawBitmapCorrect(tempX, SENSOR_Y, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
+    uint16_t tempValueX = tempX + IconTemp_WIDTH + ICON_VALUE_SPACING;
+    uint16_t tempEndX = drawTemperature(temp, tempValueX, SENSOR_Y);
+    drawBitmapCorrect(tempEndX + VALUE_UNIT_SPACING, SENSOR_Y + UNIT_Y_OFFSET, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
+
+    // Draw humidity
+    drawBitmapCorrect(humidityX, SENSOR_Y, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
+    uint16_t humidityValueX = humidityX + IconHumidity_WIDTH + ICON_VALUE_SPACING;
+    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), humidityValueX, SENSOR_Y);
+    drawBitmapCorrect(humidityEndX + VALUE_UNIT_SPACING, SENSOR_Y + UNIT_Y_OFFSET, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
+
+    // Draw CO2
+    drawBitmapCorrect(co2X, SENSOR_Y, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
+    uint16_t co2ValueX = co2X + IconCO2_WIDTH + ICON_VALUE_SPACING;
+    uint16_t co2EndX = drawInteger(co2, co2ValueX, SENSOR_Y);
+    drawBitmapCorrect(co2EndX + VALUE_UNIT_SPACING, SENSOR_Y + UNIT_Y_OFFSET, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
   }
 
   const unsigned long drawDuration = micros() - startTime;
