@@ -314,6 +314,7 @@ EPDClock/
 │   └── imagebw_server.py      # ImageBW受信サーバー
 ├── assets/                    # アセット（画像ファイルなど）
 │   ├── Number L/              # 大きい数字フォント画像
+│   ├── Number M/              # 中サイズ数字フォント画像（58px高）
 │   └── Number S/              # 小さい数字フォント画像
 ├── output/                    # 生成された画像出力（gitignore）
 ├── docs/                      # ドキュメント
@@ -363,6 +364,42 @@ Elecrow公式のCrowPanel ESP32 E-Paper 5.79インチ Arduinoチュートリア�
 esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi
 ```
 
+## 数字フォントの生成
+
+数字フォント（Number S、Number M、Number L）は`scripts/create_number_bitmaps.py`を使用して生成します。
+
+### 使用フォント
+
+**重要**: すべての数字フォントは以下のフォントファイルを使用します：
+
+- **フォントパス**: `/path/to/Library/Fonts/BalooBhai2-ExtraBold.ttf`
+- **フォント名**: Baloo Bhai 2
+- **スタイル**: Extra Bold
+
+### Number Mフォントの生成
+
+Number Mフォント（58px高）を生成する場合：
+
+```bash
+cd /path/to/Desktop/EPDClock
+python3 scripts/create_number_bitmaps.py \
+  --font-path "/path/to/Library/Fonts/BalooBhai2-ExtraBold.ttf" \
+  --font-size-px 90 \
+  --output-dir "assets/Number M"
+```
+
+**パラメータ**:
+- `--font-path`: フォントファイルのパス（必須）
+- `--font-size-px`: フォントサイズ（ピクセル）。90pxで58pxの出力高になる
+- `--output-dir`: 出力ディレクトリ
+
+### 他のフォントサイズ
+
+- **Number S**: 小さいフォント（約43px高）
+- **Number L**: 大きいフォント（約116px高）
+
+各フォントサイズに応じて`--font-size-px`を調整してください。
+
 ## メモ
 
 - コンパイルとアップロードは別々に実行できる
@@ -371,3 +408,4 @@ esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi
 - アップロード前にボードが正しく接続されているか確認すること
 - **重要**: arduino-cliコマンドはプロジェクトルート（`EPDClock/`）から実行し、スケッチディレクトリ`EPDClock`を指定する。スケッチディレクトリ名と`.ino`ファイル名（`EPDClock.ino`）が一致している必要がある
 - Arduino IDEを使用する場合は、`EPDClock/`ディレクトリをスケッチフォルダとして開くか、[公式チュートリアル](https://www.elecrow.com/wiki/CrowPanel_ESP32_E-Paper_5.79inch_Arduino_Tutorial.html#upload-the-code)を参照
+- **フォント生成**: 数字フォントを生成する際は、必ず`/path/to/Library/Fonts/BalooBhai2-ExtraBold.ttf`を使用すること

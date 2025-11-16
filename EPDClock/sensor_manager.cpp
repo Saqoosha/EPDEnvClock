@@ -13,6 +13,9 @@ constexpr uint8_t SCD4X_I2C_ADDRESS = 0x62;
 SensirionI2cScd4x scd4x;
 
 bool sensorInitialized = false;
+float lastTemperature = 0.0f;
+float lastHumidity = 0.0f;
+uint16_t lastCO2 = 0;
 } // namespace
 
 bool SensorManager_Begin()
@@ -114,9 +117,92 @@ void SensorManager_Read()
   Serial.print(" °C, H: ");
   Serial.print(humidity);
   Serial.println(" %RH");
+
+  lastTemperature = temperature;
+  lastHumidity = humidity;
+  lastCO2 = co2;
+}
+
+bool SensorManager_ReadBlocking(unsigned long timeoutMs)
+{
+  if (!sensorInitialized)
+  {
+    return false;
+  }
+
+  unsigned long startTime = millis();
+  bool isDataReady = false;
+  uint16_t error;
+  char errorMessage[256];
+
+  // Wait for data to be ready
+  while (!isDataReady && (millis() - startTime < timeoutMs))
+  {
+    error = scd4x.getDataReadyStatus(isDataReady);
+    if (error)
+    {
+      Serial.print("[Sensor] Error getDataReadyStatus: ");
+      errorToString(error, errorMessage, sizeof(errorMessage));
+      Serial.println(errorMessage);
+      return false;
+    }
+
+    if (!isDataReady)
+    {
+      delay(100); // Wait 100ms before checking again
+    }
+  }
+
+  if (!isDataReady)
+  {
+    Serial.println("[Sensor] Timeout waiting for data ready");
+    return false;
+  }
+
+  // Read measurement
+  uint16_t co2;
+  float temperature;
+  float humidity;
+
+  error = scd4x.readMeasurement(co2, temperature, humidity);
+  if (error)
+  {
+    Serial.print("[Sensor] Error readMeasurement: ");
+    errorToString(error, errorMessage, sizeof(errorMessage));
+    Serial.println(errorMessage);
+    return false;
+  }
+
+  Serial.print("[Sensor] CO2: ");
+  Serial.print(co2);
+  Serial.print(" ppm, T: ");
+  Serial.print(temperature);
+  Serial.print(" °C, H: ");
+  Serial.print(humidity);
+  Serial.println(" %RH");
+
+  lastTemperature = temperature;
+  lastHumidity = humidity;
+  lastCO2 = co2;
+  return true;
 }
 
 bool SensorManager_IsInitialized()
 {
   return sensorInitialized;
+}
+
+float SensorManager_GetTemperature()
+{
+  return lastTemperature;
+}
+
+float SensorManager_GetHumidity()
+{
+  return lastHumidity;
+}
+
+uint16_t SensorManager_GetCO2()
+{
+  return lastCO2;
 }

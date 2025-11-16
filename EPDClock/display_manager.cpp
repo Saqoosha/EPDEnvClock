@@ -3,6 +3,9 @@
 #include "EPD.h"
 #include "bitmaps/Number_L_bitmap.h"
 #include "bitmaps/Number_S_bitmap.h"
+#include "bitmaps/Number_M_bitmap.h"
+#include "bitmaps/Icon_bitmap.h"
+#include "sensor_manager.h"
 
 #include <pgmspace.h>
 
@@ -12,8 +15,6 @@ constexpr size_t kFrameBufferSize = 27200;
 uint8_t ImageBW[kFrameBufferSize];
 
 uint8_t lastDisplayedMinute = 255;
-uint8_t lastDisplayedDay = 255;
-unsigned long lastUpdateTime = 0;
 
 void drawBitmapCorrect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t *bitmap)
 {
@@ -61,6 +62,14 @@ const uint8_t *NumberLBitmaps[] = {
     NumberL0, NumberL1, NumberL2, NumberL3, NumberL4,
     NumberL5, NumberL6, NumberL7, NumberL8, NumberL9};
 
+const uint8_t *NumberMBitmaps[] = {
+    NumberM0, NumberM1, NumberM2, NumberM3, NumberM4,
+    NumberM5, NumberM6, NumberM7, NumberM8, NumberM9};
+
+const uint16_t NumberMWidths[] = {
+    NumberM0_WIDTH, NumberM1_WIDTH, NumberM2_WIDTH, NumberM3_WIDTH, NumberM4_WIDTH,
+    NumberM5_WIDTH, NumberM6_WIDTH, NumberM7_WIDTH, NumberM8_WIDTH, NumberM9_WIDTH};
+
 void drawDigit(uint8_t digit, uint16_t x, uint16_t y)
 {
   if (digit > 9)
@@ -79,6 +88,15 @@ void drawDigitL(uint8_t digit, uint16_t x, uint16_t y)
   drawBitmapCorrect(x, y, NumberL0_WIDTH, NumberL0_HEIGHT, NumberLBitmaps[digit]);
 }
 
+void drawDigitM(uint8_t digit, uint16_t x, uint16_t y)
+{
+  if (digit > 9)
+  {
+    return;
+  }
+  drawBitmapCorrect(x, y, NumberMWidths[digit], NumberM0_HEIGHT, NumberMBitmaps[digit]);
+}
+
 uint16_t getDigitWidth(uint8_t digit)
 {
   if (digit > 9)
@@ -91,6 +109,106 @@ uint16_t getDigitWidth(uint8_t digit)
 void drawPeriod(uint16_t x, uint16_t y)
 {
   drawBitmapCorrect(x, y, NumberPeriod_WIDTH, NumberPeriod_HEIGHT, NumberPeriod);
+}
+
+void drawPeriodM(uint16_t x, uint16_t y)
+{
+  drawBitmapCorrect(x, y, NumberMPeriod_WIDTH, NumberMPeriod_HEIGHT, NumberMPeriod);
+}
+
+uint16_t getDigitMWidth(uint8_t digit)
+{
+  if (digit > 9)
+  {
+    return 0;
+  }
+  return NumberMWidths[digit];
+}
+
+uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
+{
+  const uint16_t CHAR_SPACING = 5;
+  uint16_t currentX = x;
+
+  // Format: "23.5" (rounded to 1 decimal place)
+  int tempInt = (int)temp;
+  int tempDecimal = (int)((temp - tempInt) * 10 + 0.5f); // Round to nearest
+
+  // Handle carry-over when decimal rounds to 10
+  if (tempDecimal >= 10)
+  {
+    tempInt++;
+    tempDecimal = 0;
+  }
+
+  // First digit (tens)
+  uint8_t digit = tempInt / 10;
+  drawDigitM(digit, currentX, y);
+  currentX += getDigitMWidth(digit) + CHAR_SPACING;
+
+  // Second digit (ones)
+  digit = tempInt % 10;
+  drawDigitM(digit, currentX, y);
+  currentX += getDigitMWidth(digit) + CHAR_SPACING;
+
+  // Period
+  drawPeriodM(currentX, y);
+  currentX += NumberMPeriod_WIDTH + CHAR_SPACING;
+
+  // Decimal digit
+  digit = tempDecimal;
+  drawDigitM(digit, currentX, y);
+  currentX += getDigitMWidth(digit);
+
+  return currentX; // Return end position
+}
+
+uint16_t drawInteger(int value, uint16_t x, uint16_t y)
+{
+  const uint16_t CHAR_SPACING = 5;
+  uint16_t currentX = x;
+
+  // Handle negative values
+  if (value < 0)
+  {
+    value = 0; // Clamp to 0 for display
+  }
+
+  // Extract digits
+  int remaining = value;
+  int digits[4] = {0}; // Max 4 digits (e.g., 9999)
+  int digitCount = 0;
+
+  // Extract digits from right to left
+  if (remaining == 0)
+  {
+    digits[0] = 0;
+    digitCount = 1;
+  }
+  else
+  {
+    while (remaining > 0 && digitCount < 4)
+    {
+      digits[digitCount] = remaining % 10;
+      remaining /= 10;
+      digitCount++;
+    }
+  }
+
+  // Draw digits from left to right (reverse order)
+  for (int i = digitCount - 1; i >= 0; i--)
+  {
+    drawDigitM(digits[i], currentX, y);
+    currentX += getDigitMWidth(digits[i]) + CHAR_SPACING;
+  }
+
+  // Subtract last spacing since it's after the last digit
+  if (digitCount > 0)
+  {
+    currentX -= CHAR_SPACING;
+  }
+
+  return currentX; // Return end position
 }
 
 void drawColon(uint16_t x, uint16_t y)
@@ -222,7 +340,7 @@ void DisplayManager_DrawSetupStatus(const char *message)
   EPD_PartUpdate();
 }
 
-bool DisplayManager_UpdateClock(const NetworkState &networkState, bool forceUpdate)
+bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate)
 {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
@@ -238,6 +356,12 @@ bool DisplayManager_UpdateClock(const NetworkState &networkState, bool forceUpda
     return false;
   }
 
+  // Minute has changed - read sensor value at the same time
+  if (SensorManager_IsInitialized())
+  {
+    SensorManager_Read();
+  }
+
   const uint8_t hour = timeinfo.tm_hour;
   const uint16_t year = timeinfo.tm_year + 1900;
   const uint8_t month = timeinfo.tm_mon + 1;
@@ -248,6 +372,34 @@ bool DisplayManager_UpdateClock(const NetworkState &networkState, bool forceUpda
   drawTime(hour, currentMinute, 330, 53);
   drawDate(year, month, day, 15, 125);
   drawStatus(networkState);
+
+  // Draw sensor icons and values
+  if (SensorManager_IsInitialized())
+  {
+    const uint16_t UNIT_Y_OFFSET = 26; // Unit icons are 26px below values
+
+    // Draw temperature icon at (16, 200) and value at (51, 200)
+    drawBitmapCorrect(16, 200, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
+    float temp = SensorManager_GetTemperature();
+    uint16_t tempEndX = drawTemperature(temp, 51, 200);
+    // Draw unit C icon after temperature value, y offset by 26px
+    drawBitmapCorrect(tempEndX + 5, 200 + UNIT_Y_OFFSET, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
+
+    // Draw humidity icon at (245, 200) and value at (308, 200)
+    drawBitmapCorrect(245, 200, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
+    float humidity = SensorManager_GetHumidity();
+    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), 308, 200); // Round to nearest integer
+    // Draw unit percent icon after humidity value, y offset by 26px
+    drawBitmapCorrect(humidityEndX + 5, 200 + UNIT_Y_OFFSET, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
+
+    // Draw CO2 icon at (473, 200) and value at (536, 200)
+    drawBitmapCorrect(473, 200, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
+    uint16_t co2 = SensorManager_GetCO2();
+    uint16_t co2EndX = drawInteger(co2, 536, 200);
+    // Draw unit ppm icon after CO2 value, y offset by 26px
+    drawBitmapCorrect(co2EndX + 5, 200 + UNIT_Y_OFFSET, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
+  }
+
   const unsigned long drawDuration = micros() - startTime;
 
   startTime = micros();
@@ -259,8 +411,6 @@ bool DisplayManager_UpdateClock(const NetworkState &networkState, bool forceUpda
   const unsigned long updateDuration = micros() - startTime;
 
   lastDisplayedMinute = currentMinute;
-  lastDisplayedDay = day;
-  lastUpdateTime = millis();
 
   Serial.print("[Display] Updated: ");
   Serial.print(hour);

@@ -47,21 +47,11 @@ void handleSensorInitializationResult()
   Serial.println("  GND -> GND");
 }
 
-void readSensor()
+void updateDisplay(bool forceUpdate)
 {
-  // Read sensor when minute changes (same timing as clock update)
-  if (SensorManager_IsInitialized())
-  {
-    SensorManager_Read();
-  }
-}
-
-void handleClockUpdate(bool forceUpdate)
-{
-  if (DisplayManager_UpdateClock(networkState, forceUpdate))
+  if (DisplayManager_UpdateDisplay(networkState, forceUpdate))
   {
     exportFrameBuffer();
-    readSensor();
   }
 }
 } // namespace
@@ -80,6 +70,21 @@ void setup()
   sensorInitialized = SensorManager_Begin();
   handleSensorInitializationResult();
 
+  // Read sensor once after initialization to get initial data for first display
+  // Use blocking read to ensure we have data before first display
+  if (sensorInitialized)
+  {
+    Serial.println("Reading initial sensor data...");
+    if (SensorManager_ReadBlocking(10000))
+    {
+      Serial.println("Initial sensor data read successfully");
+    }
+    else
+    {
+      Serial.println("Warning: Failed to read initial sensor data");
+    }
+  }
+
   DisplayManager_DrawSetupStatus("Connecting WiFi...");
   if (NetworkManager_ConnectWiFi(networkState, DisplayManager_DrawSetupStatus))
   {
@@ -94,26 +99,26 @@ void setup()
   }
 
   DisplayManager_DrawSetupStatus("Starting...");
-  handleClockUpdate(true);
+  updateDisplay(true);
 }
 
 void loop()
 {
-  bool clockUpdated = false;
+  bool displayUpdated = false;
 
   if (NetworkManager_CheckNtpResync(networkState, kNtpSyncInterval, DisplayManager_DrawSetupStatus))
   {
-    clockUpdated = true;
-    handleClockUpdate(true);
+    displayUpdated = true;
+    updateDisplay(true);
   }
   else
   {
     NetworkManager_UpdateConnectionState(networkState);
   }
 
-  if (!clockUpdated)
+  if (!displayUpdated)
   {
-    handleClockUpdate(false);
+    updateDisplay(false);
   }
 
   delay(1000);
