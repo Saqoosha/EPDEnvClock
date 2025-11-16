@@ -8,8 +8,28 @@
 #include "wifi_config.h" // Wi-Fi認証情報（gitignoreに含まれています）
 #include "server_config.h" // Python server configuration
 
+// SDC41 Sensor includes
+#include <Wire.h>
+#include <SensirionI2cScd4x.h>
+
 // Define an array to store image data, with a size of 27200 bytes
 uint8_t ImageBW[27200];
+
+// SDC41 Sensor configuration
+#define I2C_SDA_PIN 38
+#define I2C_SCL_PIN 21
+#define SCD4X_I2C_ADDRESS 0x62    // Default I2C address for SCD4x
+#define SENSOR_READ_INTERVAL 5000 // Read sensor every 5 seconds
+
+// SDC41 Sensor object
+SensirionI2cScd4x scd4x;
+
+// Sensor data variables
+uint16_t co2 = 0;
+float temperature = 0.0;
+float humidity = 0.0;
+unsigned long lastSensorRead = 0;
+bool sensorInitialized = false;
 
 // Variables for time tracking
 uint8_t lastDisplayedMinute = 255; // Initialize to invalid value
@@ -579,7 +599,118 @@ void checkNtpResync()
   }
 }
 
+// SDC41 Sensor functions
+bool initSDC41()
+{
+  Serial.println("Initializing SDC41 sensor...");
+
+  uint16_t error;
+  char errorMessage[256];
+
+  // Initialize I2C with custom pins
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+
+  // Initialize sensor with I2C address
+  scd4x.begin(Wire, SCD4X_I2C_ADDRESS);
+
+  // Stop any previous measurement
+  error = scd4x.stopPeriodicMeasurement();
+  if (error)
+  {
+    Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+    return false;
+  }
+
+  delay(1000);
+
+  // Start periodic measurement
+  error = scd4x.startPeriodicMeasurement();
+  if (error)
+  {
+    Serial.print("Error trying to execute startPeriodicMeasurement(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+    return false;
+  }
+
+  Serial.println("SDC41 sensor initialized successfully!");
+  Serial.println("Waiting for first measurement (5 seconds)...");
+  delay(5000);
+
+  return true;
+}
+
+void readSDC41()
+{
+  if (!sensorInitialized)
+  {
+    return;
+  }
+
+  uint16_t error;
+  char errorMessage[256];
+  bool isDataReady = false;
+
+  // Check if data is ready with timeout protection
+  unsigned long startTime = millis();
+  error = scd4x.getDataReadyStatus(isDataReady);
+  if (error)
+  {
+    Serial.print("[Sensor] Error getDataReadyStatus: ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+    // Don't disable sensor on error, just skip this reading
+    return;
+  }
+
+  if (millis() - startTime > 100)
+  {
+    Serial.println("[Sensor] getDataReadyStatus timeout");
+    return;
+  }
+
+  if (!isDataReady)
+  {
+    // Data not ready is normal, don't log it
+    return;
+  }
+
+  // Read measurement with timeout protection
+  startTime = millis();
+  error = scd4x.readMeasurement(co2, temperature, humidity);
+  if (error)
+  {
+    Serial.print("[Sensor] Error readMeasurement: ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+    // Don't disable sensor on error, just skip this reading
+    return;
+  }
+
+  if (millis() - startTime > 200)
+  {
+    Serial.println("[Sensor] readMeasurement timeout");
+    return;
+  }
+
+  // Print sensor values to serial (optional, for debugging)
+  Serial.print("[Sensor] CO2: ");
+  Serial.print(co2);
+  Serial.print(" ppm, T: ");
+  Serial.print(temperature);
+  Serial.print(" °C, H: ");
+  Serial.print(humidity);
+  Serial.println(" %RH");
+}
+
 void setup() {
+  // Initialize serial communication
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("\n\n=== EPD Clock with SDC41 Sensor ===");
+
   // Set the screen power control pin.
   pinMode(7, OUTPUT);  // Set pin 7 as output mode.
   digitalWrite(7, HIGH);  // Set pin 7 to high level to turn on the screen power.
@@ -603,7 +734,26 @@ void setup() {
   // Now EPD is initialized, we can display status
   drawSetupStatus("EPD Ready!");
 
+  // Initialize SDC41 sensor
+  if (initSDC41())
+  {
+    sensorInitialized = true;
+    Serial.println("SDC41 sensor initialized successfully!");
+  }
+  else
+  {
+    sensorInitialized = false;
+    Serial.println("Warning: SDC41 sensor initialization failed!");
+    Serial.println("Please check connections:");
+    Serial.println("  SDA -> GPIO 38");
+    Serial.println("  SCL -> GPIO 21");
+    Serial.println("  VDD -> 3.3V");
+    Serial.println("  GND -> GND");
+    // Continue without sensor - don't halt
+  }
+
   // Connect to Wi-Fi and sync with NTP
+  drawSetupStatus("Connecting WiFi...");
   if (connectWiFi())
   {
     syncNTP();
@@ -627,13 +777,30 @@ void loop()
   // Check if we need to re-sync with NTP
   checkNtpResync();
 
+  // Read sensor when minute changes (same timing as clock update)
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo))
+  {
+    uint8_t currentMinute = timeinfo.tm_min;
+    static uint8_t lastSensorMinute = 255;
+
+    if (currentMinute != lastSensorMinute)
+    {
+      if (sensorInitialized)
+      {
+        readSDC41();
+      }
+      lastSensorMinute = currentMinute;
+    }
+  }
+
   // Update display if minute has changed
   updateDisplay();
 
   // Periodically send ImageBW to server (if auto export is enabled)
+  unsigned long currentTime = millis();
   if (enableImageBWExport && IMAGEBW_EXPORT_INTERVAL > 0 && WiFi.status() == WL_CONNECTED)
   {
-    unsigned long currentTime = millis();
     if (currentTime - lastImageBWExport >= IMAGEBW_EXPORT_INTERVAL)
     {
       sendImageBWToServer();
