@@ -68,12 +68,22 @@ void Paint_SetPixel(uint16_t Xpoint,uint16_t Ypoint,uint16_t Color)
 	uint16_t X, Y;
 	uint32_t Addr;
 	uint8_t Rdata;
+
+	// Range check: prevent out-of-bounds access
+	// For rotation 180, Xpoint can be up to EPD_W - 1 (799), but after offset it becomes 807
+	// So we need to clamp Xpoint before applying offset
+	if (Paint.Image == nullptr) return;  // Safety check
+	if (Xpoint >= Paint.widthMemory) return;
+	if (Ypoint >= Paint.heightMemory) return;
+
 	switch (Paint.rotate)
 	{
 	case 0:
 		if (Xpoint >= 396)
 		{
 			Xpoint += 8;
+			// Check if offset causes out-of-bounds
+			if (Xpoint >= Paint.widthMemory) return;
 		}
 		X = Xpoint;
 		Y = Ypoint;
@@ -82,6 +92,8 @@ void Paint_SetPixel(uint16_t Xpoint,uint16_t Ypoint,uint16_t Color)
 		if (Ypoint >= 396)
 		{
 			Ypoint += 8;
+			// Check if offset causes out-of-bounds
+			if (Ypoint >= Paint.heightMemory) return;
 		}
 		X = Paint.widthMemory - Ypoint - 1;
 		Y = Xpoint;
@@ -90,6 +102,8 @@ void Paint_SetPixel(uint16_t Xpoint,uint16_t Ypoint,uint16_t Color)
 		if (Xpoint >= 396)
 		{
 			Xpoint += 8;
+			// Check if offset causes out-of-bounds
+			if (Xpoint >= Paint.widthMemory) return;
 		}
 		X = Paint.widthMemory - Xpoint - 1;
 		Y = Paint.heightMemory - Ypoint - 1;
@@ -99,6 +113,8 @@ void Paint_SetPixel(uint16_t Xpoint,uint16_t Ypoint,uint16_t Color)
 		if (Ypoint >= 396)
 		{
 			Ypoint += 8;
+			// Check if offset causes out-of-bounds
+			if (Ypoint >= Paint.heightMemory) return;
 		}
 		X = Ypoint;
 		Y = Paint.heightMemory - Xpoint - 1;
@@ -106,7 +122,13 @@ void Paint_SetPixel(uint16_t Xpoint,uint16_t Ypoint,uint16_t Color)
 	default:
 		return;
 	}
-		Addr=X/8+Y*Paint.widthByte;
+
+	// Final range check before array access
+	if (X >= Paint.widthMemory || Y >= Paint.heightMemory) return;
+
+	Addr=X/8+Y*Paint.widthByte;
+	if (Addr >= Paint.widthByte * Paint.heightByte) return;  // Additional safety check
+
     Rdata=Paint.Image[Addr];
     if(Color==BLACK)
 	{
@@ -138,9 +160,40 @@ void EPD_DrawLine(uint16_t Xstart,uint16_t Ystart,uint16_t Xend,uint16_t Yend,ui
   Xpoint = Xstart;
   Ypoint = Ystart;
   dx = (int)Xend - (int)Xstart >= 0 ? Xend - Xstart : Xstart - Xend;
-  dy = (int)Yend - (int)Ystart <= 0 ? Yend - Ystart : Ystart - Yend;
+  dy = (int)Yend - (int)Ystart >= 0 ? Yend - Ystart : Ystart - Yend;  // Fixed: was <= 0, should be >= 0
   XAddway = Xstart < Xend ? 1 : -1;
   YAddway = Ystart < Yend ? 1 : -1;
+
+  // Handle special cases: horizontal and vertical lines
+  if (dy == 0) {
+    // Horizontal line
+    if (Xstart <= Xend) {
+      for (Xpoint = Xstart; Xpoint <= Xend; Xpoint++) {
+        Paint_SetPixel(Xpoint, Ypoint, Color);
+      }
+    } else {
+      for (Xpoint = Xstart; Xpoint >= Xend; Xpoint--) {
+        Paint_SetPixel(Xpoint, Ypoint, Color);
+      }
+    }
+    return;
+  }
+
+  if (dx == 0) {
+    // Vertical line
+    if (Ystart <= Yend) {
+      for (Ypoint = Ystart; Ypoint <= Yend; Ypoint++) {
+        Paint_SetPixel(Xpoint, Ypoint, Color);
+      }
+    } else {
+      for (Ypoint = Ystart; Ypoint >= Yend; Ypoint--) {
+        Paint_SetPixel(Xpoint, Ypoint, Color);
+      }
+    }
+    return;
+  }
+
+  // General case: diagonal line using Bresenham algorithm
   Esp = dx + dy;
   Dotted_Len = 0;
   for (;;) {
@@ -173,6 +226,14 @@ void EPD_DrawLine(uint16_t Xstart,uint16_t Ystart,uint16_t Xend,uint16_t Yend,ui
 void EPD_DrawRectangle(uint16_t Xstart,uint16_t Ystart,uint16_t Xend,uint16_t Yend,uint16_t Color,uint8_t mode)
 {
 	uint16_t i;
+	// Clamp coordinates to valid range to prevent out-of-bounds access
+	// EPD_W is 800, but Paint_SetPixel adds offset for X >= 396, so limit Xend to EPD_W - 1
+	// For rotation 180, X = widthMemory - Xpoint - 1, so Xpoint must be < widthMemory
+	if (Xend >= EPD_W) Xend = EPD_W - 1;
+	if (Yend >= EPD_H) Yend = EPD_H - 1;
+	if (Xstart >= EPD_W) Xstart = EPD_W - 1;
+	if (Ystart >= EPD_H) Ystart = EPD_H - 1;
+
     if (mode)
 			{
 				for (i = Ystart; i < Yend; i++)
@@ -262,6 +323,13 @@ void EPD_ShowChar(uint16_t x,uint16_t y,uint16_t chr,uint16_t size1,uint16_t col
 	if(size1==8)size2=6;
 	else size2=(size1/8+((size1%8)?1:0))*(size1/2);  //得到字体一个字符对应点阵集所占的字节数
 	chr1=chr-' ';  //计算偏移后的值
+
+	// Range check: ascii fonts support 95 characters (0x20-0x7E, ' ' to '~')
+	// If chr is out of range (< ' ' or > '~'), use space character (index 0)
+	if(chr < ' ' || chr > '~' || chr1 > 94) {
+		chr1 = 0;  // Use space character for out-of-range characters
+	}
+
 	for(i=0;i<size2;i++)
 	{
 		if(size1==12)
@@ -298,6 +366,7 @@ void EPD_ShowChar(uint16_t x,uint16_t y,uint16_t chr,uint16_t size1,uint16_t col
 *******************************************************************/
 void EPD_ShowString(uint16_t x,uint16_t y,const char *chr,uint16_t size1,uint16_t color)
 {
+	if(chr == nullptr) return;  // Null pointer check
 	while(*chr!='\0')//判断是不是非法字符!
 	{
 		EPD_ShowChar(x,y,*chr,size1,color);

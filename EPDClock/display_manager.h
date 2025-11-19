@@ -8,5 +8,6 @@
 
 void DisplayManager_Init();
 void DisplayManager_DrawSetupStatus(const char *message);
+void DisplayManager_SetStatus(const char *message);
 bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate = false);
 uint8_t *DisplayManager_GetFrameBuffer();

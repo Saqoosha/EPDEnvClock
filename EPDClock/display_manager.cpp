@@ -1,5 +1,7 @@
 #include "display_manager.h"
 
+#include <WiFi.h>
+
 #include "EPD.h"
 #include "bitmaps/Number_L_bitmap.h"
 #include "bitmaps/Number_S_bitmap.h"
@@ -15,6 +17,7 @@ constexpr size_t kFrameBufferSize = 27200;
 uint8_t ImageBW[kFrameBufferSize];
 
 uint8_t lastDisplayedMinute = 255;
+char g_statusMessage[64] = "Init...";
 
 void drawBitmapCorrect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t *bitmap)
 {
@@ -364,31 +367,53 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
 
 void drawStatus(const NetworkState &networkState)
 {
-  char statusLine[80];
-  const int yPos = 2;
-  const uint16_t fontSize = 16;
+  char statusLine[128];
+  char ipStr[16];
+  const int yPos = 4; // Adjusted for 12px font (centered in top 20px area?) or just top aligned
+  const uint16_t fontSize = 12;
 
-  snprintf(statusLine, sizeof(statusLine), networkState.wifiConnected ? "WiFi:OK" : "WiFi:--");
+  // Clear the status area first
+  EPD_ClearWindows(0, 0, EPD_W, 20, WHITE);
+
+  // Format IP address without using String class
+  if (networkState.wifiConnected && WiFi.status() == WL_CONNECTED)
+  {
+    IPAddress ip = WiFi.localIP();
+    snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  }
+  else
+  {
+    ipStr[0] = '\0';
+  }
+
+  long rssi = WiFi.RSSI();
+  uint32_t freeHeap = ESP.getFreeHeap();
+
+  // Format: "WiFi:SSID(RSSI) IP:1.2.3.4 NTP:OK(diff) Heap:12345"
+  // Truncate SSID if too long? For now just show basic info
+
+  // Layout:
+  // Left: WiFi Status + SSID + RSSI + IP
+  // Right: NTP Status + Heap + Uptime
+
+  // Let's try a single line with compact info
+  // W:Connected(SSID, -50dBm) 192.168.1.100 | N:OK(123ms) | U:123m | H:12345
+
+  const char *wifiStatus = networkState.wifiConnected ? "OK" : "--";
+  const char *ntpStatus = networkState.ntpSynced ? "OK" : "--";
+
+  if (networkState.wifiConnected && ipStr[0] != '\0')
+  {
+    snprintf(statusLine, sizeof(statusLine), "W:%s(%ld) %s | N:%s | U:%lum | H:%u | Msg:%s",
+             wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+  }
+  else
+  {
+    snprintf(statusLine, sizeof(statusLine), "W:%s | N:%s | U:%lum | H:%u | Msg:%s",
+             wifiStatus, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+  }
+
   EPD_ShowString(8, yPos, statusLine, fontSize, BLACK);
-
-  snprintf(statusLine, sizeof(statusLine), networkState.ntpSynced ? "NTP:OK" : "NTP:--");
-  EPD_ShowString(120, yPos, statusLine, fontSize, BLACK);
-
-  if (networkState.wifiConnectTime > 0)
-  {
-    snprintf(statusLine, sizeof(statusLine), "W:%lums", networkState.wifiConnectTime);
-    EPD_ShowString(200, yPos, statusLine, fontSize, BLACK);
-  }
-
-  if (networkState.ntpSyncTime > 0)
-  {
-    snprintf(statusLine, sizeof(statusLine), "N:%lums", networkState.ntpSyncTime);
-    EPD_ShowString(300, yPos, statusLine, fontSize, BLACK);
-  }
-
-  const unsigned long uptimeMinutes = millis() / 60000;
-  snprintf(statusLine, sizeof(statusLine), "U:%lum", uptimeMinutes);
-  EPD_ShowString(400, yPos, statusLine, fontSize, BLACK);
 }
 
 } // namespace
@@ -409,11 +434,22 @@ void DisplayManager_Init()
   delay(500);
 }
 
+void DisplayManager_SetStatus(const char *message)
+{
+  if (message)
+  {
+    strncpy(g_statusMessage, message, sizeof(g_statusMessage) - 1);
+    g_statusMessage[sizeof(g_statusMessage) - 1] = '\0';
+  }
+}
+
 void DisplayManager_DrawSetupStatus(const char *message)
 {
-  EPD_ClearWindows(0, EPD_H - 20, EPD_W, EPD_H, WHITE);
-  const uint16_t fontSize = 16;
-  const int yPos = EPD_H - 18;
+  DisplayManager_SetStatus(message);
+  // Clear status area
+  EPD_ClearWindows(0, 0, EPD_W, 20, WHITE);
+  const uint16_t fontSize = 12;
+  const int yPos = 4;
   EPD_ShowString(8, yPos, message, fontSize, BLACK);
   EPD_Display(ImageBW);
   EPD_PartUpdate();
@@ -438,6 +474,7 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   // Minute has changed - read sensor value at the same time
   if (SensorManager_IsInitialized())
   {
+    DisplayManager_SetStatus("Reading...");
     SensorManager_Read();
   }
 
@@ -509,6 +546,7 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   const unsigned long displayDuration = micros() - startTime;
 
   startTime = micros();
+  DisplayManager_SetStatus("Updating...");
   EPD_PartUpdate();
   const unsigned long updateDuration = micros() - startTime;
 

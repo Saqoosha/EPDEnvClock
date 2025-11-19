@@ -29,16 +29,26 @@ void exportFrameBuffer()
   }
 
   ImageBWExporter_Send(DisplayManager_GetFrameBuffer(), kFrameBufferSize);
+  DisplayManager_SetStatus("Export Done");
+}
+
+void onStatusUpdate(const char *message)
+{
+  DisplayManager_SetStatus(message);
 }
 
 void handleSensorInitializationResult()
 {
-  if (sensorInitialized)
+  DisplayManager_DrawSetupStatus("Initializing Sensor...");
+  if (SensorManager_Begin())
   {
+    sensorInitialized = true;
+    DisplayManager_SetStatus("Sensor OK");
     Serial.println("SDC41 sensor initialized successfully!");
     return;
   }
 
+  DisplayManager_SetStatus("Sensor Failed!");
   Serial.println("Warning: SDC41 sensor initialization failed!");
   Serial.println("Please check connections:");
   Serial.println("  SDA -> GPIO 38");
@@ -99,6 +109,7 @@ void setup()
   }
 
   DisplayManager_DrawSetupStatus("Starting...");
+  DisplayManager_SetStatus("Running");
   updateDisplay(true);
 }
 
@@ -106,7 +117,7 @@ void loop()
 {
   bool displayUpdated = false;
 
-  if (NetworkManager_CheckNtpResync(networkState, kNtpSyncInterval, DisplayManager_DrawSetupStatus))
+  if (NetworkManager_CheckNtpResync(networkState, kNtpSyncInterval, onStatusUpdate))
   {
     displayUpdated = true;
     updateDisplay(true);
