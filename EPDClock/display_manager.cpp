@@ -402,15 +402,34 @@ void drawStatus(const NetworkState &networkState)
   const char *wifiStatus = networkState.wifiConnected ? "OK" : "--";
   const char *ntpStatus = networkState.ntpSynced ? "OK" : "--";
 
+  // Check if there's a status message
+  bool hasMessage = (g_statusMessage[0] != '\0');
+
   if (networkState.wifiConnected && ipStr[0] != '\0')
   {
-    snprintf(statusLine, sizeof(statusLine), "W:%s(%ld) %s | N:%s | U:%lum | H:%u | Msg:%s",
-             wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+    if (hasMessage)
+    {
+      snprintf(statusLine, sizeof(statusLine), "W:%s(%ld) %s | N:%s | U:%lum | H:%u | Msg:%s",
+               wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+    }
+    else
+    {
+      snprintf(statusLine, sizeof(statusLine), "W:%s(%ld) %s | N:%s | U:%lum | H:%u",
+               wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap);
+    }
   }
   else
   {
-    snprintf(statusLine, sizeof(statusLine), "W:%s | N:%s | U:%lum | H:%u | Msg:%s",
-             wifiStatus, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+    if (hasMessage)
+    {
+      snprintf(statusLine, sizeof(statusLine), "W:%s | N:%s | U:%lum | H:%u | Msg:%s",
+               wifiStatus, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+    }
+    else
+    {
+      snprintf(statusLine, sizeof(statusLine), "W:%s | N:%s | U:%lum | H:%u",
+               wifiStatus, ntpStatus, millis() / 60000, freeHeap);
+    }
   }
 
   EPD_ShowString(8, yPos, statusLine, fontSize, BLACK);
@@ -476,6 +495,7 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   {
     DisplayManager_SetStatus("Reading...");
     SensorManager_Read();
+    DisplayManager_SetStatus(""); // Clear status message after reading
   }
 
   const uint8_t hour = timeinfo.tm_hour;
