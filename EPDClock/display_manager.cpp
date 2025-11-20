@@ -14,6 +14,23 @@
 namespace
 {
 constexpr size_t kFrameBufferSize = 27200;
+constexpr uint16_t kScreenWidth = 792;
+constexpr uint16_t kScreenHeight = 272;
+
+// Layout constants
+constexpr uint16_t kTimeX = 330;
+constexpr uint16_t kTimeY = 53;
+constexpr uint16_t kDateX = 15;
+constexpr uint16_t kDateY = 125;
+constexpr uint16_t kSensorY = 200;
+constexpr uint16_t kSideMargin = 16;
+constexpr uint16_t kUnitYOffset = 26;
+constexpr uint16_t kIconValueSpacing = 6;
+constexpr uint16_t kValueUnitSpacing = 5;
+constexpr uint16_t kCharSpacing = 5;
+constexpr uint16_t kDateCharSpacing = 6;
+constexpr uint16_t kTimeColonSpacing = 6;
+
 uint8_t ImageBW[kFrameBufferSize];
 
 uint8_t lastDisplayedMinute = 255;
@@ -73,39 +90,34 @@ const uint16_t NumberMWidths[] = {
     NumberM0_WIDTH, NumberM1_WIDTH, NumberM2_WIDTH, NumberM3_WIDTH, NumberM4_WIDTH,
     NumberM5_WIDTH, NumberM6_WIDTH, NumberM7_WIDTH, NumberM8_WIDTH, NumberM9_WIDTH};
 
+// Helper for drawing digits
+void drawDigitGeneric(uint8_t digit, uint16_t x, uint16_t y, 
+                      const uint8_t **bitmaps, const uint16_t *widths, uint16_t height, uint16_t defaultWidth)
+{
+  if (digit > 9) return;
+  
+  uint16_t width = (widths != nullptr) ? widths[digit] : defaultWidth;
+  drawBitmapCorrect(x, y, width, height, bitmaps[digit]);
+}
+
 void drawDigit(uint8_t digit, uint16_t x, uint16_t y)
 {
-  if (digit > 9)
-  {
-    return;
-  }
-  drawBitmapCorrect(x, y, NumberWidths[digit], Number0_HEIGHT, NumberBitmaps[digit]);
+  drawDigitGeneric(digit, x, y, NumberBitmaps, NumberWidths, Number0_HEIGHT, 0);
 }
 
 void drawDigitL(uint8_t digit, uint16_t x, uint16_t y)
 {
-  if (digit > 9)
-  {
-    return;
-  }
-  drawBitmapCorrect(x, y, NumberL0_WIDTH, NumberL0_HEIGHT, NumberLBitmaps[digit]);
+  drawDigitGeneric(digit, x, y, NumberLBitmaps, nullptr, NumberL0_HEIGHT, NumberL0_WIDTH);
 }
 
 void drawDigitM(uint8_t digit, uint16_t x, uint16_t y)
 {
-  if (digit > 9)
-  {
-    return;
-  }
-  drawBitmapCorrect(x, y, NumberMWidths[digit], NumberM0_HEIGHT, NumberMBitmaps[digit]);
+  drawDigitGeneric(digit, x, y, NumberMBitmaps, NumberMWidths, NumberM0_HEIGHT, 0);
 }
 
 uint16_t getDigitWidth(uint8_t digit)
 {
-  if (digit > 9)
-  {
-    return 0;
-  }
+  if (digit > 9) return 0;
   return NumberWidths[digit];
 }
 
@@ -121,16 +133,12 @@ void drawPeriodM(uint16_t x, uint16_t y)
 
 uint16_t getDigitMWidth(uint8_t digit)
 {
-  if (digit > 9)
-  {
-    return 0;
-  }
+  if (digit > 9) return 0;
   return NumberMWidths[digit];
 }
 
 uint16_t calculateTemperatureWidth(float temp)
 {
-  const uint16_t CHAR_SPACING = 5;
   uint16_t width = 0;
 
   // Format: "23.5" (rounded to 1 decimal place)
@@ -146,14 +154,14 @@ uint16_t calculateTemperatureWidth(float temp)
 
   // First digit (tens)
   uint8_t digit = tempInt / 10;
-  width += getDigitMWidth(digit) + CHAR_SPACING;
+  width += getDigitMWidth(digit) + kCharSpacing;
 
   // Second digit (ones)
   digit = tempInt % 10;
-  width += getDigitMWidth(digit) + CHAR_SPACING;
+  width += getDigitMWidth(digit) + kCharSpacing;
 
   // Period
-  width += NumberMPeriod_WIDTH + CHAR_SPACING;
+  width += NumberMPeriod_WIDTH + kCharSpacing;
 
   // Decimal digit
   digit = tempDecimal;
@@ -164,7 +172,6 @@ uint16_t calculateTemperatureWidth(float temp)
 
 uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
 {
-  const uint16_t CHAR_SPACING = 5;
   uint16_t currentX = x;
 
   // Format: "23.5" (rounded to 1 decimal place)
@@ -181,16 +188,16 @@ uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
   // First digit (tens)
   uint8_t digit = tempInt / 10;
   drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + CHAR_SPACING;
+  currentX += getDigitMWidth(digit) + kCharSpacing;
 
   // Second digit (ones)
   digit = tempInt % 10;
   drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + CHAR_SPACING;
+  currentX += getDigitMWidth(digit) + kCharSpacing;
 
   // Period
   drawPeriodM(currentX, y);
-  currentX += NumberMPeriod_WIDTH + CHAR_SPACING;
+  currentX += NumberMPeriod_WIDTH + kCharSpacing;
 
   // Decimal digit
   digit = tempDecimal;
@@ -202,14 +209,10 @@ uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
 
 uint16_t calculateIntegerWidth(int value)
 {
-  const uint16_t CHAR_SPACING = 5;
   uint16_t width = 0;
 
   // Handle negative values
-  if (value < 0)
-  {
-    value = 0; // Clamp to 0 for display
-  }
+  if (value < 0) value = 0; // Clamp to 0 for display
 
   // Extract digits
   int remaining = value;
@@ -238,7 +241,7 @@ uint16_t calculateIntegerWidth(int value)
     width += getDigitMWidth(digits[i]);
     if (i > 0) // Add spacing except after last digit
     {
-      width += CHAR_SPACING;
+      width += kCharSpacing;
     }
   }
 
@@ -247,14 +250,10 @@ uint16_t calculateIntegerWidth(int value)
 
 uint16_t drawInteger(int value, uint16_t x, uint16_t y)
 {
-  const uint16_t CHAR_SPACING = 5;
   uint16_t currentX = x;
 
   // Handle negative values
-  if (value < 0)
-  {
-    value = 0; // Clamp to 0 for display
-  }
+  if (value < 0) value = 0; // Clamp to 0 for display
 
   // Extract digits
   int remaining = value;
@@ -281,13 +280,13 @@ uint16_t drawInteger(int value, uint16_t x, uint16_t y)
   for (int i = digitCount - 1; i >= 0; i--)
   {
     drawDigitM(digits[i], currentX, y);
-    currentX += getDigitMWidth(digits[i]) + CHAR_SPACING;
+    currentX += getDigitMWidth(digits[i]) + kCharSpacing;
   }
 
   // Subtract last spacing since it's after the last digit
   if (digitCount > 0)
   {
-    currentX -= CHAR_SPACING;
+    currentX -= kCharSpacing;
   }
 
   return currentX; // Return end position
@@ -300,42 +299,41 @@ void drawColon(uint16_t x, uint16_t y)
 
 void drawDate(uint16_t year, uint8_t month, uint8_t day, uint16_t x, uint16_t y)
 {
-  const uint16_t CHAR_SPACING = 6;
   uint16_t currentX = x;
 
   uint8_t digit = (year / 1000) % 10;
   drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + CHAR_SPACING;
+  currentX += getDigitWidth(digit) + kDateCharSpacing;
 
   digit = (year / 100) % 10;
   drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + CHAR_SPACING;
+  currentX += getDigitWidth(digit) + kDateCharSpacing;
 
   digit = (year / 10) % 10;
   drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + CHAR_SPACING;
+  currentX += getDigitWidth(digit) + kDateCharSpacing;
 
   digit = year % 10;
   drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + CHAR_SPACING;
+  currentX += getDigitWidth(digit) + kDateCharSpacing;
 
   drawPeriod(currentX, y);
-  currentX += NumberPeriod_WIDTH + CHAR_SPACING;
+  currentX += NumberPeriod_WIDTH + kDateCharSpacing;
 
   digit = month / 10;
   drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + CHAR_SPACING;
+  currentX += getDigitWidth(digit) + kDateCharSpacing;
 
   digit = month % 10;
   drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + CHAR_SPACING;
+  currentX += getDigitWidth(digit) + kDateCharSpacing;
 
   drawPeriod(currentX, y);
-  currentX += NumberPeriod_WIDTH + CHAR_SPACING;
+  currentX += NumberPeriod_WIDTH + kDateCharSpacing;
 
   digit = day / 10;
   drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + CHAR_SPACING;
+  currentX += getDigitWidth(digit) + kDateCharSpacing;
 
   digit = day % 10;
   drawDigit(digit, currentX, y);
@@ -353,9 +351,9 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
   drawDigitL(digit, currentX, y);
   currentX += NumberL0_WIDTH;
 
-  currentX += 6;
+  currentX += kTimeColonSpacing;
   drawColon(currentX, y);
-  currentX += NumberColon_WIDTH + 6;
+  currentX += NumberColon_WIDTH + kTimeColonSpacing;
 
   digit = minute / 10;
   drawDigitL(digit, currentX, y);
@@ -505,20 +503,13 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
 
   unsigned long startTime = micros();
   Paint_Clear(WHITE);
-  drawTime(hour, currentMinute, 330, 53);
-  drawDate(year, month, day, 15, 125);
+  drawTime(hour, currentMinute, kTimeX, kTimeY);
+  drawDate(year, month, day, kDateX, kDateY);
   drawStatus(networkState);
 
   // Draw sensor icons and values
   if (SensorManager_IsInitialized())
   {
-    const uint16_t UNIT_Y_OFFSET = 26; // Unit icons are 26px below values
-    const uint16_t ICON_VALUE_SPACING = 6; // Spacing between icon and value
-    const uint16_t VALUE_UNIT_SPACING = 5; // Spacing between value and unit (same as digit spacing)
-    const uint16_t SCREEN_WIDTH = 792;     // Actual display width
-    const uint16_t SIDE_MARGIN = 16;       // Margin from screen edges
-    const uint16_t SENSOR_Y = 200;         // Y position for sensor data
-
     // Get sensor values
     float temp = SensorManager_GetTemperature();
     float humidity = SensorManager_GetHumidity();
@@ -530,33 +521,33 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
     uint16_t co2ValueWidth = calculateIntegerWidth(co2);
 
     // Calculate total display widths (icon + spacing + value + spacing + unit)
-    uint16_t tempDisplayWidth = IconTemp_WIDTH + ICON_VALUE_SPACING + tempValueWidth + VALUE_UNIT_SPACING + UnitC_WIDTH;
-    uint16_t humidityDisplayWidth = IconHumidity_WIDTH + ICON_VALUE_SPACING + humidityValueWidth + VALUE_UNIT_SPACING + UnitPercent_WIDTH;
-    uint16_t co2DisplayWidth = IconCO2_WIDTH + ICON_VALUE_SPACING + co2ValueWidth + VALUE_UNIT_SPACING + UnitPpm_WIDTH;
+    uint16_t tempDisplayWidth = IconTemp_WIDTH + kIconValueSpacing + tempValueWidth + kValueUnitSpacing + UnitC_WIDTH;
+    uint16_t humidityDisplayWidth = IconHumidity_WIDTH + kIconValueSpacing + humidityValueWidth + kValueUnitSpacing + UnitPercent_WIDTH;
+    uint16_t co2DisplayWidth = IconCO2_WIDTH + kIconValueSpacing + co2ValueWidth + kValueUnitSpacing + UnitPpm_WIDTH;
 
     // Calculate X positions
-    uint16_t tempX = SIDE_MARGIN;
-    uint16_t co2X = SCREEN_WIDTH - SIDE_MARGIN - co2DisplayWidth;
+    uint16_t tempX = kSideMargin;
+    uint16_t co2X = kScreenWidth - kSideMargin - co2DisplayWidth;
     uint16_t availableSpace = co2X - (tempX + tempDisplayWidth);
     uint16_t humidityX = tempX + tempDisplayWidth + (availableSpace - humidityDisplayWidth) / 2;
 
     // Draw temperature
-    drawBitmapCorrect(tempX, SENSOR_Y, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
-    uint16_t tempValueX = tempX + IconTemp_WIDTH + ICON_VALUE_SPACING;
-    uint16_t tempEndX = drawTemperature(temp, tempValueX, SENSOR_Y);
-    drawBitmapCorrect(tempEndX + VALUE_UNIT_SPACING, SENSOR_Y + UNIT_Y_OFFSET, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
+    drawBitmapCorrect(tempX, kSensorY, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
+    uint16_t tempValueX = tempX + IconTemp_WIDTH + kIconValueSpacing;
+    uint16_t tempEndX = drawTemperature(temp, tempValueX, kSensorY);
+    drawBitmapCorrect(tempEndX + kValueUnitSpacing, kSensorY + kUnitYOffset, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
 
     // Draw humidity
-    drawBitmapCorrect(humidityX, SENSOR_Y, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
-    uint16_t humidityValueX = humidityX + IconHumidity_WIDTH + ICON_VALUE_SPACING;
-    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), humidityValueX, SENSOR_Y);
-    drawBitmapCorrect(humidityEndX + VALUE_UNIT_SPACING, SENSOR_Y + UNIT_Y_OFFSET, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
+    drawBitmapCorrect(humidityX, kSensorY, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
+    uint16_t humidityValueX = humidityX + IconHumidity_WIDTH + kIconValueSpacing;
+    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), humidityValueX, kSensorY);
+    drawBitmapCorrect(humidityEndX + kValueUnitSpacing, kSensorY + kUnitYOffset, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
 
     // Draw CO2
-    drawBitmapCorrect(co2X, SENSOR_Y, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
-    uint16_t co2ValueX = co2X + IconCO2_WIDTH + ICON_VALUE_SPACING;
-    uint16_t co2EndX = drawInteger(co2, co2ValueX, SENSOR_Y);
-    drawBitmapCorrect(co2EndX + VALUE_UNIT_SPACING, SENSOR_Y + UNIT_Y_OFFSET, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
+    drawBitmapCorrect(co2X, kSensorY, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
+    uint16_t co2ValueX = co2X + IconCO2_WIDTH + kIconValueSpacing;
+    uint16_t co2EndX = drawInteger(co2, co2ValueX, kSensorY);
+    drawBitmapCorrect(co2EndX + kValueUnitSpacing, kSensorY + kUnitYOffset, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
   }
 
   const unsigned long drawDuration = micros() - startTime;
