@@ -4,6 +4,8 @@
 #include <esp_sleep.h>
 #include <time.h>
 #include <SPIFFS.h>
+#include <SD.h>
+#include <SPI.h>
 #include <sys/time.h>
 
 namespace
@@ -11,11 +13,26 @@ namespace
 // RTC memory attribute ensures this persists across deep sleep
 RTC_DATA_ATTR RTCState rtcState;
 
-// We use SPIFFS for image storage instead of RTC memory due to size constraints
+// SD card pin configuration (SPI interface)
+// Using HSPI bus (separate from EPD display which uses bit-banging SPI)
+// Based on official 5.79" E-Paper example: /path/to/Downloads/Examples/5.79_TF/5.79_TF.ino
+// EPD uses bit-banging SPI on pins 11, 12, 45, 46, 47, 48
+// SD card uses hardware HSPI on different pins
+constexpr int SD_MOSI_PIN = 40;  // SD card MOSI
+constexpr int SD_MISO_PIN = 13;  // SD card MISO
+constexpr int SD_SCK_PIN = 39;   // SD card SCK
+constexpr int SD_CS_PIN = 10;    // SD card CS
+
+// Create an instance of SPIClass for SD card SPI communication (HSPI bus)
+SPIClass SD_SPI = SPIClass(HSPI);
+
+// We use SD card for image storage (or SPIFFS as fallback)
+// SD card has much better write endurance than SPIFFS Flash memory
 constexpr char kFrameBufferFile[] = "/frame.bin";
 // Buffer for compression/decompression (allocated in heap/PSRAM)
 uint8_t *compressionBuffer = nullptr;
 
+bool sdCardAvailable = false;
 bool initialized = false;
 
 // Simple RLE compression for binary image
@@ -121,29 +138,44 @@ void DeepSleepManager_Init()
     rtcState.compressedImageSize = 0;
     rtcState.savedTime = 0;
     rtcState.sleepDurationUs = 0;
-
-    // Initialize SPIFFS
-    if (!SPIFFS.begin(true))
-    {
-      Serial.println("[DeepSleep] SPIFFS Mount Failed");
-    }
-    else
-    {
-      Serial.println("[DeepSleep] SPIFFS Mounted");
-    }
   }
   else
   {
-    // subsequent boots
-    if (!SPIFFS.begin(true))
-    {
-      Serial.println("[DeepSleep] SPIFFS Mount Failed");
-    }
-
     // Restore time if not syncing via NTP immediately
     // But we only know if we sync NTP later.
     // It's safe to restore it now; NTP will overwrite it if needed.
     restoreTimeFromRTC();
+  }
+
+  // Try to initialize SD card first (preferred for write endurance)
+  // Initialize HSPI bus for SD card with specified pins
+  SD_SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN);
+
+  // Try to mount SD card with 80MHz SPI clock speed (same as official example)
+  if (SD.begin(SD_CS_PIN, SD_SPI, 80000000))
+  {
+    sdCardAvailable = true;
+    Serial.print("[DeepSleep] SD card initialized successfully, size: ");
+    Serial.print(SD.cardSize() / (1024 * 1024));
+    Serial.println(" MB");
+  }
+  else
+  {
+    sdCardAvailable = false;
+    Serial.println("[DeepSleep] SD card initialization failed, falling back to SPIFFS");
+    Serial.println("[DeepSleep] WARNING: Using SPIFFS fallback - Flash memory write endurance is limited!");
+    Serial.println("[DeepSleep] WARNING: SPIFFS has 10,000-100,000 write cycles. Consider using SD card for better durability.");
+
+    // Fallback to SPIFFS if SD card is not available
+    if (!SPIFFS.begin(true))
+    {
+      Serial.println("[DeepSleep] SPIFFS Mount Failed");
+      Serial.println("[DeepSleep] ERROR: No storage available! Frame buffer will not be saved.");
+    }
+    else
+    {
+      Serial.println("[DeepSleep] SPIFFS Mounted (fallback)");
+    }
   }
 
   initialized = true;
@@ -272,12 +304,11 @@ void DeepSleepManager_MarkNtpSynced()
 
 bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
 {
-  Serial.println("[DeepSleep] Saving frame buffer to SPIFFS...");
-
-  // Allocate buffer for compression (max size same as input to be safe)
+  // Allocate buffer for compression (RLE worst case is 2x input size)
+  // Fix: Allocate 2x size to prevent compression failures
   if (compressionBuffer == nullptr)
   {
-    compressionBuffer = (uint8_t *)malloc(size);
+    compressionBuffer = (uint8_t *)malloc(size * 2);
     if (compressionBuffer == nullptr)
     {
       Serial.println("[DeepSleep] Failed to allocate compression buffer");
@@ -286,15 +317,29 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
   }
 
   unsigned long start = micros();
-  size_t compressedSize = compressRLE(buffer, size, compressionBuffer, size);
+  size_t compressedSize = compressRLE(buffer, size, compressionBuffer, size * 2);
   unsigned long duration = micros() - start;
 
   if (compressedSize > 0)
   {
-    File file = SPIFFS.open(kFrameBufferFile, FILE_WRITE);
+    File file;
+    const char* storageType;
+
+    if (sdCardAvailable)
+    {
+      file = SD.open(kFrameBufferFile, FILE_WRITE);
+      storageType = "SD card";
+    }
+    else
+    {
+      file = SPIFFS.open(kFrameBufferFile, FILE_WRITE);
+      storageType = "SPIFFS (fallback - limited write endurance)";
+    }
+
     if (!file)
     {
-      Serial.println("[DeepSleep] Failed to open file for writing");
+      Serial.print("[DeepSleep] Failed to open file for writing on ");
+      Serial.println(storageType);
       free(compressionBuffer);
       compressionBuffer = nullptr;
       return false;
@@ -306,7 +351,9 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
     if (written == compressedSize)
     {
       rtcState.compressedImageSize = compressedSize;
-      Serial.print("[DeepSleep] Saved: ");
+      Serial.print("[DeepSleep] Saved to ");
+      Serial.print(storageType);
+      Serial.print(": ");
       Serial.print(size);
       Serial.print(" -> ");
       Serial.print(compressedSize);
@@ -322,7 +369,8 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
     }
     else
     {
-      Serial.println("[DeepSleep] Write failed (incomplete)");
+      Serial.print("[DeepSleep] Write failed (incomplete) on ");
+      Serial.println(storageType);
       free(compressionBuffer);
       compressionBuffer = nullptr;
       return false;
@@ -346,23 +394,53 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
     return false;
   }
 
-  if (!SPIFFS.exists(kFrameBufferFile))
+  File file;
+  const char* storageType;
+  bool fileExists = false;
+
+  if (sdCardAvailable)
   {
-    Serial.println("[DeepSleep] Frame buffer file not found");
+    fileExists = SD.exists(kFrameBufferFile);
+    storageType = "SD card";
+  }
+  else
+  {
+    fileExists = SPIFFS.exists(kFrameBufferFile);
+    storageType = "SPIFFS (fallback)";
+  }
+
+  if (!fileExists)
+  {
+    Serial.print("[DeepSleep] Frame buffer file not found on ");
+    Serial.println(storageType);
     return false;
   }
 
-  File file = SPIFFS.open(kFrameBufferFile, FILE_READ);
+  if (sdCardAvailable)
+  {
+    file = SD.open(kFrameBufferFile, FILE_READ);
+  }
+  else
+  {
+    file = SPIFFS.open(kFrameBufferFile, FILE_READ);
+  }
+
   if (!file)
   {
-    Serial.println("[DeepSleep] Failed to open file for reading");
+    Serial.print("[DeepSleep] Failed to open file for reading on ");
+    Serial.println(storageType);
     return false;
   }
 
   size_t fileSize = file.size();
   if (fileSize != rtcState.compressedImageSize)
   {
-    Serial.println("[DeepSleep] File size mismatch");
+    Serial.print("[DeepSleep] File size mismatch on ");
+    Serial.print(storageType);
+    Serial.print(": expected ");
+    Serial.print(rtcState.compressedImageSize);
+    Serial.print(", got ");
+    Serial.println(fileSize);
     file.close();
     return false;
   }
@@ -384,13 +462,16 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
 
   if (read != fileSize)
   {
-    Serial.println("[DeepSleep] Read failed (incomplete)");
+    Serial.print("[DeepSleep] Read failed (incomplete) on ");
+    Serial.println(storageType);
     free(compressionBuffer);
     compressionBuffer = nullptr;
     return false;
   }
 
-  Serial.println("[DeepSleep] Decompressing frame buffer...");
+  Serial.print("[DeepSleep] Decompressing frame buffer from ");
+  Serial.print(storageType);
+  Serial.println("...");
   unsigned long start = micros();
   bool success = decompressRLE(compressionBuffer, fileSize, buffer, size);
   unsigned long duration = micros() - start;

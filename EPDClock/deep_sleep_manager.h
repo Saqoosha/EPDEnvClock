@@ -45,11 +45,11 @@ bool DeepSleepManager_ShouldSyncWiFiNtp();
 // Mark NTP as synced (updates lastNtpSyncBootCount)
 void DeepSleepManager_MarkNtpSynced();
 
-// Compress and save frame buffer to SPIFFS
+// Compress and save frame buffer to SD card (or SPIFFS if SD card not available)
 // Returns true if successful
 bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size);
 
-// Decompress frame buffer from SPIFFS
+// Decompress frame buffer from SD card (or SPIFFS if SD card not available)
 // Returns true if successful
 bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size);
 
