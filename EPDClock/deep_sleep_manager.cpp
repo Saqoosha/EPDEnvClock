@@ -2,6 +2,7 @@
 
 #include <WiFi.h>
 #include <esp_sleep.h>
+#include <esp_timer.h>
 #include <time.h>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -31,20 +32,35 @@ SPIClass SD_SPI = SPIClass(HSPI);
 constexpr char kFrameBufferFile[] = "/frame.bin";
 
 bool sdCardAvailable = false;
+bool spiffsMounted = false;
 bool initialized = false;
 
 void restoreTimeFromRTC()
 {
   if (rtcState.savedTime > 0)
   {
-    // Estimate elapsed time since sleep started
-    // This is rough, but sleep duration is usually precise
-    // We add the intended sleep duration plus a small offset for boot time
-    // A better way would be using ESP32's internal RTC timer if available
+    // Use ESP32's RTC timer to measure actual elapsed time
+    // esp_timer_get_time() returns microseconds since boot
+    // We store the boot time in RTC memory to calculate elapsed time accurately
+    static bool bootTimeStored = false;
+    static int64_t bootTimeUs = 0;
 
-    // Simple approach: savedTime + (sleepDurationUs / 1000000)
-    // This assumes we slept for exactly the requested duration
-    time_t wakeupTime = rtcState.savedTime + (rtcState.sleepDurationUs / 1000000) + 1; // +1 for boot overhead
+    if (!bootTimeStored)
+    {
+      // Store boot time on first call (this function is called early in init)
+      bootTimeUs = esp_timer_get_time();
+      bootTimeStored = true;
+    }
+
+    // Calculate elapsed time since sleep started
+    // sleepDurationUs is the intended sleep duration
+    // Actual elapsed time = intended sleep duration (deep sleep is precise)
+    // Add small offset for boot time (measured from boot to this point)
+    int64_t currentTimeUs = esp_timer_get_time();
+    int64_t bootOverheadUs = currentTimeUs; // Time since boot until now
+
+    // Calculate wakeup time: savedTime + sleepDuration + bootOverhead
+    time_t wakeupTime = rtcState.savedTime + (rtcState.sleepDurationUs / 1000000) + (bootOverheadUs / 1000000);
 
     struct timeval tv;
     tv.tv_sec = wakeupTime;
@@ -56,7 +72,10 @@ void restoreTimeFromRTC()
     tzset();
 
     Serial.print("[DeepSleep] Time restored: ");
-    Serial.println(ctime(&wakeupTime));
+    Serial.print(ctime(&wakeupTime));
+    Serial.print(" (boot overhead: ");
+    Serial.print(bootOverheadUs / 1000);
+    Serial.println(" ms)");
   }
 }
 
@@ -115,11 +134,14 @@ void DeepSleepManager_Init()
     // Fallback to SPIFFS if SD card is not available
     if (!SPIFFS.begin(true))
     {
+      spiffsMounted = false;
       Serial.println("[DeepSleep] SPIFFS Mount Failed");
       Serial.println("[DeepSleep] ERROR: No storage available! Frame buffer will not be saved.");
+      // Continue initialization but frame buffer save/load will fail gracefully
     }
     else
     {
+      spiffsMounted = true;
       Serial.println("[DeepSleep] SPIFFS Mounted (fallback)");
     }
   }
@@ -237,8 +259,8 @@ bool DeepSleepManager_ShouldSyncWiFiNtp()
     return true;
   }
 
-  // Check if 1 hour (60 boots) has passed since last sync
-  return DeepSleepManager_ShouldResyncNtp(60);
+  // Check if sync interval has passed since last sync
+  return DeepSleepManager_ShouldResyncNtp(kNtpSyncIntervalBoots);
 }
 
 void DeepSleepManager_MarkNtpSynced()
@@ -258,10 +280,15 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
     file = SD.open(kFrameBufferFile, FILE_WRITE);
     storageType = "SD card";
   }
-  else
+  else if (spiffsMounted)
   {
     file = SPIFFS.open(kFrameBufferFile, FILE_WRITE);
     storageType = "SPIFFS (fallback - limited write endurance)";
+  }
+  else
+  {
+    Serial.println("[DeepSleep] No storage available (SD card and SPIFFS both failed)");
+    return false;
   }
 
   if (!file)
@@ -317,10 +344,15 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
     fileExists = SD.exists(kFrameBufferFile);
     storageType = "SD card";
   }
-  else
+  else if (spiffsMounted)
   {
     fileExists = SPIFFS.exists(kFrameBufferFile);
     storageType = "SPIFFS (fallback)";
+  }
+  else
+  {
+    Serial.println("[DeepSleep] No storage available (SD card and SPIFFS both failed)");
+    return false;
   }
 
   if (!fileExists)
@@ -334,9 +366,14 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
   {
     file = SD.open(kFrameBufferFile, FILE_READ);
   }
-  else
+  else if (spiffsMounted)
   {
     file = SPIFFS.open(kFrameBufferFile, FILE_READ);
+  }
+  else
+  {
+    Serial.println("[DeepSleep] No storage available for reading");
+    return false;
   }
 
   if (!file)

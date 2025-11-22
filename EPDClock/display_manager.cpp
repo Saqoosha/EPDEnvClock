@@ -147,6 +147,12 @@ uint16_t calculateTemperatureWidth(float temp)
 {
   uint16_t width = 0;
 
+  // Clamp negative values to 0 (no minus glyph available)
+  if (temp < 0.0f)
+  {
+    temp = 0.0f;
+  }
+
   // Format: "23.5" (rounded to 1 decimal place)
   int tempInt = (int)temp;
   int tempDecimal = (int)((temp - tempInt) * 10 + 0.5f); // Round to nearest
@@ -179,6 +185,12 @@ uint16_t calculateTemperatureWidth(float temp)
 uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
 {
   uint16_t currentX = x;
+
+  // Clamp negative values to 0 (no minus glyph available)
+  if (temp < 0.0f)
+  {
+    temp = 0.0f;
+  }
 
   // Format: "23.5" (rounded to 1 decimal place)
   int tempInt = (int)temp;
@@ -413,7 +425,10 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
 
 void drawStatus(const NetworkState &networkState)
 {
-  char statusLine[128];
+  // Increased buffer size to prevent overflow with long status messages
+  // Format can be: "W:OK(-50) 192.168.1.100 | N:OK | U:123m | H:12345 | Msg:...")
+  // Max length: ~110 chars + 64 char message = ~174 chars, using 256 for safety
+  char statusLine[256];
   char ipStr[16];
   const int yPos = 4; // Adjusted for 12px font (centered in top 20px area?) or just top aligned
   const uint16_t fontSize = 12;

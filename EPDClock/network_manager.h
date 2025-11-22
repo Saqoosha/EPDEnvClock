@@ -8,7 +8,6 @@ struct NetworkState
   bool ntpSynced = false;
   unsigned long wifiConnectTime = 0;
   unsigned long ntpSyncTime = 0;
-  unsigned long lastNtpSync = 0;
 };
 
 using StatusCallback = void (*)(const char *message);

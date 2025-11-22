@@ -138,29 +138,16 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
 
 bool NetworkManager_CheckNtpResync(NetworkState &state, unsigned long intervalMs, StatusCallback statusCallback)
 {
-  const unsigned long currentTime = millis();
+  // NOTE: This function is currently unused. NTP sync timing is handled by DeepSleepManager_ShouldSyncWiFiNtp()
+  // which uses boot count instead of millis() for better accuracy across deep sleep cycles.
+  // If this function is needed in the future, it should use DeepSleepManager_ShouldSyncWiFiNtp() instead.
 
   state.wifiConnected = (WiFi.status() == WL_CONNECTED);
 
-  if (currentTime - state.lastNtpSync < intervalMs)
-  {
-    return false;
-  }
-
-  Serial.println("Re-syncing with NTP server...");
-
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    NetworkManager_ConnectWiFi(state, statusCallback);
-  }
-
-  if (WiFi.status() == WL_CONNECTED && NetworkManager_SyncNtp(state, statusCallback))
-  {
-    state.lastNtpSync = currentTime;
-    Serial.println("NTP re-sync successful!");
-    return true;
-  }
-
+  // This function is deprecated - use DeepSleepManager_ShouldSyncWiFiNtp() instead
+  // Keeping the function signature for API compatibility but it always returns false
+  (void)intervalMs; // Unused parameter
+  (void)statusCallback; // Unused parameter
   return false;
 }
 

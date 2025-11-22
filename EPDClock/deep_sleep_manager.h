@@ -3,6 +3,9 @@
 #include <Arduino.h>
 #include <sys/time.h>
 
+// NTP sync interval: sync every 60 boots (~60 minutes, assuming ~1 minute per boot)
+constexpr uint32_t kNtpSyncIntervalBoots = 60;
+
 // RTC memory structure to persist across deep sleep
 struct RTCState
 {
@@ -36,7 +39,7 @@ uint32_t DeepSleepManager_GetBootCount();
 
 // Check if NTP resync is needed (based on boot count interval)
 // Returns true if last sync was more than intervalBoots ago
-bool DeepSleepManager_ShouldResyncNtp(uint32_t intervalBoots = 60); // Default: every 60 boots (~60 minutes)
+bool DeepSleepManager_ShouldResyncNtp(uint32_t intervalBoots = kNtpSyncIntervalBoots);
 
 // Check if WiFi/NTP sync should be performed (1 hour interval)
 // Returns true if WiFi connection and NTP sync are needed

@@ -50,7 +50,7 @@ void handleSensorInitializationResult(bool wakeFromSleep)
     return;
   }
 
-  DisplayManager_SetStatus("Sensor Failed!");
+  DisplayManager_SetStatus("Sensor FAILED!");
   Serial.println("Warning: SDC41 sensor initialization failed!");
   Serial.println("Please check connections:");
   Serial.println("  SDA -> GPIO 38");
@@ -149,7 +149,6 @@ void setup()
     {
       if (NetworkManager_SyncNtp(networkState, DisplayManager_DrawSetupStatus))
       {
-        networkState.lastNtpSync = millis();
         DeepSleepManager_MarkNtpSynced(); // Mark NTP as synced in RTC memory
         Serial.println("[Setup] WiFi/NTP sync completed");
       }

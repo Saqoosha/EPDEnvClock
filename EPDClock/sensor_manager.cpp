@@ -141,10 +141,10 @@ bool SensorManager_Begin(bool wakeFromSleep)
 
   Serial.println("SDC41 sensor initialized successfully!");
 
-  // Waiting 5 seconds is only needed for the very first measurement after power up.
-  // Since we deep sleep, we might need this every time.
-  // But let's check if we can optimize this?
-  // For now, we keep it to ensure data validity.
+  // Waiting 5 seconds is needed for the very first measurement after power up.
+  // Since we deep sleep and the sensor continues running, this delay is typically
+  // only needed on cold boot. However, we keep it for all initialization to ensure
+  // data validity and avoid race conditions.
   Serial.println("Waiting for first measurement (5 seconds)...");
   delay(5000);
 
@@ -163,19 +163,12 @@ void SensorManager_Read()
   char errorMessage[256];
   bool isDataReady = false;
 
-  unsigned long startTime = millis();
   error = scd4x.getDataReadyStatus(isDataReady);
   if (error)
   {
     Serial.print("[Sensor] Error getDataReadyStatus: ");
     errorToString(error, errorMessage, sizeof(errorMessage));
     Serial.println(errorMessage);
-    return;
-  }
-
-  if (millis() - startTime > 100)
-  {
-    Serial.println("[Sensor] getDataReadyStatus timeout");
     return;
   }
 
@@ -188,19 +181,12 @@ void SensorManager_Read()
   float temperature;
   float humidity;
 
-  startTime = millis();
   error = scd4x.readMeasurement(co2, temperature, humidity);
   if (error)
   {
     Serial.print("[Sensor] Error readMeasurement: ");
     errorToString(error, errorMessage, sizeof(errorMessage));
     Serial.println(errorMessage);
-    return;
-  }
-
-  if (millis() - startTime > 200)
-  {
-    Serial.println("[Sensor] readMeasurement timeout");
     return;
   }
 
