@@ -107,14 +107,35 @@ void setup()
   // Use blocking read to ensure we have data before first display
   if (sensorInitialized)
   {
-    Serial.println("Reading sensor data...");
-    if (SensorManager_ReadBlocking(40000)) // Wait up to 40 seconds to catch the periodic measurement
+    Serial.print("Reading sensor data (wakeFromSleep=");
+    Serial.print(wakeFromSleep ? "true" : "false");
+    Serial.println(")...");
+    unsigned long readStartTime = millis();
+
+    // Optimize timeout based on wake state:
+    // - wakeFromSleep=true: Sensor is already running, data should be ready immediately (timeout: 2s)
+    // - wakeFromSleep=false: After initialization + 5s delay, data should be ready (timeout: 5s)
+    unsigned long timeoutMs = wakeFromSleep ? 2000 : 5000;
+
+    if (SensorManager_ReadBlocking(timeoutMs))
     {
-      Serial.println("Sensor data read successfully");
+      unsigned long readDuration = millis() - readStartTime;
+      Serial.print("Sensor data read successfully in ");
+      Serial.print(readDuration);
+      Serial.println("ms");
     }
     else
     {
-      Serial.println("Warning: Failed to read sensor data");
+      unsigned long readDuration = millis() - readStartTime;
+      Serial.print("Warning: Failed to read sensor data after ");
+      Serial.print(readDuration);
+      Serial.print("ms (timeout was ");
+      Serial.print(timeoutMs);
+      Serial.println("ms)");
+
+      // If blocking read failed, try non-blocking read as fallback
+      Serial.println("Trying non-blocking read as fallback...");
+      SensorManager_Read();
     }
   }
 

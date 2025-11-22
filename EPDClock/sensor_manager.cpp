@@ -224,14 +224,22 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
     return false;
   }
 
+  unsigned long totalStartTime = millis();
   unsigned long startTime = millis();
   bool isDataReady = false;
   uint16_t error;
   char errorMessage[256];
 
+  Serial.print("[Sensor] ReadBlocking: Starting wait (timeout=");
+  Serial.print(timeoutMs);
+  Serial.println("ms)");
+
   // Wait for data to be ready
+  unsigned long waitStartTime = millis();
+  int checkCount = 0;
   while (!isDataReady && (millis() - startTime < timeoutMs))
   {
+    checkCount++;
     error = scd4x.getDataReadyStatus(isDataReady);
     if (error)
     {
@@ -247,6 +255,13 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
     }
   }
 
+  unsigned long waitTime = millis() - waitStartTime;
+  Serial.print("[Sensor] ReadBlocking: Data ready after ");
+  Serial.print(waitTime);
+  Serial.print("ms (checked ");
+  Serial.print(checkCount);
+  Serial.println(" times)");
+
   if (!isDataReady)
   {
     Serial.println("[Sensor] Timeout waiting for data ready");
@@ -258,7 +273,10 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
   float temperature;
   float humidity;
 
+  unsigned long readStartTime = millis();
   error = scd4x.readMeasurement(co2, temperature, humidity);
+  unsigned long readTime = millis() - readStartTime;
+
   if (error)
   {
     Serial.print("[Sensor] Error readMeasurement: ");
@@ -267,13 +285,21 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
     return false;
   }
 
+  unsigned long totalTime = millis() - totalStartTime;
   Serial.print("[Sensor] CO2: ");
   Serial.print(co2);
   Serial.print(" ppm, T: ");
   Serial.print(temperature);
   Serial.print(" °C, H: ");
   Serial.print(humidity);
-  Serial.println(" %RH");
+  Serial.print(" %RH");
+  Serial.print(" | Total time: ");
+  Serial.print(totalTime);
+  Serial.print("ms (wait: ");
+  Serial.print(waitTime);
+  Serial.print("ms, read: ");
+  Serial.print(readTime);
+  Serial.println("ms)");
 
   lastTemperature = temperature;
   lastHumidity = humidity;
