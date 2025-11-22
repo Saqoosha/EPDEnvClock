@@ -83,6 +83,11 @@ bool SensorManager_Begin()
   }
 
   Serial.println("SDC41 sensor initialized successfully!");
+
+  // Waiting 5 seconds is only needed for the very first measurement after power up.
+  // Since we deep sleep, we might need this every time.
+  // But let's check if we can optimize this?
+  // For now, we keep it to ensure data validity.
   Serial.println("Waiting for first measurement (5 seconds)...");
   delay(5000);
 

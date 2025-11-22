@@ -9,6 +9,7 @@
 #include "bitmaps/Number_M_bitmap.h"
 #include "bitmaps/Icon_bitmap.h"
 #include "sensor_manager.h"
+#include "deep_sleep_manager.h"
 
 #include <pgmspace.h>
 
@@ -39,7 +40,6 @@ constexpr uint16_t kTimeColonSpacing = 6;
 
 uint8_t ImageBW[kFrameBufferSize];
 
-uint8_t lastDisplayedMinute = 255;
 char g_statusMessage[64] = "Init...";
 
 void drawBitmapCorrect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t *bitmap)
@@ -483,18 +483,51 @@ void drawStatus(const NetworkState &networkState)
 
 } // namespace
 
-void DisplayManager_Init()
+void DisplayManager_Init(bool wakeFromSleep)
 {
   pinMode(7, OUTPUT);
   digitalWrite(7, HIGH);
 
   EPD_GPIOInit();
   Paint_NewImage(ImageBW, EPD_W, EPD_H, Rotation, WHITE);
-  Paint_Clear(WHITE);
-  EPD_FastMode1Init();
-  EPD_Display_Clear();
-  EPD_Update();
-  EPD_PartUpdate();
+
+  if (wakeFromSleep)
+  {
+    // Wake from deep sleep: Use minimal initialization
+    Serial.println("[Display] Waking EPD from deep sleep (minimal init)");
+    EPD_HW_RESET();
+    EPD_FastMode1Init();
+
+    // Try to load previous frame buffer from RTC memory
+    if (DeepSleepManager_LoadFrameBuffer(ImageBW, kFrameBufferSize))
+    {
+      // Success! Send previous data to EPD controller RAM
+      // This restores the RAM state so PartUpdate works correctly
+      EPD_Display(ImageBW);
+      EPD_PartUpdate(); // Optional: ensure display is in sync
+      Serial.println("[Display] EPD restored with previous image data");
+    }
+    else
+    {
+      // Failed to load (first boot or corruption)
+      // Clear screen to be safe
+      Serial.println("[Display] Failed to load previous image, clearing screen");
+      Paint_Clear(WHITE);
+      EPD_Display_Clear();
+      EPD_Update();
+      EPD_PartUpdate();
+    }
+  }
+  else
+  {
+    // Cold boot: Full initialization with screen clear
+    Serial.println("[Display] Cold boot - full initialization");
+    Paint_Clear(WHITE);
+    EPD_FastMode1Init();
+    EPD_Display_Clear();
+    EPD_Update();
+    EPD_PartUpdate();
+  }
 
   delay(500);
 }
@@ -530,23 +563,16 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   }
 
   const uint8_t currentMinute = timeinfo.tm_min;
+  RTCState &rtcState = DeepSleepManager_GetRTCState();
+  uint8_t &lastDisplayedMinute = rtcState.lastDisplayedMinute;
 
   if (!forceUpdate && currentMinute == lastDisplayedMinute)
   {
     return false;
   }
 
-  // Wake up EPD from deep sleep only when we actually need to update
-  static bool epdInDeepSleep = false;
-  if (epdInDeepSleep)
-  {
-    Serial.println("[Display] Waking EPD from deep sleep...");
-    EPD_HW_RESET();
-    EPD_FastMode1Init();
-    EPD_Display(ImageBW);
-    EPD_PartUpdate();
-    epdInDeepSleep = false;
-  }
+  // EPD is already woken up in DisplayManager_Init() if wakeFromSleep is true
+  // So we don't need to wake it up again here
 
   // Minute has changed - read sensor value at the same time
   if (SensorManager_IsInitialized())
@@ -623,9 +649,11 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   Serial.print(drawDuration + displayDuration + updateDuration);
   Serial.println(" us");
 
+  // Save frame buffer to RTC memory for next wake up
+  DeepSleepManager_SaveFrameBuffer(ImageBW, kFrameBufferSize);
+
   // Put EPD into deep sleep after update
   EPD_DeepSleep();
-  epdInDeepSleep = true;
   Serial.println("[Display] EPD entered deep sleep");
 
   return true;
