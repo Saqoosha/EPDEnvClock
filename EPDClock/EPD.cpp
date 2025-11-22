@@ -333,7 +333,9 @@ void EPD_ShowChar(uint16_t x,uint16_t y,uint16_t chr,uint16_t size1,uint16_t col
 	for(i=0;i<size2;i++)
 	{
 		if(size1==12)
-        {temp=ascii_1206[chr1][i];} //调用1206字体
+		{
+			temp = ascii_1206_spleen[chr1][i];
+		} // 调用1206字体 (Spleen 6x12)
 		else if(size1==16)
         {temp=ascii_1608[chr1][i];} //调用1608字体
 		else if(size1==24)
