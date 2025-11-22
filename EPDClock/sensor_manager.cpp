@@ -18,15 +18,72 @@ float lastHumidity = 0.0f;
 uint16_t lastCO2 = 0;
 } // namespace
 
-bool SensorManager_Begin()
+bool SensorManager_Begin(bool wakeFromSleep)
 {
-  Serial.println("Initializing SDC41 sensor...");
+  // Serial.println("Initializing SDC41 sensor...");
 
   uint16_t error;
   char errorMessage[256];
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  Wire.setClock(100000); // Set I2C frequency to 100kHz (Standard Mode)
+  delay(100);            // Wait a bit for I2C bus to stabilize
+
   scd4x.begin(Wire, SCD4X_I2C_ADDRESS);
+
+  if (wakeFromSleep)
+  {
+    // Try to check if sensor is running. Retry a few times as I2C might be busy.
+    bool isDataReady = false;
+    const int maxRetries = 3;
+
+    for (int i = 0; i < maxRetries; i++)
+    {
+      error = scd4x.getDataReadyStatus(isDataReady);
+      if (error)
+      {
+        Serial.print("Check DataReadyStatus attempt ");
+        Serial.print(i + 1);
+        Serial.print(" failed: ");
+        errorToString(error, errorMessage, sizeof(errorMessage));
+        Serial.println(errorMessage);
+
+        if (i < maxRetries - 1)
+          delay(200); // Wait before retry
+      }
+      else
+      {
+        // Success!
+        break;
+      }
+    }
+
+    if (!error && isDataReady)
+    {
+      Serial.println("SDC41 is already running and data is ready. Skipping initialization.");
+      sensorInitialized = true;
+      return true;
+    }
+    else if (!error)
+    {
+      Serial.println("SDC41 is running but data NOT ready (or just read).");
+      Serial.println("Assuming sensor is running in periodic mode. Skipping full init.");
+      sensorInitialized = true;
+      return true;
+    }
+    else
+    {
+      Serial.println("SDC41 failed to respond after retries. Performing full initialization.");
+    }
+  }
+  else
+  {
+    Serial.println("Cold boot detected. Performing full sensor initialization.");
+  }
+
+  // If we get here, either the sensor is stopped, or just started and has no data.
+  // We'll proceed with full initialization.
+  Serial.println("Initializing SDC41 sensor (full init)...");
 
   error = scd4x.stopPeriodicMeasurement();
   if (error)
@@ -40,18 +97,18 @@ bool SensorManager_Begin()
 
   delay(1000);
 
-  // Set temperature offset to 0°C
-  // Serial.println("Setting temperature offset to 0°C...");
-  // error = scd4x.setTemperatureOffset(0.0f);
-  // if (error)
-  // {
-  //   Serial.print("Warning: Failed to set temperature offset: ");
-  //   errorToString(error, errorMessage, sizeof(errorMessage));
-  //   Serial.println(errorMessage);
-  // }
-  // else
+  // Set temperature offset to 0.0°C
+  Serial.println("Setting temperature offset to 0.0°C...");
+  error = scd4x.setTemperatureOffset(0.0f);
+  if (error)
   {
-    // Serial.println("Temperature offset set to 0°C successfully.");
+    Serial.print("Warning: Failed to set temperature offset: ");
+    errorToString(error, errorMessage, sizeof(errorMessage));
+    Serial.println(errorMessage);
+  }
+  else
+  {
+    Serial.println("Temperature offset set to 0.0°C successfully.");
 
     // Read back the temperature offset value
     float tempOffset = 0.0f;

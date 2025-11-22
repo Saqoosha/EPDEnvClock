@@ -52,3 +52,9 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size);
 // Decompress frame buffer from SPIFFS
 // Returns true if successful
 bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size);
+
+// Hold I2C pins high during deep sleep to prevent sensor reset
+void DeepSleepManager_HoldI2CPins();
+
+// Release I2C pins hold after wake up
+void DeepSleepManager_ReleaseI2CPins();

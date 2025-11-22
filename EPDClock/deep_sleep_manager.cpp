@@ -411,3 +411,32 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
     return false;
   }
 }
+
+void DeepSleepManager_HoldI2CPins()
+{
+  // I2C Pins for SDC41: SDA=38, SCL=21
+  // We set them to INPUT_PULLUP to keep them high during deep sleep
+  // This prevents glitches that might reset the sensor
+
+  gpio_num_t sda = (gpio_num_t)38;
+  gpio_num_t scl = (gpio_num_t)21;
+
+  pinMode(sda, INPUT_PULLUP);
+  pinMode(scl, INPUT_PULLUP);
+
+  gpio_hold_en(sda);
+  gpio_hold_en(scl);
+
+  Serial.println("[DeepSleep] I2C pins held high for deep sleep");
+}
+
+void DeepSleepManager_ReleaseI2CPins()
+{
+  gpio_num_t sda = (gpio_num_t)38;
+  gpio_num_t scl = (gpio_num_t)21;
+
+  gpio_hold_dis(sda);
+  gpio_hold_dis(scl);
+
+  Serial.println("[DeepSleep] I2C pins hold released");
+}

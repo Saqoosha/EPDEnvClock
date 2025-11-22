@@ -39,14 +39,14 @@ void onStatusUpdate(const char *message)
   DisplayManager_SetStatus(message);
 }
 
-void handleSensorInitializationResult()
+void handleSensorInitializationResult(bool wakeFromSleep)
 {
   DisplayManager_DrawSetupStatus("Initializing Sensor...");
-  if (SensorManager_Begin())
+  if (SensorManager_Begin(wakeFromSleep))
   {
     sensorInitialized = true;
     DisplayManager_SetStatus("Sensor OK");
-    Serial.println("SDC41 sensor initialized successfully!");
+    Serial.println("SDC41 sensor is ready!");
     return;
   }
 
@@ -71,6 +71,10 @@ void updateDisplay(bool forceUpdate)
 void setup()
 {
   Serial.begin(115200);
+
+  // Release I2C pins hold if they were held during deep sleep
+  DeepSleepManager_ReleaseI2CPins();
+
   delay(1000);
   Serial.println("\n\n=== EPD Clock with SDC41 Sensor ===");
 
@@ -96,21 +100,21 @@ void setup()
 
   // Initialize sensor
   // handleSensorInitializationResult calls SensorManager_Begin internally
-  handleSensorInitializationResult();
+  handleSensorInitializationResult(wakeFromSleep);
   sensorInitialized = SensorManager_IsInitialized();
 
   // Read sensor once after initialization to get initial data for first display
   // Use blocking read to ensure we have data before first display
   if (sensorInitialized)
   {
-    Serial.println("Reading initial sensor data...");
-    if (SensorManager_ReadBlocking(10000))
+    Serial.println("Reading sensor data...");
+    if (SensorManager_ReadBlocking(40000)) // Wait up to 40 seconds to catch the periodic measurement
     {
-      Serial.println("Initial sensor data read successfully");
+      Serial.println("Sensor data read successfully");
     }
     else
     {
-      Serial.println("Warning: Failed to read initial sensor data");
+      Serial.println("Warning: Failed to read sensor data");
     }
   }
 
@@ -167,6 +171,10 @@ void loop()
   // After display update, enter deep sleep until next minute
   // This saves significant power compared to running continuously
   Serial.println("[Loop] Entering deep sleep...");
+
+  // Hold I2C pins high during deep sleep to prevent sensor reset
+  DeepSleepManager_HoldI2CPins();
+
   DeepSleepManager_EnterDeepSleep();
   // Code never reaches here - ESP32 will restart after wakeup
 }
