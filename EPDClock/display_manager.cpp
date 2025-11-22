@@ -3,6 +3,7 @@
 #include <WiFi.h>
 
 #include "EPD.h"
+#include "EPD_Init.h"
 #include "bitmaps/Number_L_bitmap.h"
 #include "bitmaps/Number_S_bitmap.h"
 #include "bitmaps/Number_M_bitmap.h"
@@ -535,6 +536,18 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
     return false;
   }
 
+  // Wake up EPD from deep sleep only when we actually need to update
+  static bool epdInDeepSleep = false;
+  if (epdInDeepSleep)
+  {
+    Serial.println("[Display] Waking EPD from deep sleep...");
+    EPD_HW_RESET();
+    EPD_FastMode1Init();
+    EPD_Display(ImageBW);
+    EPD_PartUpdate();
+    epdInDeepSleep = false;
+  }
+
   // Minute has changed - read sensor value at the same time
   if (SensorManager_IsInitialized())
   {
@@ -609,6 +622,11 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   Serial.print(" us, Total: ");
   Serial.print(drawDuration + displayDuration + updateDuration);
   Serial.println(" us");
+
+  // Put EPD into deep sleep after update
+  EPD_DeepSleep();
+  epdInDeepSleep = true;
+  Serial.println("[Display] EPD entered deep sleep");
 
   return true;
 }

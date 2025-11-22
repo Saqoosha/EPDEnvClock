@@ -6,6 +6,7 @@
 #include "network_manager.h"
 #include "sensor_manager.h"
 #include "server_config.h"
+#include "EPD_Init.h"
 
 namespace
 {
