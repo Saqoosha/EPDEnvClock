@@ -4,20 +4,20 @@
 #include <WiFi.h>
 
 #include "server_config.h"
+#include "logger.h"
 
 bool ImageBWExporter_Send(const uint8_t *buffer, size_t length)
 {
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("[ImageBW] WiFi not connected, skipping export");
+    LOGW(LogTag::IMAGEBW, "WiFi not connected, skipping export");
     return false;
   }
 
   HTTPClient http;
   String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/imagebw";
 
-  Serial.print("[ImageBW] Sending to server: ");
-  Serial.println(url);
+  LOGD(LogTag::IMAGEBW, "Sending to server: %s", url.c_str());
 
   http.begin(url);
   http.addHeader("Content-Type", "application/octet-stream");
@@ -33,13 +33,9 @@ bool ImageBWExporter_Send(const uint8_t *buffer, size_t length)
   if (httpResponseCode > 0)
   {
     String response = http.getString();
-    Serial.print("[ImageBW] Response code: ");
-    Serial.println(httpResponseCode);
-    Serial.print("[ImageBW] Response: ");
-    Serial.println(response);
-    Serial.print("[ImageBW] Send time: ");
-    Serial.print(sendTime);
-    Serial.println(" ms");
+    LOGI(LogTag::IMAGEBW, "Response code: %d", httpResponseCode);
+    LOGD(LogTag::IMAGEBW, "Response: %s", response.c_str());
+    LOGD(LogTag::IMAGEBW, "Send time: %lu ms", sendTime);
 
     if (httpResponseCode == 200)
     {
@@ -48,8 +44,7 @@ bool ImageBWExporter_Send(const uint8_t *buffer, size_t length)
   }
   else
   {
-    Serial.print("[ImageBW] Error: ");
-    Serial.println(httpResponseCode);
+    LOGE(LogTag::IMAGEBW, "Error: %d", httpResponseCode);
   }
 
   http.end();

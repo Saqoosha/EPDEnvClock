@@ -8,6 +8,7 @@
 #include "server_config.h"
 #include "EPD_Init.h"
 #include "deep_sleep_manager.h"
+#include "logger.h"
 
 namespace
 {
@@ -46,17 +47,17 @@ void handleSensorInitializationResult(bool wakeFromSleep)
   {
     sensorInitialized = true;
     DisplayManager_SetStatus("Sensor OK");
-    Serial.println("SDC41 sensor is ready!");
+    LOGI(LogTag::SENSOR, "SDC41 sensor is ready!");
     return;
   }
 
   DisplayManager_SetStatus("Sensor FAILED!");
-  Serial.println("Warning: SDC41 sensor initialization failed!");
-  Serial.println("Please check connections:");
-  Serial.println("  SDA -> GPIO 38");
-  Serial.println("  SCL -> GPIO 21");
-  Serial.println("  VDD -> 3.3V");
-  Serial.println("  GND -> GND");
+  LOGW(LogTag::SENSOR, "SDC41 sensor initialization failed!");
+  LOGW(LogTag::SENSOR, "Please check connections:");
+  LOGW(LogTag::SENSOR, "  SDA -> GPIO 38");
+  LOGW(LogTag::SENSOR, "  SCL -> GPIO 21");
+  LOGW(LogTag::SENSOR, "  VDD -> 3.3V");
+  LOGW(LogTag::SENSOR, "  GND -> GND");
 }
 
 void updateDisplay(bool forceUpdate)
@@ -76,7 +77,11 @@ void setup()
   DeepSleepManager_ReleaseI2CPins();
 
   delay(1000);
-  Serial.println("\n\n=== EPD Clock with SDC41 Sensor ===");
+
+  // Initialize logger (default: DEBUG level, BOTH timestamp mode)
+  Logger_Init(LogLevel::DEBUG, TimestampMode::BOTH);
+
+  LOGI(LogTag::SETUP, "=== EPD Clock with SDC41 Sensor ===");
 
   // Initialize deep sleep manager first (checks if wake from sleep)
   DeepSleepManager_Init();
@@ -84,11 +89,11 @@ void setup()
 
   if (wakeFromSleep)
   {
-    Serial.println("[Setup] Woke from deep sleep");
+    LOGI(LogTag::SETUP, "Woke from deep sleep");
   }
   else
   {
-    Serial.println("[Setup] Cold boot");
+    LOGI(LogTag::SETUP, "Cold boot");
   }
 
   randomSeed(analogRead(0));
@@ -107,9 +112,7 @@ void setup()
   // Use blocking read to ensure we have data before first display
   if (sensorInitialized)
   {
-    Serial.print("Reading sensor data (wakeFromSleep=");
-    Serial.print(wakeFromSleep ? "true" : "false");
-    Serial.println(")...");
+    LOGD("Sensor", "Reading sensor data (wakeFromSleep=%s)...", wakeFromSleep ? "true" : "false");
     unsigned long readStartTime = millis();
 
     // Optimize timeout based on wake state:
@@ -120,21 +123,15 @@ void setup()
     if (SensorManager_ReadBlocking(timeoutMs))
     {
       unsigned long readDuration = millis() - readStartTime;
-      Serial.print("Sensor data read successfully in ");
-      Serial.print(readDuration);
-      Serial.println("ms");
+      LOGI("Sensor", "Sensor data read successfully in %lums", readDuration);
     }
     else
     {
       unsigned long readDuration = millis() - readStartTime;
-      Serial.print("Warning: Failed to read sensor data after ");
-      Serial.print(readDuration);
-      Serial.print("ms (timeout was ");
-      Serial.print(timeoutMs);
-      Serial.println("ms)");
+      LOGW("Sensor", "Failed to read sensor data after %lums (timeout was %lums)", readDuration, timeoutMs);
 
       // If blocking read failed, try non-blocking read as fallback
-      Serial.println("Trying non-blocking read as fallback...");
+      LOGD("Sensor", "Trying non-blocking read as fallback...");
       SensorManager_Read();
     }
   }
@@ -143,41 +140,42 @@ void setup()
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
   if (DeepSleepManager_ShouldSyncWiFiNtp())
   {
-    Serial.println("[Setup] WiFi/NTP sync needed (1 hour interval)");
+    LOGI("Setup", "WiFi/NTP sync needed (1 hour interval)");
     DisplayManager_DrawSetupStatus("Connecting WiFi...");
     if (NetworkManager_ConnectWiFi(networkState, DisplayManager_DrawSetupStatus))
     {
       if (NetworkManager_SyncNtp(networkState, DisplayManager_DrawSetupStatus))
       {
         DeepSleepManager_MarkNtpSynced(); // Mark NTP as synced in RTC memory
-        Serial.println("[Setup] WiFi/NTP sync completed");
+        Logger_SetNtpSynced(true);        // Update logger with NTP sync status
+        LOGI("Setup", "WiFi/NTP sync completed");
       }
       else
       {
         networkState.ntpSynced = false;
-        Serial.println("[Setup] NTP sync failed");
+        Logger_SetNtpSynced(false);
+        LOGW("Setup", "NTP sync failed");
       }
     }
     else
     {
-      networkState.ntpSynced = false;
-      Serial.println("[Setup] WiFi connection failed");
+      networkState.wifiConnected = false;
+      LOGW("Setup", "WiFi connection failed");
     }
   }
   else
   {
     // WiFi/NTP sync not needed (less than 1 hour since last sync)
     // Skip WiFi connection - RTC keeps time from previous NTP sync
-    Serial.println("[Setup] Skipping WiFi/NTP sync (less than 1 hour since last sync)");
+    LOGI("Setup", "Skipping WiFi/NTP sync (less than 1 hour since last sync)");
     RTCState &rtcState = DeepSleepManager_GetRTCState();
-    Serial.print("[Setup] Last sync was ");
-    Serial.print(rtcState.bootCount - rtcState.lastNtpSyncBootCount);
-    Serial.println(" boots ago");
+    LOGI("Setup", "Last sync was %d boots ago", rtcState.bootCount - rtcState.lastNtpSyncBootCount);
 
     // No WiFi connection needed - RTC maintains time from previous sync
     networkState.wifiConnected = false;
     networkState.ntpSynced = true; // Assume still synced (RTC keeps time)
-    Serial.println("[Setup] Using RTC time (no WiFi connection)");
+    Logger_SetNtpSynced(true);     // Assume NTP is still synced (RTC keeps time)
+    LOGI("Setup", "Using RTC time (no WiFi connection)");
   }
 
   DisplayManager_DrawSetupStatus("Starting...");
@@ -190,7 +188,7 @@ void loop()
   // Display update is already done in setup()
   // After display update, enter deep sleep until next minute
   // This saves significant power compared to running continuously
-  Serial.println("[Loop] Entering deep sleep...");
+  LOGI(LogTag::LOOP, "Entering deep sleep...");
 
   // Hold I2C pins high during deep sleep to prevent sensor reset
   DeepSleepManager_HoldI2CPins();

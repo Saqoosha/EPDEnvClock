@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include "wifi_config.h"
+#include "logger.h"
 
 namespace
 {
@@ -18,8 +19,7 @@ void updateStatus(StatusCallback callback, const char *message)
 
 bool NetworkManager_ConnectWiFi(NetworkState &state, StatusCallback statusCallback)
 {
-  Serial.print("Connecting to Wi-Fi: ");
-  Serial.println(WIFI_SSID);
+  LOGI(LogTag::NETWORK, "Connecting to Wi-Fi: %s", WIFI_SSID);
 
   updateStatus(statusCallback, "Connecting WiFi...");
 
@@ -32,7 +32,7 @@ bool NetworkManager_ConnectWiFi(NetworkState &state, StatusCallback statusCallba
   while (WiFi.status() != WL_CONNECTED && attempts < 20)
   {
     delay(500);
-    Serial.print(".");
+    LOGD(LogTag::NETWORK, ".");
     attempts++;
 
     if (attempts % 4 == 0)
@@ -42,7 +42,6 @@ bool NetworkManager_ConnectWiFi(NetworkState &state, StatusCallback statusCallba
       updateStatus(statusCallback, statusMsg);
     }
   }
-  Serial.println();
 
   const unsigned long connectionTime = millis() - startTime;
 
@@ -50,11 +49,8 @@ bool NetworkManager_ConnectWiFi(NetworkState &state, StatusCallback statusCallba
   {
     state.wifiConnected = true;
     state.wifiConnectTime = connectionTime;
-    Serial.print("Wi-Fi connected! IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("[TIMING] Wi-Fi connection time: ");
-    Serial.print(connectionTime);
-    Serial.println(" ms");
+    LOGI(LogTag::NETWORK, "Wi-Fi connected! IP address: %s", WiFi.localIP().toString().c_str());
+    LOGD(LogTag::NETWORK, "Wi-Fi connection time: %lu ms", connectionTime);
 
     char statusMsg[48];
     snprintf(statusMsg, sizeof(statusMsg), "WiFi OK! (%lums)", connectionTime);
@@ -65,10 +61,8 @@ bool NetworkManager_ConnectWiFi(NetworkState &state, StatusCallback statusCallba
 
   state.wifiConnected = false;
   state.wifiConnectTime = 0;
-  Serial.println("Wi-Fi connection failed!");
-  Serial.print("[TIMING] Wi-Fi connection attempt time: ");
-  Serial.print(connectionTime);
-  Serial.println(" ms");
+  LOGW(LogTag::NETWORK, "Wi-Fi connection failed!");
+  LOGD(LogTag::NETWORK, "Wi-Fi connection attempt time: %lu ms", connectionTime);
 
   updateStatus(statusCallback, "WiFi FAILED!");
   delay(1000);
@@ -87,12 +81,12 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
-  Serial.print("Waiting for NTP time sync");
+  LOGD(LogTag::NETWORK, "Waiting for NTP time sync");
   struct tm timeinfo;
   int attempts = 0;
   while (!getLocalTime(&timeinfo) && attempts < 10)
   {
-    Serial.print(".");
+    LOGD(LogTag::NETWORK, ".");
     delay(1000);
     attempts++;
 
@@ -100,7 +94,6 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
     snprintf(statusMsg, sizeof(statusMsg), "NTP syncing... %d", attempts);
     updateStatus(statusCallback, statusMsg);
   }
-  Serial.println();
 
   const unsigned long syncTime = millis() - startTime;
 
@@ -108,14 +101,9 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
   {
     state.ntpSynced = true;
     state.ntpSyncTime = syncTime;
-    Serial.println("Time synchronized!");
-    Serial.print("Current time: ");
-    Serial.print(timeinfo.tm_hour);
-    Serial.print(":");
-    Serial.println(timeinfo.tm_min);
-    Serial.print("[TIMING] NTP sync time: ");
-    Serial.print(syncTime);
-    Serial.println(" ms");
+    LOGI(LogTag::NETWORK, "Time synchronized!");
+    LOGI(LogTag::NETWORK, "Current time: %d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+    LOGD(LogTag::NETWORK, "NTP sync time: %lu ms", syncTime);
 
     char statusMsg[48];
     snprintf(statusMsg, sizeof(statusMsg), "NTP OK! (%lums)", syncTime);
@@ -126,10 +114,8 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
 
   state.ntpSynced = false;
   state.ntpSyncTime = 0;
-  Serial.println("NTP time sync failed!");
-  Serial.print("[TIMING] NTP sync attempt time: ");
-  Serial.print(syncTime);
-  Serial.println(" ms");
+  LOGW(LogTag::NETWORK, "NTP time sync failed!");
+  LOGD(LogTag::NETWORK, "NTP sync attempt time: %lu ms", syncTime);
 
   updateStatus(statusCallback, "NTP FAILED!");
   delay(1000);

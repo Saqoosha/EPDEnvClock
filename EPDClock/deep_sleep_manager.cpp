@@ -8,6 +8,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include <sys/time.h>
+#include "logger.h"
 
 namespace
 {
@@ -71,11 +72,12 @@ void restoreTimeFromRTC()
     setenv("TZ", "JST-9", 1);
     tzset();
 
-    Serial.print("[DeepSleep] Time restored: ");
-    Serial.print(ctime(&wakeupTime));
-    Serial.print(" (boot overhead: ");
-    Serial.print(bootOverheadUs / 1000);
-    Serial.println(" ms)");
+    // ctime() includes newline, so we format manually
+    struct tm *timeinfo = localtime(&wakeupTime);
+    LOGI(LogTag::DEEPSLEEP, "Time restored: %04d-%02d-%02d %02d:%02d:%02d (boot overhead: %lld ms)",
+         timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
+         timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
+         bootOverheadUs / 1000);
   }
 }
 
@@ -120,38 +122,34 @@ void DeepSleepManager_Init()
   if (SD.begin(SD_CS_PIN, SD_SPI, 80000000))
   {
     sdCardAvailable = true;
-    Serial.print("[DeepSleep] SD card initialized successfully, size: ");
-    Serial.print(SD.cardSize() / (1024 * 1024));
-    Serial.println(" MB");
+    LOGI(LogTag::DEEPSLEEP, "SD card initialized successfully, size: %llu MB", SD.cardSize() / (1024 * 1024));
   }
   else
   {
     sdCardAvailable = false;
-    Serial.println("[DeepSleep] SD card initialization failed, falling back to SPIFFS");
-    Serial.println("[DeepSleep] WARNING: Using SPIFFS fallback - Flash memory write endurance is limited!");
-    Serial.println("[DeepSleep] WARNING: SPIFFS has 10,000-100,000 write cycles. Consider using SD card for better durability.");
+    LOGW(LogTag::DEEPSLEEP, "SD card initialization failed, falling back to SPIFFS");
+    LOGW(LogTag::DEEPSLEEP, "WARNING: Using SPIFFS fallback - Flash memory write endurance is limited!");
+    LOGW(LogTag::DEEPSLEEP, "WARNING: SPIFFS has 10,000-100,000 write cycles. Consider using SD card for better durability.");
 
     // Fallback to SPIFFS if SD card is not available
     if (!SPIFFS.begin(true))
     {
       spiffsMounted = false;
-      Serial.println("[DeepSleep] SPIFFS Mount Failed");
-      Serial.println("[DeepSleep] ERROR: No storage available! Frame buffer will not be saved.");
+      LOGE(LogTag::DEEPSLEEP, "SPIFFS Mount Failed");
+      LOGE(LogTag::DEEPSLEEP, "ERROR: No storage available! Frame buffer will not be saved.");
       // Continue initialization but frame buffer save/load will fail gracefully
     }
     else
     {
       spiffsMounted = true;
-      Serial.println("[DeepSleep] SPIFFS Mounted (fallback)");
+      LOGI(LogTag::DEEPSLEEP, "SPIFFS Mounted (fallback)");
     }
   }
 
   initialized = true;
 
-  Serial.print("[DeepSleep] Boot count: ");
-  Serial.println(rtcState.bootCount);
-  Serial.print("[DeepSleep] Last displayed minute: ");
-  Serial.println(rtcState.lastDisplayedMinute);
+  LOGI(LogTag::DEEPSLEEP, "Boot count: %u", rtcState.bootCount);
+  LOGI(LogTag::DEEPSLEEP, "Last displayed minute: %u", rtcState.lastDisplayedMinute);
 }
 
 bool DeepSleepManager_IsWakeFromSleep()
@@ -171,7 +169,7 @@ uint64_t DeepSleepManager_CalculateSleepDuration()
   if (!getLocalTime(&timeinfo))
   {
     // If we can't get time, sleep for 60 seconds
-    Serial.println("[DeepSleep] Warning: Cannot get local time, sleeping for 60 seconds");
+    LOGW(LogTag::DEEPSLEEP, "Warning: Cannot get local time, sleeping for 60 seconds");
     return 60 * 1000000ULL; // 60 seconds in microseconds
   }
 
@@ -193,15 +191,8 @@ uint64_t DeepSleepManager_CalculateSleepDuration()
     secondsUntilNextMinute = 1;
   }
 
-  Serial.print("[DeepSleep] Current time: ");
-  Serial.print(timeinfo.tm_hour);
-  Serial.print(":");
-  Serial.print(currentMinute);
-  Serial.print(":");
-  Serial.print(currentSecond);
-  Serial.print(", Sleeping for ");
-  Serial.print(secondsUntilNextMinute);
-  Serial.println(" seconds");
+  LOGD(LogTag::DEEPSLEEP, "Current time: %d:%02d:%02d, Sleeping for %u seconds",
+       timeinfo.tm_hour, currentMinute, currentSecond, secondsUntilNextMinute);
 
   return secondsUntilNextMinute * 1000000ULL; // Convert to microseconds
 }
@@ -216,9 +207,7 @@ void DeepSleepManager_EnterDeepSleep()
   rtcState.savedTime = now;
   rtcState.sleepDurationUs = sleepDuration;
 
-  Serial.print("[DeepSleep] Entering deep sleep for ");
-  Serial.print(sleepDuration / 1000000ULL);
-  Serial.println(" seconds");
+  LOGI(LogTag::DEEPSLEEP, "Entering deep sleep for %llu seconds", sleepDuration / 1000000ULL);
 
   // Configure timer wakeup
   esp_sleep_enable_timer_wakeup(sleepDuration);
@@ -266,8 +255,7 @@ bool DeepSleepManager_ShouldSyncWiFiNtp()
 void DeepSleepManager_MarkNtpSynced()
 {
   rtcState.lastNtpSyncBootCount = rtcState.bootCount;
-  Serial.print("[DeepSleep] NTP synced at boot count: ");
-  Serial.println(rtcState.bootCount);
+  LOGI(LogTag::DEEPSLEEP, "NTP synced at boot count: %u", rtcState.bootCount);
 }
 
 bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
@@ -287,14 +275,13 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
   }
   else
   {
-    Serial.println("[DeepSleep] No storage available (SD card and SPIFFS both failed)");
+    LOGE(LogTag::DEEPSLEEP, "No storage available (SD card and SPIFFS both failed)");
     return false;
   }
 
   if (!file)
   {
-    Serial.print("[DeepSleep] Failed to open file for writing on ");
-    Serial.println(storageType);
+    LOGE(LogTag::DEEPSLEEP, "Failed to open file for writing on %s", storageType);
     return false;
   }
 
@@ -306,23 +293,12 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
   if (written == size)
   {
     rtcState.imageSize = size;
-    Serial.print("[DeepSleep] Saved to ");
-    Serial.print(storageType);
-    Serial.print(": ");
-    Serial.print(size);
-    Serial.print(" bytes in ");
-    Serial.print(duration);
-    Serial.println(" us");
+    LOGI(LogTag::DEEPSLEEP, "Saved to %s: %zu bytes in %lu us", storageType, size, duration);
     return true;
   }
   else
   {
-    Serial.print("[DeepSleep] Write failed (incomplete) on ");
-    Serial.print(storageType);
-    Serial.print(": wrote ");
-    Serial.print(written);
-    Serial.print(" of ");
-    Serial.println(size);
+    LOGE(LogTag::DEEPSLEEP, "Write failed (incomplete) on %s: wrote %zu of %zu", storageType, written, size);
     return false;
   }
 }
@@ -331,7 +307,7 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
 {
   if (rtcState.imageSize == 0)
   {
-    Serial.println("[DeepSleep] No image info found");
+    LOGW(LogTag::DEEPSLEEP, "No image info found");
     return false;
   }
 
@@ -351,14 +327,13 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
   }
   else
   {
-    Serial.println("[DeepSleep] No storage available (SD card and SPIFFS both failed)");
+    LOGE(LogTag::DEEPSLEEP, "No storage available (SD card and SPIFFS both failed)");
     return false;
   }
 
   if (!fileExists)
   {
-    Serial.print("[DeepSleep] Frame buffer file not found on ");
-    Serial.println(storageType);
+    LOGW(LogTag::DEEPSLEEP, "Frame buffer file not found on %s", storageType);
     return false;
   }
 
@@ -372,35 +347,26 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
   }
   else
   {
-    Serial.println("[DeepSleep] No storage available for reading");
+    LOGE(LogTag::DEEPSLEEP, "No storage available for reading");
     return false;
   }
 
   if (!file)
   {
-    Serial.print("[DeepSleep] Failed to open file for reading on ");
-    Serial.println(storageType);
+    LOGE(LogTag::DEEPSLEEP, "Failed to open file for reading on %s", storageType);
     return false;
   }
 
   size_t fileSize = file.size();
   if (fileSize != rtcState.imageSize || fileSize != size)
   {
-    Serial.print("[DeepSleep] File size mismatch on ");
-    Serial.print(storageType);
-    Serial.print(": expected ");
-    Serial.print(size);
-    Serial.print(" (RTC: ");
-    Serial.print(rtcState.imageSize);
-    Serial.print("), got ");
-    Serial.println(fileSize);
+    LOGE(LogTag::DEEPSLEEP, "File size mismatch on %s: expected %zu (RTC: %u), got %zu",
+         storageType, size, rtcState.imageSize, fileSize);
     file.close();
     return false;
   }
 
-  Serial.print("[DeepSleep] Loading frame buffer from ");
-  Serial.print(storageType);
-  Serial.println("...");
+  LOGD(LogTag::DEEPSLEEP, "Loading frame buffer from %s...", storageType);
   unsigned long start = micros();
   size_t read = file.read(buffer, size);
   file.close();
@@ -408,21 +374,12 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
 
   if (read == size)
   {
-    Serial.print("[DeepSleep] Load successful: ");
-    Serial.print(size);
-    Serial.print(" bytes in ");
-    Serial.print(duration);
-    Serial.println(" us");
+    LOGI(LogTag::DEEPSLEEP, "Load successful: %zu bytes in %lu us", size, duration);
     return true;
   }
   else
   {
-    Serial.print("[DeepSleep] Read failed (incomplete) on ");
-    Serial.print(storageType);
-    Serial.print(": read ");
-    Serial.print(read);
-    Serial.print(" of ");
-    Serial.println(size);
+    LOGE(LogTag::DEEPSLEEP, "Read failed (incomplete) on %s: read %zu of %zu", storageType, read, size);
     return false;
   }
 }
@@ -442,7 +399,7 @@ void DeepSleepManager_HoldI2CPins()
   gpio_hold_en(sda);
   gpio_hold_en(scl);
 
-  Serial.println("[DeepSleep] I2C pins held high for deep sleep");
+  LOGD(LogTag::DEEPSLEEP, "I2C pins held high for deep sleep");
 }
 
 void DeepSleepManager_ReleaseI2CPins()
@@ -453,5 +410,5 @@ void DeepSleepManager_ReleaseI2CPins()
   gpio_hold_dis(sda);
   gpio_hold_dis(scl);
 
-  Serial.println("[DeepSleep] I2C pins hold released");
+  LOGD(LogTag::DEEPSLEEP, "I2C pins hold released");
 }

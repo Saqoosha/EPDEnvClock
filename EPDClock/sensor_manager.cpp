@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <SensirionI2cScd4x.h>
 #include <Wire.h>
+#include "logger.h"
 
 namespace
 {
@@ -42,11 +43,8 @@ bool SensorManager_Begin(bool wakeFromSleep)
       error = scd4x.getDataReadyStatus(isDataReady);
       if (error)
       {
-        Serial.print("Check DataReadyStatus attempt ");
-        Serial.print(i + 1);
-        Serial.print(" failed: ");
         errorToString(error, errorMessage, sizeof(errorMessage));
-        Serial.println(errorMessage);
+        LOGW(LogTag::SENSOR, "Check DataReadyStatus attempt %d failed: %s", i + 1, errorMessage);
 
         if (i < maxRetries - 1)
           delay(200); // Wait before retry
@@ -60,37 +58,36 @@ bool SensorManager_Begin(bool wakeFromSleep)
 
     if (!error && isDataReady)
     {
-      Serial.println("SDC41 is already running and data is ready. Skipping initialization.");
+      LOGI(LogTag::SENSOR, "SDC41 is already running and data is ready. Skipping initialization.");
       sensorInitialized = true;
       return true;
     }
     else if (!error)
     {
-      Serial.println("SDC41 is running but data NOT ready (or just read).");
-      Serial.println("Assuming sensor is running in periodic mode. Skipping full init.");
+      LOGI(LogTag::SENSOR, "SDC41 is running but data NOT ready (or just read).");
+      LOGI(LogTag::SENSOR, "Assuming sensor is running in periodic mode. Skipping full init.");
       sensorInitialized = true;
       return true;
     }
     else
     {
-      Serial.println("SDC41 failed to respond after retries. Performing full initialization.");
+      LOGW(LogTag::SENSOR, "SDC41 failed to respond after retries. Performing full initialization.");
     }
   }
   else
   {
-    Serial.println("Cold boot detected. Performing full sensor initialization.");
+    LOGI(LogTag::SENSOR, "Cold boot detected. Performing full sensor initialization.");
   }
 
   // If we get here, either the sensor is stopped, or just started and has no data.
   // We'll proceed with full initialization.
-  Serial.println("Initializing SDC41 sensor (full init)...");
+  LOGI(LogTag::SENSOR, "Initializing SDC41 sensor (full init)...");
 
   error = scd4x.stopPeriodicMeasurement();
   if (error)
   {
-    Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
     errorToString(error, errorMessage, sizeof(errorMessage));
-    Serial.println(errorMessage);
+    LOGE(LogTag::SENSOR, "Error trying to execute stopPeriodicMeasurement(): %s", errorMessage);
     sensorInitialized = false;
     return false;
   }
@@ -98,32 +95,28 @@ bool SensorManager_Begin(bool wakeFromSleep)
   delay(1000);
 
   // Set temperature offset to 4.0°C
-  Serial.println("Setting temperature offset to 4.0°C...");
+  LOGI(LogTag::SENSOR, "Setting temperature offset to 4.0°C...");
   error = scd4x.setTemperatureOffset(4.0f);
   if (error)
   {
-    Serial.print("Warning: Failed to set temperature offset: ");
     errorToString(error, errorMessage, sizeof(errorMessage));
-    Serial.println(errorMessage);
+    LOGW(LogTag::SENSOR, "Warning: Failed to set temperature offset: %s", errorMessage);
   }
   else
   {
-    Serial.println("Temperature offset set to 4.0°C successfully.");
+    LOGI(LogTag::SENSOR, "Temperature offset set to 4.0°C successfully.");
 
     // Read back the temperature offset value
     float tempOffset = 0.0f;
     error = scd4x.getTemperatureOffset(tempOffset);
     if (!error)
     {
-      Serial.print("Read back temperature offset: ");
-      Serial.print(tempOffset);
-      Serial.println(" °C");
+      LOGD(LogTag::SENSOR, "Read back temperature offset: %.2f °C", tempOffset);
     }
     else
     {
-      Serial.print("Warning: Failed to read temperature offset: ");
       errorToString(error, errorMessage, sizeof(errorMessage));
-      Serial.println(errorMessage);
+      LOGW(LogTag::SENSOR, "Warning: Failed to read temperature offset: %s", errorMessage);
     }
   }
 
@@ -132,20 +125,19 @@ bool SensorManager_Begin(bool wakeFromSleep)
   error = scd4x.startLowPowerPeriodicMeasurement();
   if (error)
   {
-    Serial.print("Error trying to execute startLowPowerPeriodicMeasurement(): ");
     errorToString(error, errorMessage, sizeof(errorMessage));
-    Serial.println(errorMessage);
+    LOGE(LogTag::SENSOR, "Error trying to execute startLowPowerPeriodicMeasurement(): %s", errorMessage);
     sensorInitialized = false;
     return false;
   }
 
-  Serial.println("SDC41 sensor initialized successfully!");
+  LOGI(LogTag::SENSOR, "SDC41 sensor initialized successfully!");
 
   // Waiting 5 seconds is needed for the very first measurement after power up.
   // Since we deep sleep and the sensor continues running, this delay is typically
   // only needed on cold boot. However, we keep it for all initialization to ensure
   // data validity and avoid race conditions.
-  Serial.println("Waiting for first measurement (5 seconds)...");
+  LOGI(LogTag::SENSOR, "Waiting for first measurement (5 seconds)...");
   delay(5000);
 
   sensorInitialized = true;
@@ -166,9 +158,8 @@ void SensorManager_Read()
   error = scd4x.getDataReadyStatus(isDataReady);
   if (error)
   {
-    Serial.print("[Sensor] Error getDataReadyStatus: ");
     errorToString(error, errorMessage, sizeof(errorMessage));
-    Serial.println(errorMessage);
+    LOGE(LogTag::SENSOR, "Error getDataReadyStatus: %s", errorMessage);
     return;
   }
 
@@ -184,19 +175,12 @@ void SensorManager_Read()
   error = scd4x.readMeasurement(co2, temperature, humidity);
   if (error)
   {
-    Serial.print("[Sensor] Error readMeasurement: ");
     errorToString(error, errorMessage, sizeof(errorMessage));
-    Serial.println(errorMessage);
+    LOGE(LogTag::SENSOR, "Error readMeasurement: %s", errorMessage);
     return;
   }
 
-  Serial.print("[Sensor] CO2: ");
-  Serial.print(co2);
-  Serial.print(" ppm, T: ");
-  Serial.print(temperature);
-  Serial.print(" °C, H: ");
-  Serial.print(humidity);
-  Serial.println(" %RH");
+  LOGI(LogTag::SENSOR, "CO2: %d ppm, T: %.2f °C, H: %.2f %%RH", co2, temperature, humidity);
 
   lastTemperature = temperature;
   lastHumidity = humidity;
@@ -216,9 +200,7 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
   uint16_t error;
   char errorMessage[256];
 
-  Serial.print("[Sensor] ReadBlocking: Starting wait (timeout=");
-  Serial.print(timeoutMs);
-  Serial.println("ms)");
+  LOGD(LogTag::SENSOR, "ReadBlocking: Starting wait (timeout=%lums)", timeoutMs);
 
   // Wait for data to be ready
   unsigned long waitStartTime = millis();
@@ -229,9 +211,8 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
     error = scd4x.getDataReadyStatus(isDataReady);
     if (error)
     {
-      Serial.print("[Sensor] Error getDataReadyStatus: ");
       errorToString(error, errorMessage, sizeof(errorMessage));
-      Serial.println(errorMessage);
+      LOGE(LogTag::SENSOR, "Error getDataReadyStatus: %s", errorMessage);
       return false;
     }
 
@@ -242,15 +223,11 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
   }
 
   unsigned long waitTime = millis() - waitStartTime;
-  Serial.print("[Sensor] ReadBlocking: Data ready after ");
-  Serial.print(waitTime);
-  Serial.print("ms (checked ");
-  Serial.print(checkCount);
-  Serial.println(" times)");
+  LOGD(LogTag::SENSOR, "ReadBlocking: Data ready after %lums (checked %d times)", waitTime, checkCount);
 
   if (!isDataReady)
   {
-    Serial.println("[Sensor] Timeout waiting for data ready");
+    LOGW(LogTag::SENSOR, "Timeout waiting for data ready");
     return false;
   }
 
@@ -265,27 +242,14 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
 
   if (error)
   {
-    Serial.print("[Sensor] Error readMeasurement: ");
     errorToString(error, errorMessage, sizeof(errorMessage));
-    Serial.println(errorMessage);
+    LOGE(LogTag::SENSOR, "Error readMeasurement: %s", errorMessage);
     return false;
   }
 
   unsigned long totalTime = millis() - totalStartTime;
-  Serial.print("[Sensor] CO2: ");
-  Serial.print(co2);
-  Serial.print(" ppm, T: ");
-  Serial.print(temperature);
-  Serial.print(" °C, H: ");
-  Serial.print(humidity);
-  Serial.print(" %RH");
-  Serial.print(" | Total time: ");
-  Serial.print(totalTime);
-  Serial.print("ms (wait: ");
-  Serial.print(waitTime);
-  Serial.print("ms, read: ");
-  Serial.print(readTime);
-  Serial.println("ms)");
+  LOGI(LogTag::SENSOR, "CO2: %d ppm, T: %.2f °C, H: %.2f %%RH | Total time: %lums (wait: %lums, read: %lums)",
+       co2, temperature, humidity, totalTime, waitTime, readTime);
 
   lastTemperature = temperature;
   lastHumidity = humidity;

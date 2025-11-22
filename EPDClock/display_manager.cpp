@@ -10,6 +10,7 @@
 #include "bitmaps/Icon_bitmap.h"
 #include "sensor_manager.h"
 #include "deep_sleep_manager.h"
+#include "logger.h"
 
 #include <pgmspace.h>
 
@@ -509,7 +510,7 @@ void DisplayManager_Init(bool wakeFromSleep)
   if (wakeFromSleep)
   {
     // Wake from deep sleep: Use minimal initialization
-    Serial.println("[Display] Waking EPD from deep sleep (minimal init)");
+    LOGI(LogTag::DISPLAY_MGR, "Waking EPD from deep sleep (minimal init)");
     EPD_HW_RESET();
     EPD_FastMode1Init();
 
@@ -520,13 +521,13 @@ void DisplayManager_Init(bool wakeFromSleep)
       // This restores the RAM state so PartUpdate works correctly
       EPD_Display(ImageBW);
       EPD_PartUpdate(); // Optional: ensure display is in sync
-      Serial.println("[Display] EPD restored with previous image data");
+      LOGI(LogTag::DISPLAY_MGR, "EPD restored with previous image data");
     }
     else
     {
       // Failed to load (first boot or corruption)
       // Clear screen to be safe
-      Serial.println("[Display] Failed to load previous image, clearing screen");
+      LOGW(LogTag::DISPLAY_MGR, "Failed to load previous image, clearing screen");
       Paint_Clear(WHITE);
       EPD_Display_Clear();
       EPD_Update();
@@ -536,7 +537,7 @@ void DisplayManager_Init(bool wakeFromSleep)
   else
   {
     // Cold boot: Full initialization with screen clear
-    Serial.println("[Display] Cold boot - full initialization");
+    LOGI(LogTag::DISPLAY_MGR, "Cold boot - full initialization");
     Paint_Clear(WHITE);
     EPD_FastMode1Init();
     EPD_Display_Clear();
@@ -573,7 +574,7 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {
-    Serial.println("[Display] Failed to get local time");
+    LOGE(LogTag::DISPLAY_MGR, "Failed to get local time");
     return false;
   }
 
@@ -650,26 +651,16 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
 
   lastDisplayedMinute = currentMinute;
 
-  Serial.print("[Display] Updated: ");
-  Serial.print(hour);
-  Serial.print(":");
-  Serial.println(currentMinute);
-  Serial.print("[Display] Draw: ");
-  Serial.print(drawDuration);
-  Serial.print(" us, EPD_Display: ");
-  Serial.print(displayDuration);
-  Serial.print(" us, EPD_PartUpdate: ");
-  Serial.print(updateDuration);
-  Serial.print(" us, Total: ");
-  Serial.print(drawDuration + displayDuration + updateDuration);
-  Serial.println(" us");
+  LOGI(LogTag::DISPLAY_MGR, "Updated: %d:%02d", hour, currentMinute);
+  LOGD(LogTag::DISPLAY_MGR, "Draw: %lu us, EPD_Display: %lu us, EPD_PartUpdate: %lu us, Total: %lu us",
+       drawDuration, displayDuration, updateDuration, drawDuration + displayDuration + updateDuration);
 
   // Save frame buffer to RTC memory for next wake up
   DeepSleepManager_SaveFrameBuffer(ImageBW, kFrameBufferSize);
 
   // Put EPD into deep sleep after update
   EPD_DeepSleep();
-  Serial.println("[Display] EPD entered deep sleep");
+  LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep");
 
   return true;
 }
