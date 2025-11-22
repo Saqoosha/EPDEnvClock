@@ -12,7 +12,6 @@
 #include "deep_sleep_manager.h"
 #include "logger.h"
 
-#include <pgmspace.h>
 
 namespace
 {
@@ -53,7 +52,7 @@ void drawBitmapCorrect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, 
 
     for (uint16_t col_byte = 0; col_byte < widthByte; col_byte++)
     {
-      uint8_t bitmap_byte = pgm_read_byte(&bitmap[row * widthByte + col_byte]);
+      uint8_t bitmap_byte = bitmap[row * widthByte + col_byte];
 
       for (uint8_t bit = 0; bit < 8; bit++)
       {

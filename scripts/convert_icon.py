@@ -56,7 +56,7 @@ def convert_icon_to_bitmap(image_path):
 
 def generate_c_array(bitmap_data, array_name, width, height):
     """Generate C array string"""
-    lines = [f"const uint8_t {array_name}[] PROGMEM = {{"]
+    lines = [f"const uint8_t {array_name}[] = {{"]
     current_line = "  "
 
     for i, byte_val in enumerate(bitmap_data):
