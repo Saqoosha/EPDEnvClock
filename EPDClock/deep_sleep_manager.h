@@ -11,7 +11,7 @@ struct RTCState
   bool sensorInitialized = false;
   uint32_t bootCount = 0;
   uint32_t lastNtpSyncBootCount = 0; // Boot count when NTP was last synced
-  size_t compressedImageSize = 0;    // Size of compressed image data
+  size_t imageSize = 0;              // Size of image data (uncompressed)
   time_t savedTime = 0;              // Saved epoch time before sleep
   uint64_t sleepDurationUs = 0;      // Intended sleep duration
 };
@@ -45,11 +45,11 @@ bool DeepSleepManager_ShouldSyncWiFiNtp();
 // Mark NTP as synced (updates lastNtpSyncBootCount)
 void DeepSleepManager_MarkNtpSynced();
 
-// Compress and save frame buffer to SD card (or SPIFFS if SD card not available)
+// Save frame buffer to SD card (or SPIFFS if SD card not available)
 // Returns true if successful
 bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size);
 
-// Decompress frame buffer from SD card (or SPIFFS if SD card not available)
+// Load frame buffer from SD card (or SPIFFS if SD card not available)
 // Returns true if successful
 bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size);
 

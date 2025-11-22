@@ -29,63 +29,9 @@ SPIClass SD_SPI = SPIClass(HSPI);
 // We use SD card for image storage (or SPIFFS as fallback)
 // SD card has much better write endurance than SPIFFS Flash memory
 constexpr char kFrameBufferFile[] = "/frame.bin";
-// Buffer for compression/decompression (allocated in heap/PSRAM)
-uint8_t *compressionBuffer = nullptr;
 
 bool sdCardAvailable = false;
 bool initialized = false;
-
-// Simple RLE compression for binary image
-// Returns compressed size, or 0 if failed (buffer too small)
-size_t compressRLE(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize)
-{
-  size_t srcPos = 0;
-  size_t dstPos = 0;
-
-  while (srcPos < srcSize)
-  {
-    uint8_t current = src[srcPos];
-    size_t runLength = 1;
-
-    while (srcPos + runLength < srcSize && src[srcPos + runLength] == current && runLength < 255)
-    {
-      runLength++;
-    }
-
-    if (dstPos + 2 > dstSize)
-    {
-      return 0; // Buffer overflow
-    }
-
-    dst[dstPos++] = runLength;
-    dst[dstPos++] = current;
-    srcPos += runLength;
-  }
-
-  return dstPos;
-}
-
-// Decompression
-bool decompressRLE(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize)
-{
-  size_t srcPos = 0;
-  size_t dstPos = 0;
-
-  while (srcPos < srcSize)
-  {
-    if (srcPos + 1 >= srcSize) return false; // Invalid data
-
-    uint8_t runLength = src[srcPos++];
-    uint8_t value = src[srcPos++];
-
-    if (dstPos + runLength > dstSize) return false; // Buffer overflow
-
-    memset(dst + dstPos, value, runLength);
-    dstPos += runLength;
-  }
-
-  return dstPos == dstSize;
-}
 
 void restoreTimeFromRTC()
 {
@@ -135,7 +81,7 @@ void DeepSleepManager_Init()
     rtcState.sensorInitialized = false;
     rtcState.bootCount = 1;
     rtcState.lastNtpSyncBootCount = 0;
-    rtcState.compressedImageSize = 0;
+    rtcState.imageSize = 0;
     rtcState.savedTime = 0;
     rtcState.sleepDurationUs = 0;
   }
@@ -304,93 +250,61 @@ void DeepSleepManager_MarkNtpSynced()
 
 bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
 {
-  // Allocate buffer for compression (RLE worst case is 2x input size)
-  // Fix: Allocate 2x size to prevent compression failures
-  if (compressionBuffer == nullptr)
+  File file;
+  const char* storageType;
+
+  if (sdCardAvailable)
   {
-    compressionBuffer = (uint8_t *)malloc(size * 2);
-    if (compressionBuffer == nullptr)
-    {
-      Serial.println("[DeepSleep] Failed to allocate compression buffer");
-      return false;
-    }
-  }
-
-  unsigned long start = micros();
-  size_t compressedSize = compressRLE(buffer, size, compressionBuffer, size * 2);
-  unsigned long duration = micros() - start;
-
-  if (compressedSize > 0)
-  {
-    File file;
-    const char* storageType;
-
-    if (sdCardAvailable)
-    {
-      file = SD.open(kFrameBufferFile, FILE_WRITE);
-      storageType = "SD card";
-    }
-    else
-    {
-      file = SPIFFS.open(kFrameBufferFile, FILE_WRITE);
-      storageType = "SPIFFS (fallback - limited write endurance)";
-    }
-
-    if (!file)
-    {
-      Serial.print("[DeepSleep] Failed to open file for writing on ");
-      Serial.println(storageType);
-      free(compressionBuffer);
-      compressionBuffer = nullptr;
-      return false;
-    }
-
-    size_t written = file.write(compressionBuffer, compressedSize);
-    file.close();
-
-    if (written == compressedSize)
-    {
-      rtcState.compressedImageSize = compressedSize;
-      Serial.print("[DeepSleep] Saved to ");
-      Serial.print(storageType);
-      Serial.print(": ");
-      Serial.print(size);
-      Serial.print(" -> ");
-      Serial.print(compressedSize);
-      Serial.print(" bytes (");
-      Serial.print((float)compressedSize / size * 100.0);
-      Serial.print("%) in ");
-      Serial.print(duration);
-      Serial.println(" us");
-
-      free(compressionBuffer);
-      compressionBuffer = nullptr;
-      return true;
-    }
-    else
-    {
-      Serial.print("[DeepSleep] Write failed (incomplete) on ");
-      Serial.println(storageType);
-      free(compressionBuffer);
-      compressionBuffer = nullptr;
-      return false;
-    }
+    file = SD.open(kFrameBufferFile, FILE_WRITE);
+    storageType = "SD card";
   }
   else
   {
-    rtcState.compressedImageSize = 0;
-    Serial.println("[DeepSleep] Compression failed (buffer overflow)");
-    free(compressionBuffer);
-    compressionBuffer = nullptr;
+    file = SPIFFS.open(kFrameBufferFile, FILE_WRITE);
+    storageType = "SPIFFS (fallback - limited write endurance)";
+  }
+
+  if (!file)
+  {
+    Serial.print("[DeepSleep] Failed to open file for writing on ");
+    Serial.println(storageType);
+    return false;
+  }
+
+  unsigned long start = micros();
+  size_t written = file.write(buffer, size);
+  file.close();
+  unsigned long duration = micros() - start;
+
+  if (written == size)
+  {
+    rtcState.imageSize = size;
+    Serial.print("[DeepSleep] Saved to ");
+    Serial.print(storageType);
+    Serial.print(": ");
+    Serial.print(size);
+    Serial.print(" bytes in ");
+    Serial.print(duration);
+    Serial.println(" us");
+    return true;
+  }
+  else
+  {
+    Serial.print("[DeepSleep] Write failed (incomplete) on ");
+    Serial.print(storageType);
+    Serial.print(": wrote ");
+    Serial.print(written);
+    Serial.print(" of ");
+    Serial.println(size);
     return false;
   }
 }
 
 bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
 {
-  if (rtcState.compressedImageSize == 0)
+  if (rtcState.imageSize == 0)
   {
-    Serial.println("[DeepSleep] No compressed image info found");
+    Serial.println("[DeepSleep] No image info found");
     return false;
   }
 
@@ -433,62 +347,45 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
   }
 
   size_t fileSize = file.size();
-  if (fileSize != rtcState.compressedImageSize)
+  if (fileSize != rtcState.imageSize || fileSize != size)
   {
     Serial.print("[DeepSleep] File size mismatch on ");
     Serial.print(storageType);
     Serial.print(": expected ");
-    Serial.print(rtcState.compressedImageSize);
-    Serial.print(", got ");
+    Serial.print(size);
+    Serial.print(" (RTC: ");
+    Serial.print(rtcState.imageSize);
+    Serial.print("), got ");
     Serial.println(fileSize);
     file.close();
     return false;
   }
 
-  // Allocate buffer for reading compressed data
-  if (compressionBuffer == nullptr)
-  {
-    compressionBuffer = (uint8_t *)malloc(fileSize);
-    if (compressionBuffer == nullptr)
-    {
-      Serial.println("[DeepSleep] Failed to allocate decompression buffer");
-      file.close();
-      return false;
-    }
-  }
-
-  size_t read = file.read(compressionBuffer, fileSize);
-  file.close();
-
-  if (read != fileSize)
-  {
-    Serial.print("[DeepSleep] Read failed (incomplete) on ");
-    Serial.println(storageType);
-    free(compressionBuffer);
-    compressionBuffer = nullptr;
-    return false;
-  }
-
-  Serial.print("[DeepSleep] Decompressing frame buffer from ");
+  Serial.print("[DeepSleep] Loading frame buffer from ");
   Serial.print(storageType);
   Serial.println("...");
   unsigned long start = micros();
-  bool success = decompressRLE(compressionBuffer, fileSize, buffer, size);
+  size_t read = file.read(buffer, size);
+  file.close();
   unsigned long duration = micros() - start;
 
-  free(compressionBuffer);
-  compressionBuffer = nullptr;
-
-  if (success)
+  if (read == size)
   {
-    Serial.print("[DeepSleep] Decompression successful in ");
+    Serial.print("[DeepSleep] Load successful: ");
+    Serial.print(size);
+    Serial.print(" bytes in ");
     Serial.print(duration);
     Serial.println(" us");
     return true;
   }
   else
   {
-    Serial.println("[DeepSleep] Decompression failed");
+    Serial.print("[DeepSleep] Read failed (incomplete) on ");
+    Serial.print(storageType);
+    Serial.print(": read ");
+    Serial.print(read);
+    Serial.print(" of ");
+    Serial.println(size);
     return false;
   }
 }
