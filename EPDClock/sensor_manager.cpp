@@ -97,9 +97,9 @@ bool SensorManager_Begin(bool wakeFromSleep)
 
   delay(1000);
 
-  // Set temperature offset to 0.0°C
-  Serial.println("Setting temperature offset to 0.0°C...");
-  error = scd4x.setTemperatureOffset(0.0f);
+  // Set temperature offset to 4.0°C
+  Serial.println("Setting temperature offset to 4.0°C...");
+  error = scd4x.setTemperatureOffset(4.0f);
   if (error)
   {
     Serial.print("Warning: Failed to set temperature offset: ");
@@ -108,7 +108,7 @@ bool SensorManager_Begin(bool wakeFromSleep)
   }
   else
   {
-    Serial.println("Temperature offset set to 0.0°C successfully.");
+    Serial.println("Temperature offset set to 4.0°C successfully.");
 
     // Read back the temperature offset value
     float tempOffset = 0.0f;
