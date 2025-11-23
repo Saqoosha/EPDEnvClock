@@ -15,6 +15,13 @@ namespace
   constexpr size_t kFrameBufferSize = 27200;
   constexpr unsigned long kNtpSyncInterval = 3600000; // 1 hour
 
+  // Button pin definitions (from 5.79_key example)
+  constexpr int HOME_KEY = 2; // Home button
+  constexpr int EXIT_KEY = 1; // Exit button
+  constexpr int PRV_KEY = 6;  // Previous button
+  constexpr int NEXT_KEY = 4; // Next button
+  constexpr int OK_KEY = 5;   // OK/Confirm button
+
   NetworkState networkState;
   bool sensorInitialized = false;
 
@@ -67,6 +74,32 @@ void updateDisplay(bool forceUpdate)
     exportFrameBuffer();
   }
 }
+
+bool checkButton(int pin)
+{
+  // Buttons are active LOW (0 when pressed)
+  if (digitalRead(pin) == 0)
+  {
+    delay(50); // Debounce delay
+    if (digitalRead(pin) == 0)
+    {
+      // Wait for button release
+      while (digitalRead(pin) == 0)
+      {
+        delay(10);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+bool checkAnyButton()
+{
+  return checkButton(HOME_KEY) || checkButton(EXIT_KEY) ||
+         checkButton(PRV_KEY) || checkButton(NEXT_KEY) ||
+         checkButton(OK_KEY);
+}
 } // namespace
 
 void setup()
@@ -85,7 +118,14 @@ void setup()
 
   // Initialize deep sleep manager first (checks if wake from sleep)
   DeepSleepManager_Init();
-  const bool wakeFromSleep = DeepSleepManager_IsWakeFromSleep();
+  bool wakeFromSleep = DeepSleepManager_IsWakeFromSleep();
+
+  // If woke from GPIO (button press), treat as cold boot for full display init
+  if (DeepSleepManager_IsWakeFromGPIO())
+  {
+    LOGI(LogTag::SETUP, "Woke from GPIO - forcing cold boot sequence for full display init");
+    wakeFromSleep = false;
+  }
 
   if (wakeFromSleep)
   {
@@ -93,10 +133,24 @@ void setup()
   }
   else
   {
-    LOGI(LogTag::SETUP, "Cold boot");
+    LOGI(LogTag::SETUP, "Cold boot (or forced cold boot)");
   }
 
   randomSeed(analogRead(0));
+
+  // Initialize button pins
+  pinMode(HOME_KEY, INPUT_PULLUP);
+  pinMode(EXIT_KEY, INPUT_PULLUP);
+  pinMode(PRV_KEY, INPUT_PULLUP);
+  pinMode(NEXT_KEY, INPUT_PULLUP);
+  pinMode(OK_KEY, INPUT_PULLUP);
+
+  // Check if wakeup was from GPIO (button press)
+  if (DeepSleepManager_IsWakeFromGPIO())
+  {
+    int wakeupPin = DeepSleepManager_GetWakeupGPIO();
+    LOGI(LogTag::SETUP, "Woke from GPIO (button press on pin %d)", wakeupPin);
+  }
 
   // Initialize display manager with wakeFromSleep flag
   // This determines if we do full init or minimal wake-up
@@ -107,31 +161,6 @@ void setup()
   // handleSensorInitializationResult calls SensorManager_Begin internally
   handleSensorInitializationResult(wakeFromSleep);
   sensorInitialized = SensorManager_IsInitialized();
-
-  // Read sensor once after initialization to get initial data for first display
-  // Use blocking read to ensure we have data before first display
-  if (sensorInitialized)
-  {
-    LOGD("Sensor", "Reading sensor data (wakeFromSleep=%s)...", wakeFromSleep ? "true" : "false");
-    unsigned long readStartTime = millis();
-
-    // Single-shot mode always takes ~5 seconds (measureSingleShot() internally waits 5s)
-    // Use 6 second timeout to allow for measurement completion
-    unsigned long timeoutMs = 6000;
-
-    if (SensorManager_ReadBlocking(timeoutMs))
-    {
-      unsigned long readDuration = millis() - readStartTime;
-      LOGI("Sensor", "Sensor data read successfully in %lums", readDuration);
-    }
-    else
-    {
-      unsigned long readDuration = millis() - readStartTime;
-      LOGW("Sensor", "Failed to read sensor data after %lums (timeout was %lums)", readDuration, timeoutMs);
-      // Note: Fallback to SensorManager_Read() is not useful in single-shot mode
-      // as it requires periodic measurement mode to be running
-    }
-  }
 
   // Connect WiFi and sync NTP only once per hour
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
@@ -182,10 +211,22 @@ void setup()
 
 void loop()
 {
-  // Display update is already done in setup()
-  // After display update, enter deep sleep until next minute
-  // This saves significant power compared to running continuously
-  LOGI(LogTag::LOOP, "Entering deep sleep...");
+  // Check if any button is pressed
+  // If pressed, do a full screen update and then go back to sleep
+  if (checkAnyButton())
+  {
+    LOGI(LogTag::LOOP, "Button pressed - performing full screen update");
+    DisplayManager_FullUpdate(networkState);
+    exportFrameBuffer();
+    LOGI(LogTag::LOOP, "Full update complete, entering deep sleep...");
+  }
+  else
+  {
+    // Display update is already done in setup()
+    // After display update, enter deep sleep until next minute
+    // This saves significant power compared to running continuously
+    LOGI(LogTag::LOOP, "Entering deep sleep...");
+  }
 
   // Note: We keep sensor in idle mode (not power-down) for 1-minute intervals
   // Per Sensirion app note: idle single-shot (~1.5mA) is more efficient than

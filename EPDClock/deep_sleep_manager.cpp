@@ -212,6 +212,17 @@ void DeepSleepManager_EnterDeepSleep()
   // Configure timer wakeup
   esp_sleep_enable_timer_wakeup(sleepDuration);
 
+  // Configure GPIO wakeup for buttons
+  // We use EXT0 wakeup which only supports a single pin
+  // Using HOME_KEY (GPIO 2) as the wake up button
+  // Note: To support multiple buttons with active-low logic on ESP32-S3/Arduino 2.x,
+  // we would need ESP_EXT1_WAKEUP_ANY_LOW which is not available in this SDK version.
+  // esp_deep_sleep_enable_gpio_wakeup is also not fully exposed.
+
+  gpio_num_t wakeupPin = (gpio_num_t)2; // HOME_KEY
+  esp_sleep_enable_ext0_wakeup(wakeupPin, 0); // 0 = LOW
+  LOGI(LogTag::DEEPSLEEP, "GPIO wakeup enabled for HOME button (pin 2)");
+
   // Disable WiFi before sleep to save power
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
@@ -411,4 +422,21 @@ void DeepSleepManager_ReleaseI2CPins()
   gpio_hold_dis(scl);
 
   LOGD(LogTag::DEEPSLEEP, "I2C pins hold released");
+}
+
+bool DeepSleepManager_IsWakeFromGPIO()
+{
+  esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
+  return (wakeupCause == ESP_SLEEP_WAKEUP_EXT0);
+}
+
+int DeepSleepManager_GetWakeupGPIO()
+{
+  if (!DeepSleepManager_IsWakeFromGPIO())
+  {
+    return -1;
+  }
+
+  // For EXT0, the wakeup pin is fixed to the one we configured
+  return 2; // HOME_KEY
 }

@@ -61,3 +61,9 @@ void DeepSleepManager_HoldI2CPins();
 
 // Release I2C pins hold after wake up
 void DeepSleepManager_ReleaseI2CPins();
+
+// Check if wakeup was from GPIO (button press)
+bool DeepSleepManager_IsWakeFromGPIO();
+
+// Get wakeup GPIO pin number (returns -1 if not GPIO wakeup)
+int DeepSleepManager_GetWakeupGPIO();
