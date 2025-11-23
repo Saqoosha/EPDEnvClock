@@ -111,6 +111,27 @@ def main():
         print(f"Error: Directory not found: {number_dir}")
         sys.exit(1)
 
+    # Determine size suffix from directory name (Number L -> L, Number M -> M, Number S -> S)
+    dir_name = os.path.basename(number_dir.rstrip('/'))
+    size_suffix = ""
+    if "Number L" in dir_name or "number L" in dir_name.lower():
+        size_suffix = "L"
+    elif "Number M" in dir_name or "number M" in dir_name.lower():
+        size_suffix = "M"
+    elif "Number S" in dir_name or "number S" in dir_name.lower():
+        size_suffix = "S"
+    else:
+        # Try to extract size from directory name
+        if " L" in dir_name or " l" in dir_name.lower():
+            size_suffix = "L"
+        elif " M" in dir_name or " m" in dir_name.lower():
+            size_suffix = "M"
+        elif " S" in dir_name or " s" in dir_name.lower():
+            size_suffix = "S"
+        else:
+            print(f"Warning: Could not determine size from directory name '{dir_name}'. Using default 'M'.")
+            size_suffix = "M"
+
     # Get all PNG files
     png_files = sorted([f for f in os.listdir(number_dir) if f.endswith('.png')])
 
@@ -119,11 +140,16 @@ def main():
         sys.exit(1)
 
     print(f"Found {len(png_files)} PNG files in {number_dir}")
+    print(f"Size suffix: {size_suffix}")
+
+    # Generate header guard and file name
+    header_guard = f"NUMBER_{size_suffix}_BITMAP_H"
+    output_filename = f"Number_{size_suffix}_bitmap.h"
 
     # Generate header file
     header_content = []
-    header_content.append("#ifndef NUMBER_BITMAP_H")
-    header_content.append("#define NUMBER_BITMAP_H")
+    header_content.append(f"#ifndef {header_guard}")
+    header_content.append(f"#define {header_guard}")
     header_content.append("")
     header_content.append("#include <Arduino.h>")
     header_content.append("")
@@ -138,16 +164,16 @@ def main():
         try:
             bitmap_data, width, height, width_byte = convert_image_to_bitmap(image_path, keep_original_size=True)
 
-            # Generate array name from filename (e.g., "0.png" -> "Number0")
+            # Generate array name from filename with size suffix (e.g., "0.png" -> "NumberM0")
             base_name = os.path.splitext(png_file)[0]
             if base_name.isdigit():
-                array_name = f"Number{base_name}"
+                array_name = f"Number{size_suffix}{base_name}"
             elif base_name == "colon":
-                array_name = "NumberColon"
+                array_name = f"Number{size_suffix}Colon"
             elif base_name == "period":
-                array_name = "NumberPeriod"
+                array_name = f"Number{size_suffix}Period"
             else:
-                array_name = f"Number{base_name.capitalize()}"
+                array_name = f"Number{size_suffix}{base_name.capitalize()}"
 
             # Generate C array
             c_array = generate_c_array(bitmap_data, array_name)
@@ -180,10 +206,10 @@ def main():
 
     header_content.append("#endif")
 
-    # Write header file (to firmware/bitmaps directory)
+    # Write header file (to EPDClock/bitmaps directory)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    output_file = os.path.join(project_root, "firmware", "bitmaps", "Number_bitmap.h")
+    output_file = os.path.join(project_root, "EPDClock", "bitmaps", output_filename)
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, 'w') as f:
         f.write("\n".join(header_content))
@@ -191,7 +217,7 @@ def main():
     print(f"\n✓ Conversion complete!")
     print(f"✓ Output file: {output_file}")
     print(f"\nTo use in Arduino sketch:")
-    print(f"  #include \"{output_file}\"")
+    print(f"  #include \"bitmaps/{output_filename}\"")
     print(f"\nExample usage:")
     for info in image_info[:4]:  # Show first 4
         print(f"  EPD_ShowPicture(x, y, {info['name']}_WIDTH, {info['name']}_HEIGHT, {info['name']}, WHITE);")
