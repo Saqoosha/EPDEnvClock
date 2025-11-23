@@ -674,6 +674,10 @@ void DisplayManager_FullUpdate(const NetworkState &networkState)
   const uint8_t month = timeinfo.tm_mon + 1;
   const uint8_t day = timeinfo.tm_mday;
 
+  // Note: Sensor is read in checkAnyButton() -> loop() -> setup() path or before calling this,
+  // so we don't strictly need to read it again here unless we want the absolutely latest data.
+  // For now, we'll use the data already read to avoid blocking.
+  /*
   // Read sensor value before drawing
   if (SensorManager_IsInitialized())
   {
@@ -681,6 +685,7 @@ void DisplayManager_FullUpdate(const NetworkState &networkState)
     SensorManager_ReadBlocking(6000); // 6 second timeout
     DisplayManager_SetStatus("");     // Clear status message after reading
   }
+  */
 
   unsigned long startTime = micros();
   Paint_Clear(WHITE);
