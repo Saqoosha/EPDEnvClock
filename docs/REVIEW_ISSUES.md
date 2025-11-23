@@ -414,4 +414,4 @@
 
 - [Arduino CLI コンパイル・アップロード手順書](../AGENTS.md)
 - [ImageBW Export ドキュメント](./README_IMAGEBW.md)
-- [SDC41 センサー ドキュメント](./README_SDC41.md)
+- [SCD41 センサー ドキュメント](./README_SCD41.md)

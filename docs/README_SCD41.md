@@ -1,23 +1,23 @@
-# SDC41センサー統合ガイド
+# SCD41センサー統合ガイド
 
-このドキュメントは、SDC41 CO2/温度/湿度センサーをCrowPanel ESP32-S3に接続する方法を説明します。
+このドキュメントは、SCD41 CO2/温度/湿度センサーをCrowPanel ESP32-S3に接続する方法を説明します。
 
 ## ハードウェア接続
 
 ### 接続ピン
 
-- **SDC41 VDD** → ESP32-S3 **3.3V**
-- **SDC41 GND** → ESP32-S3 **GND**
-- **SDC41 SDA** → ESP32-S3 **GPIO 38**
-- **SDC41 SCL** → ESP32-S3 **GPIO 21**
+- **SCD41 VDD** → ESP32-S3 **3.3V**
+- **SCD41 GND** → ESP32-S3 **GND**
+- **SCD41 SDA** → ESP32-S3 **GPIO 38**
+- **SCD41 SCL** → ESP32-S3 **GPIO 21**
 
-**注意**: プルアップ抵抗はSDC41モジュールに内蔵されているため、追加のハードウェアは不要です。
+**注意**: プルアップ抵抗はSCD41モジュールに内蔵されているため、追加のハードウェアは不要です。
 
 ## ライブラリのインストール
 
 ### Sensirion SCD4x Arduinoライブラリ
 
-SDC41センサーを使用するには、Sensirion SCD4x Arduinoライブラリが必要です。
+SCD41センサーを使用するには、Sensirion SCD4x Arduinoライブラリが必要です。
 
 #### arduino-cliを使用する場合
 
@@ -67,7 +67,7 @@ arduino-cli lib list | grep -i scd4x
 
 ### 温度オフセット設定
 
-SDC41センサーは自己発熱により、実際の環境温度より高い温度を測定する傾向があります。この問題を補正するため、センサー初期化時に温度オフセットを設定しています。
+SCD41センサーは自己発熱により、実際の環境温度より高い温度を測定する傾向があります。この問題を補正するため、センサー初期化時に温度オフセットを設定しています。
 
 **公式ドキュメントによる説明**:
 
@@ -145,16 +145,16 @@ constexpr float TEMPERATURE_OFFSET_C = -3.0f;  // デフォルト: -3.0°C
 ### シリアル出力例
 
 ```
-=== SDC41 Sensor Test ===
+=== SCD41 Sensor Test ===
 EPD features are temporarily disabled
-Initializing SDC41 sensor...
-SDC41 sensor initialized successfully!
+Initializing SCD41 sensor...
+SCD41 sensor initialized successfully!
 Waiting for first measurement (5 seconds)...
 
 Starting sensor readings...
 Reading every 5 seconds...
 
-=== SDC41 Sensor Reading ===
+=== SCD41 Sensor Reading ===
 CO2: 420 ppm
 Temperature: 23.5 °C
 Humidity: 45.2 %RH
@@ -176,7 +176,7 @@ Humidity: 45.2 %RH
    - デフォルトI2Cアドレス: 0x62
 
 3. **電源の確認**:
-   - SDC41は2.4V-5.5Vで動作しますが、3.3V推奨
+   - SCD41は2.4V-5.5Vで動作しますが、3.3V推奨
    - 電源が安定しているか確認
 
 ### データが読み取れない場合
@@ -187,7 +187,7 @@ Humidity: 45.2 %RH
 
 ### 温度が高めに表示される場合
 
-SDC41センサーは自己発熱により、実際の環境温度より高い温度を測定する傾向があります。この問題を解決するため、以下の対策を実装しています：
+SCD41センサーは自己発熱により、実際の環境温度より高い温度を測定する傾向があります。この問題を解決するため、以下の対策を実装しています：
 
 1. **温度オフセット設定**: センサー初期化時に-3.0°Cのオフセットを設定（デフォルト）
 2. **オフセット調整**: 正確な温度計と比較して、必要に応じてオフセット値を調整

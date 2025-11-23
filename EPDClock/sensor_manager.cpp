@@ -76,7 +76,7 @@ bool SensorManager_Begin(bool wakeFromSleep)
     }
   }
 
-  LOGI(LogTag::SENSOR, "SDC41 initialized (single-shot mode)");
+  LOGI(LogTag::SENSOR, "SCD41 initialized (single-shot mode)");
   sensorInitialized = true;
   return true;
 }

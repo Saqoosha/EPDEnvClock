@@ -47,12 +47,12 @@ void handleSensorInitializationResult(bool wakeFromSleep)
   {
     sensorInitialized = true;
     DisplayManager_SetStatus("Sensor OK");
-    LOGI(LogTag::SENSOR, "SDC41 sensor is ready!");
+    LOGI(LogTag::SENSOR, "SCD41 sensor is ready!");
     return;
   }
 
   DisplayManager_SetStatus("Sensor FAILED!");
-  LOGW(LogTag::SENSOR, "SDC41 sensor initialization failed!");
+  LOGW(LogTag::SENSOR, "SCD41 sensor initialization failed!");
   LOGW(LogTag::SENSOR, "Please check connections:");
   LOGW(LogTag::SENSOR, "  SDA -> GPIO 38");
   LOGW(LogTag::SENSOR, "  SCL -> GPIO 21");
@@ -81,7 +81,7 @@ void setup()
   // Initialize logger (default: DEBUG level, BOTH timestamp mode)
   Logger_Init(LogLevel::DEBUG, TimestampMode::BOTH);
 
-  LOGI(LogTag::SETUP, "=== EPD Clock with SDC41 Sensor ===");
+  LOGI(LogTag::SETUP, "=== EPD Clock with SCD41 Sensor ===");
 
   // Initialize deep sleep manager first (checks if wake from sleep)
   DeepSleepManager_Init();

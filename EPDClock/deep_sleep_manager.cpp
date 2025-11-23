@@ -386,7 +386,7 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
 
 void DeepSleepManager_HoldI2CPins()
 {
-  // I2C Pins for SDC41: SDA=38, SCL=21
+  // I2C Pins for SCD41: SDA=38, SCL=21
   // We set them to INPUT_PULLUP to keep them high during deep sleep
   // This prevents glitches that might reset the sensor
 
