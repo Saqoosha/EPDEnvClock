@@ -3,7 +3,7 @@
 
 // Enable/disable ImageBW export feature
 // Set to 1 to enable, 0 to disable
-#define ENABLE_IMAGEBW_EXPORT 1
+#define ENABLE_IMAGEBW_EXPORT 0
 
 // Python server configuration
 // Update these values to match your Mac's IP address and server port

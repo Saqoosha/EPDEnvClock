@@ -143,6 +143,7 @@ void DeepSleepManager_Init()
     {
       spiffsMounted = true;
       LOGI(LogTag::DEEPSLEEP, "SPIFFS Mounted (fallback)");
+      LOGI(LogTag::DEEPSLEEP, "SPIFFS Storage: %u / %u bytes used", SPIFFS.usedBytes(), SPIFFS.totalBytes());
     }
   }
 
@@ -310,6 +311,25 @@ bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)
   else
   {
     LOGE(LogTag::DEEPSLEEP, "Write failed (incomplete) on %s: wrote %zu of %zu", storageType, written, size);
+
+    // Auto-recovery: If SPIFFS write fails, the filesystem might be corrupted (common after partition change)
+    // Attempt to format it so it works on next boot.
+    if (!sdCardAvailable && spiffsMounted)
+    {
+      LOGW(LogTag::DEEPSLEEP, "Detected SPIFFS corruption. Formatting SPIFFS to recover...");
+      SPIFFS.end();
+      if (SPIFFS.format())
+      {
+        LOGI(LogTag::DEEPSLEEP, "SPIFFS formatted successfully. It should work on next boot.");
+        // We won't retry the write here to avoid delaying sleep too much,
+        // but the filesystem is now clean for the next cycle.
+      }
+      else
+      {
+        LOGE(LogTag::DEEPSLEEP, "SPIFFS format failed!");
+      }
+    }
+
     return false;
   }
 }

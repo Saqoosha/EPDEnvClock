@@ -4,6 +4,7 @@
 #include <SensirionI2cScd4x.h>
 #include <Wire.h>
 #include "logger.h"
+#include "esp_sleep.h"
 
 namespace
 {
@@ -140,22 +141,39 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
   // This is more efficient than power-cycled mode (~1.5mA vs ~2.6mA)
   // Also enables ASC (Automatic Self-Calibration)
 
-  // Ensure periodic measurement is stopped (sensor should already be in idle)
-  scd4x.stopPeriodicMeasurement(); // Ignore error - may already be stopped
-  delay(100);
+  // Optimization: We assume the sensor is already in idle mode (from previous single-shot or init).
+  // Skipping stopPeriodicMeasurement() saves ~600ms of active time (500ms exec + 100ms delay).
+  // If the sensor IS busy (unexpected), the single-shot command will fail, and we'll handle it in the error block.
 
   unsigned long totalStartTime = millis();
   unsigned long measureStartTime = millis();
 
   // Use single-shot measurement mode (SCD41 only)
-  // measureSingleShot() internally waits 5 seconds (delay(5000))
-  int16_t result = scd4x.measureSingleShot();
+  // We manually send the command and use light sleep instead of the blocking delay(5000)
+  // measureSingleShot command: 0x219d
+  LOGD(LogTag::SENSOR, "Sending single shot command (0x219d)");
+  Wire.beginTransmission(SCD4X_I2C_ADDRESS);
+  Wire.write(0x21);
+  Wire.write(0x9d);
+  int16_t result = Wire.endTransmission();
+  LOGD(LogTag::SENSOR, "I2C transmission result: %d", result);
+
+  if (result == 0)
+  {
+    LOGI(LogTag::SENSOR, "Measurement started, light sleeping for 5s...");
+    Serial.flush();
+    esp_sleep_enable_timer_wakeup(5000000); // 5 seconds
+    esp_light_sleep_start();
+    LOGD(LogTag::SENSOR, "Woke up from light sleep");
+  }
+
   if (result != 0)
   {
-    errorToString(result, errorMessage, sizeof(errorMessage));
-    LOGE(LogTag::SENSOR, "measureSingleShot failed: %s", errorMessage);
+    snprintf(errorMessage, sizeof(errorMessage), "I2C Error: %d", result);
+    LOGE(LogTag::SENSOR, "Manual single shot failed: %s", errorMessage);
     LOGW(LogTag::SENSOR, "Falling back to periodic measurement mode");
 
+    LOGD(LogTag::SENSOR, "Starting low power periodic measurement...");
     error = scd4x.startLowPowerPeriodicMeasurement();
     if (error)
     {
@@ -163,11 +181,13 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
       LOGE(LogTag::SENSOR, "startLowPowerPeriodicMeasurement failed: %s", errorMessage);
       return false;
     }
+    LOGD(LogTag::SENSOR, "Periodic measurement started");
 
     // Wait for first measurement (5 seconds for low-power periodic mode)
     unsigned long startTime = millis();
     bool isDataReady = false;
 
+    LOGD(LogTag::SENSOR, "Waiting for data ready...");
     while (!isDataReady && (millis() - startTime < timeoutMs))
     {
       error = scd4x.getDataReadyStatus(isDataReady);
@@ -203,9 +223,11 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
   float temperature;
   float humidity;
 
+  LOGD(LogTag::SENSOR, "Reading measurement from sensor...");
   unsigned long readStartTime = millis();
   error = scd4x.readMeasurement(co2, temperature, humidity);
   unsigned long readTime = millis() - readStartTime;
+  LOGD(LogTag::SENSOR, "Read measurement result: %d (0=success)", error);
 
   if (error)
   {
