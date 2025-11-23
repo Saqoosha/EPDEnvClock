@@ -589,14 +589,8 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   // EPD is already woken up in DisplayManager_Init() if wakeFromSleep is true
   // So we don't need to wake it up again here
 
-  // Minute has changed - read sensor value at the same time
-  // Use blocking read for single-shot mode (measureSingleShot() takes ~5 seconds)
-  if (SensorManager_IsInitialized())
-  {
-    DisplayManager_SetStatus("Reading...");
-    SensorManager_ReadBlocking(6000); // 6 second timeout (measureSingleShot takes ~5s)
-    DisplayManager_SetStatus("");    // Clear status message after reading
-  }
+  // Note: Sensor is read in setup(), so we don't need to read it again here.
+  // Reading here would block for ~5 seconds and might cause EPD noise issues.
 
   const uint8_t hour = timeinfo.tm_hour;
   const uint16_t year = timeinfo.tm_year + 1900;
