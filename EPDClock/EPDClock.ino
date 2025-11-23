@@ -162,6 +162,30 @@ void setup()
   handleSensorInitializationResult(wakeFromSleep);
   sensorInitialized = SensorManager_IsInitialized();
 
+  // Read sensor once after initialization to get initial data for first display
+  // We do this here (blocking) to ensure we have data before the display update starts.
+  // This prevents blocking DURING the display update, which causes EPD noise.
+  if (sensorInitialized)
+  {
+    LOGD("Sensor", "Reading sensor data (wakeFromSleep=%s)...", wakeFromSleep ? "true" : "false");
+    unsigned long readStartTime = millis();
+
+    // Single-shot mode always takes ~5 seconds (measureSingleShot() internally waits 5s)
+    // Use 6 second timeout to allow for measurement completion
+    unsigned long timeoutMs = 6000;
+
+    if (SensorManager_ReadBlocking(timeoutMs))
+    {
+      unsigned long readDuration = millis() - readStartTime;
+      LOGI("Sensor", "Sensor data read successfully in %lums", readDuration);
+    }
+    else
+    {
+      unsigned long readDuration = millis() - readStartTime;
+      LOGW("Sensor", "Failed to read sensor data after %lums (timeout was %lums)", readDuration, timeoutMs);
+    }
+  }
+
   // Connect WiFi and sync NTP only once per hour
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
   if (DeepSleepManager_ShouldSyncWiFiNtp())
