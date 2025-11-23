@@ -115,10 +115,9 @@ void setup()
     LOGD("Sensor", "Reading sensor data (wakeFromSleep=%s)...", wakeFromSleep ? "true" : "false");
     unsigned long readStartTime = millis();
 
-    // Optimize timeout based on wake state:
-    // - wakeFromSleep=true: Sensor is already running, data should be ready immediately (timeout: 2s)
-    // - wakeFromSleep=false: After initialization + 5s delay, data should be ready (timeout: 5s)
-    unsigned long timeoutMs = wakeFromSleep ? 2000 : 5000;
+    // Single-shot mode always takes ~5 seconds (measureSingleShot() internally waits 5s)
+    // Use 6 second timeout to allow for measurement completion
+    unsigned long timeoutMs = 6000;
 
     if (SensorManager_ReadBlocking(timeoutMs))
     {
@@ -129,10 +128,8 @@ void setup()
     {
       unsigned long readDuration = millis() - readStartTime;
       LOGW("Sensor", "Failed to read sensor data after %lums (timeout was %lums)", readDuration, timeoutMs);
-
-      // If blocking read failed, try non-blocking read as fallback
-      LOGD("Sensor", "Trying non-blocking read as fallback...");
-      SensorManager_Read();
+      // Note: Fallback to SensorManager_Read() is not useful in single-shot mode
+      // as it requires periodic measurement mode to be running
     }
   }
 
@@ -189,6 +186,11 @@ void loop()
   // After display update, enter deep sleep until next minute
   // This saves significant power compared to running continuously
   LOGI(LogTag::LOOP, "Entering deep sleep...");
+
+  // Note: We keep sensor in idle mode (not power-down) for 1-minute intervals
+  // Per Sensirion app note: idle single-shot (~1.5mA) is more efficient than
+  // power-cycled single-shot (~2.6mA) for intervals < 380 seconds
+  // Also, ASC (Automatic Self-Calibration) only works in idle mode
 
   // Hold I2C pins high during deep sleep to prevent sensor reset
   DeepSleepManager_HoldI2CPins();

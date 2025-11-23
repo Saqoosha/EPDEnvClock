@@ -590,11 +590,12 @@ bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUp
   // So we don't need to wake it up again here
 
   // Minute has changed - read sensor value at the same time
+  // Use blocking read for single-shot mode (measureSingleShot() takes ~5 seconds)
   if (SensorManager_IsInitialized())
   {
     DisplayManager_SetStatus("Reading...");
-    SensorManager_Read();
-    DisplayManager_SetStatus(""); // Clear status message after reading
+    SensorManager_ReadBlocking(6000); // 6 second timeout (measureSingleShot takes ~5s)
+    DisplayManager_SetStatus("");    // Clear status message after reading
   }
 
   const uint8_t hour = timeinfo.tm_hour;

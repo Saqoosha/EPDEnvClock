@@ -21,8 +21,6 @@ uint16_t lastCO2 = 0;
 
 bool SensorManager_Begin(bool wakeFromSleep)
 {
-  // Serial.println("Initializing SDC41 sensor...");
-
   uint16_t error;
   char errorMessage[256];
 
@@ -34,73 +32,31 @@ bool SensorManager_Begin(bool wakeFromSleep)
 
   if (wakeFromSleep)
   {
-    // Try to check if sensor is running. Retry a few times as I2C might be busy.
-    bool isDataReady = false;
-    const int maxRetries = 3;
-
-    for (int i = 0; i < maxRetries; i++)
-    {
-      error = scd4x.getDataReadyStatus(isDataReady);
-      if (error)
-      {
-        errorToString(error, errorMessage, sizeof(errorMessage));
-        LOGW(LogTag::SENSOR, "Check DataReadyStatus attempt %d failed: %s", i + 1, errorMessage);
-
-        if (i < maxRetries - 1)
-          delay(200); // Wait before retry
-      }
-      else
-      {
-        // Success!
-        break;
-      }
-    }
-
-    if (!error && isDataReady)
-    {
-      LOGI(LogTag::SENSOR, "SDC41 is already running and data is ready. Skipping initialization.");
-      sensorInitialized = true;
-      return true;
-    }
-    else if (!error)
-    {
-      LOGI(LogTag::SENSOR, "SDC41 is running but data NOT ready (or just read).");
-      LOGI(LogTag::SENSOR, "Assuming sensor is running in periodic mode. Skipping full init.");
-      sensorInitialized = true;
-      return true;
-    }
-    else
-    {
-      LOGW(LogTag::SENSOR, "SDC41 failed to respond after retries. Performing full initialization.");
-    }
-  }
-  else
-  {
-    LOGI(LogTag::SENSOR, "Cold boot detected. Performing full sensor initialization.");
+    LOGI(LogTag::SENSOR, "Wake from sleep - sensor should be in idle state");
+    sensorInitialized = true;
+    return true;
   }
 
-  // If we get here, either the sensor is stopped, or just started and has no data.
-  // We'll proceed with full initialization.
-  LOGI(LogTag::SENSOR, "Initializing SDC41 sensor (full init)...");
+  LOGI(LogTag::SENSOR, "Cold boot - performing full initialization");
 
+  // SCD41 defaults to periodic measurement mode on power-up
+  // Stop it before switching to single-shot mode
   error = scd4x.stopPeriodicMeasurement();
   if (error)
   {
     errorToString(error, errorMessage, sizeof(errorMessage));
-    LOGE(LogTag::SENSOR, "Error trying to execute stopPeriodicMeasurement(): %s", errorMessage);
+    LOGE(LogTag::SENSOR, "stopPeriodicMeasurement failed: %s", errorMessage);
     sensorInitialized = false;
     return false;
   }
 
-  delay(1000);
+  delay(1000); // Wait for sensor to fully stop periodic measurement
 
-  // Set temperature offset to 4.0°C
-  LOGI(LogTag::SENSOR, "Setting temperature offset to 4.0°C...");
   error = scd4x.setTemperatureOffset(4.0f);
   if (error)
   {
     errorToString(error, errorMessage, sizeof(errorMessage));
-    LOGW(LogTag::SENSOR, "Warning: Failed to set temperature offset: %s", errorMessage);
+    LOGW(LogTag::SENSOR, "Failed to set temperature offset: %s", errorMessage);
   }
   else
   {
@@ -120,26 +76,7 @@ bool SensorManager_Begin(bool wakeFromSleep)
     }
   }
 
-  // Start low power periodic measurement mode
-  // This mode reduces self-heating and improves temperature accuracy
-  error = scd4x.startLowPowerPeriodicMeasurement();
-  if (error)
-  {
-    errorToString(error, errorMessage, sizeof(errorMessage));
-    LOGE(LogTag::SENSOR, "Error trying to execute startLowPowerPeriodicMeasurement(): %s", errorMessage);
-    sensorInitialized = false;
-    return false;
-  }
-
-  LOGI(LogTag::SENSOR, "SDC41 sensor initialized successfully!");
-
-  // Waiting 5 seconds is needed for the very first measurement after power up.
-  // Since we deep sleep and the sensor continues running, this delay is typically
-  // only needed on cold boot. However, we keep it for all initialization to ensure
-  // data validity and avoid race conditions.
-  LOGI(LogTag::SENSOR, "Waiting for first measurement (5 seconds)...");
-  delay(5000);
-
+  LOGI(LogTag::SENSOR, "SDC41 initialized (single-shot mode)");
   sensorInitialized = true;
   return true;
 }
@@ -151,6 +88,8 @@ void SensorManager_Read()
     return;
   }
 
+  // Non-blocking read - checks if data is ready (for periodic measurement mode)
+  // Note: With single-shot mode, use SensorManager_ReadBlocking() instead
   uint16_t error;
   char errorMessage[256];
   bool isDataReady = false;
@@ -159,7 +98,7 @@ void SensorManager_Read()
   if (error)
   {
     errorToString(error, errorMessage, sizeof(errorMessage));
-    LOGE(LogTag::SENSOR, "Error getDataReadyStatus: %s", errorMessage);
+    LOGE(LogTag::SENSOR, "getDataReadyStatus failed: %s", errorMessage);
     return;
   }
 
@@ -176,7 +115,7 @@ void SensorManager_Read()
   if (error)
   {
     errorToString(error, errorMessage, sizeof(errorMessage));
-    LOGE(LogTag::SENSOR, "Error readMeasurement: %s", errorMessage);
+    LOGE(LogTag::SENSOR, "readMeasurement failed: %s", errorMessage);
     return;
   }
 
@@ -194,42 +133,70 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
     return false;
   }
 
-  unsigned long totalStartTime = millis();
-  unsigned long startTime = millis();
-  bool isDataReady = false;
   uint16_t error;
   char errorMessage[256];
 
-  LOGD(LogTag::SENSOR, "ReadBlocking: Starting wait (timeout=%lums)", timeoutMs);
+  // Sensor stays in idle mode (not power-down) for 1-minute intervals
+  // This is more efficient than power-cycled mode (~1.5mA vs ~2.6mA)
+  // Also enables ASC (Automatic Self-Calibration)
 
-  // Wait for data to be ready
-  unsigned long waitStartTime = millis();
-  int checkCount = 0;
-  while (!isDataReady && (millis() - startTime < timeoutMs))
+  // Ensure periodic measurement is stopped (sensor should already be in idle)
+  scd4x.stopPeriodicMeasurement(); // Ignore error - may already be stopped
+  delay(100);
+
+  unsigned long totalStartTime = millis();
+  unsigned long measureStartTime = millis();
+
+  // Use single-shot measurement mode (SCD41 only)
+  // measureSingleShot() internally waits 5 seconds (delay(5000))
+  int16_t result = scd4x.measureSingleShot();
+  if (result != 0)
   {
-    checkCount++;
-    error = scd4x.getDataReadyStatus(isDataReady);
+    errorToString(result, errorMessage, sizeof(errorMessage));
+    LOGE(LogTag::SENSOR, "measureSingleShot failed: %s", errorMessage);
+    LOGW(LogTag::SENSOR, "Falling back to periodic measurement mode");
+
+    error = scd4x.startLowPowerPeriodicMeasurement();
     if (error)
     {
       errorToString(error, errorMessage, sizeof(errorMessage));
-      LOGE(LogTag::SENSOR, "Error getDataReadyStatus: %s", errorMessage);
+      LOGE(LogTag::SENSOR, "startLowPowerPeriodicMeasurement failed: %s", errorMessage);
       return false;
+    }
+
+    // Wait for first measurement (5 seconds for low-power periodic mode)
+    unsigned long startTime = millis();
+    bool isDataReady = false;
+
+    while (!isDataReady && (millis() - startTime < timeoutMs))
+    {
+      error = scd4x.getDataReadyStatus(isDataReady);
+      if (error)
+      {
+        errorToString(error, errorMessage, sizeof(errorMessage));
+        LOGE(LogTag::SENSOR, "getDataReadyStatus failed: %s", errorMessage);
+        scd4x.stopPeriodicMeasurement();
+        return false;
+      }
+
+      if (!isDataReady)
+      {
+        delay(100);
+      }
     }
 
     if (!isDataReady)
     {
-      delay(100); // Wait 100ms before checking again
+      LOGW(LogTag::SENSOR, "Timeout waiting for data ready");
+      scd4x.stopPeriodicMeasurement();
+      return false;
     }
+
+    scd4x.stopPeriodicMeasurement();
   }
 
-  unsigned long waitTime = millis() - waitStartTime;
-  LOGD(LogTag::SENSOR, "ReadBlocking: Data ready after %lums (checked %d times)", waitTime, checkCount);
-
-  if (!isDataReady)
-  {
-    LOGW(LogTag::SENSOR, "Timeout waiting for data ready");
-    return false;
-  }
+  unsigned long waitTime = millis() - measureStartTime;
+  LOGD(LogTag::SENSOR, "Measurement completed (%lums)", waitTime);
 
   // Read measurement
   uint16_t co2;
@@ -248,7 +215,7 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
   }
 
   unsigned long totalTime = millis() - totalStartTime;
-  LOGI(LogTag::SENSOR, "CO2: %d ppm, T: %.2f °C, H: %.2f %%RH | Total time: %lums (wait: %lums, read: %lums)",
+  LOGI(LogTag::SENSOR, "CO2: %d ppm, T: %.2f °C, H: %.2f %%RH | Total time: %lums (measure: %lums, read: %lums)",
        co2, temperature, humidity, totalTime, waitTime, readTime);
 
   lastTemperature = temperature;
@@ -275,4 +242,43 @@ float SensorManager_GetHumidity()
 uint16_t SensorManager_GetCO2()
 {
   return lastCO2;
+}
+
+void SensorManager_PowerDown()
+{
+  // Note: Not used for 1-minute intervals (idle single-shot is more efficient)
+  // Power-down is only beneficial for intervals > 380 seconds (~6 minutes)
+  // Kept for future use or longer measurement intervals
+  if (!sensorInitialized)
+  {
+    return;
+  }
+
+  scd4x.stopPeriodicMeasurement(); // Ignore error - may not be running
+  delay(100);
+
+  uint16_t error = scd4x.powerDown();
+  if (error)
+  {
+    char errorMessage[256];
+    errorToString(error, errorMessage, sizeof(errorMessage));
+    LOGW(LogTag::SENSOR, "powerDown failed: %s", errorMessage);
+  }
+  else
+  {
+    LOGI(LogTag::SENSOR, "Sensor powered down (~18µA)");
+  }
+}
+
+void SensorManager_WakeUp()
+{
+  // Note: Not used for 1-minute intervals (sensor stays in idle mode)
+  // Kept for future use or power-cycled mode
+  if (!sensorInitialized)
+  {
+    return;
+  }
+
+  scd4x.wakeUp(); // Ignore error - sensor may already be awake
+  delay(20);      // Wait for sensor to stabilize
 }

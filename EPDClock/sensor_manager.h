@@ -9,3 +9,7 @@ bool SensorManager_IsInitialized();
 float SensorManager_GetTemperature();
 float SensorManager_GetHumidity();
 uint16_t SensorManager_GetCO2();
+// Power down sensor before deep sleep to save power
+void SensorManager_PowerDown();
+// Wake up sensor from power down mode
+void SensorManager_WakeUp();
