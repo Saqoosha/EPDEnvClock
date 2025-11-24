@@ -626,15 +626,16 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
   Paint_Clear(WHITE);
 
   // Read battery voltage from ADC (update every minute)
-  // Read 10 times and calculate average to reduce noise
+  // For 470kΩ voltage divider: first do dummy read, then read 16 times with 50µs delay
   // Use linear calibration equation to compensate for ESP32-S3 ADC non-linearity
   // Vbat = 0.002334 * adc_raw - 1.353
-  constexpr int NUM_SAMPLES = 10;
+  constexpr int NUM_SAMPLES = 16; // 8-16 times recommended for 470kΩ divider
+  analogRead(BATTERY_ADC_PIN);    // Dummy read to stabilize ADC
   long adcSum = 0;
   for (int i = 0; i < NUM_SAMPLES; i++)
   {
     adcSum += analogRead(BATTERY_ADC_PIN);
-    delay(1); // Small delay between readings
+    delayMicroseconds(50); // 50µs delay between readings for 470kΩ divider
   }
   int rawAdc = adcSum / NUM_SAMPLES;
   float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
