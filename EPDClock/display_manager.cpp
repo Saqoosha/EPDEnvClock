@@ -441,9 +441,12 @@ uint16_t calculateTimeWidth(uint8_t hour, uint8_t minute)
 {
   uint16_t width = 0;
 
-  // Hour 10s
-  width += getDigitLWidth(hour / 10);
-  width += kTimeCharSpacing;
+  // Hour 10s (only if hour >= 10)
+  if (hour >= 10)
+  {
+    width += getDigitLWidth(hour / 10);
+    width += kTimeCharSpacing;
+  }
 
   // Hour 1s
   width += getDigitLWidth(hour % 10);
@@ -467,11 +470,16 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
 {
   uint16_t currentX = x;
 
-  uint8_t digit = hour / 10;
-  drawDigitL(digit, currentX, y);
-  currentX += getDigitLWidth(digit) + kTimeCharSpacing;
+  // Hour 10s (only if hour >= 10)
+  if (hour >= 10)
+  {
+    uint8_t digit = hour / 10;
+    drawDigitL(digit, currentX, y);
+    currentX += getDigitLWidth(digit) + kTimeCharSpacing;
+  }
 
-  digit = hour % 10;
+  // Hour 1s
+  uint8_t digit = hour % 10;
   drawDigitL(digit, currentX, y);
   currentX += getDigitLWidth(digit) + kTimeCharSpacing;
 
