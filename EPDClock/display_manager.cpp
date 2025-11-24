@@ -486,10 +486,10 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
   drawDigitL(digit, currentX, y);
 }
 
-void drawStatus(const NetworkState &networkState)
+void drawStatus(const NetworkState &networkState, float batteryVoltage)
 {
   // Increased buffer size to prevent overflow with long status messages
-  // Format can be: "W:OK(-50) 192.168.1.100 | N:OK | U:123m | H:12345 | Msg:...")
+  // Format can be: "B:3.845V | W:OK(-50) 192.168.1.100 | N:OK | U:123m | H:12345 | Msg:...")
   // Max length: ~110 chars + 64 char message = ~174 chars, using 256 for safety
   char statusLine[256];
   char ipStr[16];
@@ -513,15 +513,15 @@ void drawStatus(const NetworkState &networkState)
   long rssi = WiFi.RSSI();
   uint32_t freeHeap = ESP.getFreeHeap();
 
-  // Format: "WiFi:SSID(RSSI) IP:1.2.3.4 NTP:OK(diff) Heap:12345"
+  // Format: "B:3.845V | WiFi:SSID(RSSI) IP:1.2.3.4 NTP:OK(diff) Heap:12345"
   // Truncate SSID if too long? For now just show basic info
 
   // Layout:
-  // Left: WiFi Status + SSID + RSSI + IP
+  // Left: Battery Voltage | WiFi Status + SSID + RSSI + IP
   // Right: NTP Status + Heap + Uptime
 
   // Let's try a single line with compact info
-  // W:Connected(SSID, -50dBm) 192.168.1.100 | N:OK(123ms) | U:123m | H:12345
+  // B:3.845V | W:Connected(SSID, -50dBm) 192.168.1.100 | N:OK(123ms) | U:123m | H:12345
 
   const char *wifiStatus = networkState.wifiConnected ? "OK" : "--";
   const char *ntpStatus = networkState.ntpSynced ? "OK" : "--";
@@ -533,33 +533,46 @@ void drawStatus(const NetworkState &networkState)
   {
     if (hasMessage)
     {
-      snprintf(statusLine, sizeof(statusLine), "W:%s(%ld) %s | N:%s | U:%lum | H:%u | Msg:%s",
-               wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s(%ld) %s | N:%s | U:%lum | H:%u | Msg:%s",
+               batteryVoltage, wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
     }
     else
     {
-      snprintf(statusLine, sizeof(statusLine), "W:%s(%ld) %s | N:%s | U:%lum | H:%u",
-               wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap);
+      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s(%ld) %s | N:%s | U:%lum | H:%u",
+               batteryVoltage, wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap);
     }
   }
   else
   {
     if (hasMessage)
     {
-      snprintf(statusLine, sizeof(statusLine), "W:%s | N:%s | U:%lum | H:%u | Msg:%s",
-               wifiStatus, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s | N:%s | U:%lum | H:%u | Msg:%s",
+               batteryVoltage, wifiStatus, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
     }
     else
     {
-      snprintf(statusLine, sizeof(statusLine), "W:%s | N:%s | U:%lum | H:%u",
-               wifiStatus, ntpStatus, millis() / 60000, freeHeap);
+      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s | N:%s | U:%lum | H:%u",
+               batteryVoltage, wifiStatus, ntpStatus, millis() / 60000, freeHeap);
     }
   }
 
   EPD_ShowString(8, yPos, statusLine, fontSize, BLACK);
 }
 
-void drawStatus(const NetworkState &networkState); // Forward declaration
+void drawStatus(const NetworkState &networkState, float batteryVoltage); // Forward declaration
+
+// Battery voltage measurement
+// Voltage divider is connected to GPIO8
+// ESP32-S3 ADC is non-linear, so we use a linear calibration equation instead of ideal divider ratio
+// Calibration data (measured):
+//   ADC 2166 = 3.712V
+//   ADC 2237 = 3.846V
+//   ADC 2293 = 4.011V
+// Linear fit equation: Vbat = 0.002334 * adc_raw - 1.353
+// This compensates for ADC non-linearity and provides ±0.6% accuracy in 3.7-4.1V range
+constexpr int BATTERY_ADC_PIN = 8;
+constexpr float BATTERY_VOLTAGE_SLOPE = 0.002334f; // Linear calibration slope
+constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;  // Linear calibration offset
 
 bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool fullUpdate)
 {
@@ -612,6 +625,20 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
   unsigned long startTime = micros();
   Paint_Clear(WHITE);
 
+  // Read battery voltage from ADC (update every minute)
+  // Read 10 times and calculate average to reduce noise
+  // Use linear calibration equation to compensate for ESP32-S3 ADC non-linearity
+  // Vbat = 0.002334 * adc_raw - 1.353
+  constexpr int NUM_SAMPLES = 10;
+  long adcSum = 0;
+  for (int i = 0; i < NUM_SAMPLES; i++)
+  {
+    adcSum += analogRead(BATTERY_ADC_PIN);
+    delay(1); // Small delay between readings
+  }
+  int rawAdc = adcSum / NUM_SAMPLES;
+  float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
+
   // Draw time and date only if time is available
   if (timeAvailable)
   {
@@ -645,7 +672,7 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
     EPD_ShowString(kDateX, kDateY, "WiFi Failed", fontSize, BLACK);
   }
 
-  drawStatus(networkState);
+  drawStatus(networkState, batteryVoltage);
 
   // Draw sensor icons and values
   if (SensorManager_IsInitialized())
@@ -655,23 +682,26 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
     float humidity = SensorManager_GetHumidity();
     uint16_t co2 = SensorManager_GetCO2();
 
-    // Calculate icon X positions (icons are drawn before the numbers)
-    uint16_t tempIconX = kTempValueX - IconTemp_WIDTH - kIconValueSpacing;
-    uint16_t humidityIconX = kHumidityValueX - IconHumidity_WIDTH - kIconValueSpacing;
-    uint16_t co2IconX = kCO2ValueX - IconCO2_WIDTH - kIconValueSpacing;
+    // Icon positions (fixed)
+    constexpr uint16_t kTempIconX = 482;
+    constexpr uint16_t kTempIconY = 33;
+    constexpr uint16_t kHumidityIconX = 482;
+    constexpr uint16_t kHumidityIconY = 114;
+    constexpr uint16_t kCO2IconX = 482;
+    constexpr uint16_t kCO2IconY = 193;
 
     // Draw temperature
-    drawBitmapCorrect(tempIconX, kTempValueY, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
+    drawBitmapCorrect(kTempIconX, kTempIconY, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
     uint16_t tempEndX = drawTemperature(temp, kTempValueX, kTempValueY);
     drawBitmapCorrect(tempEndX + kValueUnitSpacing, kTempValueY + kUnitYOffset, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
 
     // Draw humidity
-    drawBitmapCorrect(humidityIconX, kHumidityValueY, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
+    drawBitmapCorrect(kHumidityIconX, kHumidityIconY, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
     uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), kHumidityValueX, kHumidityValueY);
     drawBitmapCorrect(humidityEndX + kValueUnitSpacing, kHumidityValueY + kUnitYOffset, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
 
     // Draw CO2
-    drawBitmapCorrect(co2IconX, kCO2ValueY, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
+    drawBitmapCorrect(kCO2IconX, kCO2IconY, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
     uint16_t co2EndX = drawInteger(co2, kCO2ValueX, kCO2ValueY);
     drawBitmapCorrect(co2EndX + kValueUnitSpacing, kCO2ValueY + kUnitYOffset, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
   }
@@ -697,11 +727,11 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
 
   if (timeAvailable)
   {
-    LOGI(LogTag::DISPLAY_MGR, "%s: %d:%02d", fullUpdate ? "Full update" : "Updated", timeinfo.tm_hour, timeinfo.tm_min);
+    LOGI(LogTag::DISPLAY_MGR, "%s: %d:%02d, Battery: %.3fV", fullUpdate ? "Full update" : "Updated", timeinfo.tm_hour, timeinfo.tm_min, batteryVoltage);
   }
   else
   {
-    LOGI(LogTag::DISPLAY_MGR, "%s (no time available)", fullUpdate ? "Full update" : "Updated");
+    LOGI(LogTag::DISPLAY_MGR, "%s (no time available), Battery: %.3fV", fullUpdate ? "Full update" : "Updated", batteryVoltage);
   }
   LOGD(LogTag::DISPLAY_MGR, "Draw: %lu us, EPD_Display: %lu us, Update: %lu us, Total: %lu us",
        drawDuration, displayDuration, updateDuration, drawDuration + displayDuration + updateDuration);
