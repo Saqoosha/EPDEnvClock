@@ -1,4 +1,5 @@
 #include "deep_sleep_manager.h"
+#include "spi.h"
 
 #include <WiFi.h>
 #include <esp_sleep.h>
@@ -232,6 +233,9 @@ void DeepSleepManager_EnterDeepSleep()
   // Disable Bluetooth if enabled
   btStop();
 
+  // Hold EPD pins to prevent noise
+  DeepSleepManager_HoldEPDPins();
+
   // Enter deep sleep
   Serial.flush(); // Ensure all serial output is sent before sleep
   delay(100);     // Small delay to ensure serial flush completes
@@ -443,6 +447,72 @@ void DeepSleepManager_ReleaseI2CPins()
   gpio_hold_dis(scl);
 
   LOGD(LogTag::DEEPSLEEP, "I2C pins hold released");
+}
+
+void DeepSleepManager_HoldEPDPins()
+{
+  // EPD Pins: SCK(12), MOSI(11), RES(47), DC(46), CS(45)
+  // Also Pin 7 (EPD Power Enable) needs to be held to ensure stable power state
+  // All should be held in safe state to prevent noise/reset/back-feeding
+
+  // Ensure pins are in safe state before holding
+  // RST: High (keep reset inactive)
+  // CS: High (chip not selected)
+  // DC: Low (command mode - safe default)
+  // SCK: Low
+  // MOSI: Low
+  // Pin 7: High (Power On) - keeping power on ensures we don't back-feed signals into unpowered chip
+
+  gpio_num_t rst = (gpio_num_t)RES;
+  gpio_num_t cs = (gpio_num_t)CS;
+  gpio_num_t dc = (gpio_num_t)DC;
+  gpio_num_t sck = (gpio_num_t)SCK;
+  gpio_num_t mosi = (gpio_num_t)MOSI;
+  gpio_num_t pwr = (gpio_num_t)7;
+
+  // Set levels explicitly
+  pinMode(rst, OUTPUT);
+  pinMode(cs, OUTPUT);
+  pinMode(dc, OUTPUT);
+  pinMode(sck, OUTPUT);
+  pinMode(mosi, OUTPUT);
+  pinMode(pwr, OUTPUT);
+
+  digitalWrite(rst, HIGH);
+  digitalWrite(cs, HIGH);
+  digitalWrite(dc, LOW);
+  digitalWrite(sck, LOW);
+  digitalWrite(mosi, LOW);
+  digitalWrite(pwr, HIGH);
+
+  // Enable hold
+  gpio_hold_en(rst);
+  gpio_hold_en(cs);
+  gpio_hold_en(dc);
+  gpio_hold_en(sck);
+  gpio_hold_en(mosi);
+  gpio_hold_en(pwr);
+
+  LOGD(LogTag::DEEPSLEEP, "EPD pins held for deep sleep");
+}
+
+void DeepSleepManager_ReleaseEPDPins()
+{
+  gpio_num_t rst = (gpio_num_t)RES;
+  gpio_num_t cs = (gpio_num_t)CS;
+  gpio_num_t dc = (gpio_num_t)DC;
+  gpio_num_t sck = (gpio_num_t)SCK;
+  gpio_num_t mosi = (gpio_num_t)MOSI;
+  gpio_num_t pwr = (gpio_num_t)7;
+
+  gpio_hold_dis(rst);
+  gpio_hold_dis(cs);
+  gpio_hold_dis(dc);
+  gpio_hold_dis(sck);
+  gpio_hold_dis(mosi);
+  gpio_hold_dis(pwr);
+
+  LOGD(LogTag::DEEPSLEEP, "EPD pins hold released");
 }
 
 bool DeepSleepManager_IsWakeFromGPIO()

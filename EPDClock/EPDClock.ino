@@ -108,6 +108,8 @@ void setup()
 
   // Release I2C pins hold if they were held during deep sleep
   DeepSleepManager_ReleaseI2CPins();
+  // Release EPD pins hold if they were held during deep sleep
+  DeepSleepManager_ReleaseEPDPins();
 
   delay(1000);
 

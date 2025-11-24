@@ -62,6 +62,12 @@ void DeepSleepManager_HoldI2CPins();
 // Release I2C pins hold after wake up
 void DeepSleepManager_ReleaseI2CPins();
 
+// Hold EPD pins in safe state during deep sleep to prevent noise
+void DeepSleepManager_HoldEPDPins();
+
+// Release EPD pins hold after wake up
+void DeepSleepManager_ReleaseEPDPins();
+
 // Check if wakeup was from GPIO (button press)
 bool DeepSleepManager_IsWakeFromGPIO();
 
