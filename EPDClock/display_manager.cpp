@@ -21,9 +21,9 @@ constexpr uint16_t kScreenHeight = 272;
 
 // Layout constants
 constexpr uint16_t kTimeX = 16;
-constexpr uint16_t kTimeY = 133;
+constexpr uint16_t kTimeY = 123;
 constexpr uint16_t kDateX = 16;
-constexpr uint16_t kDateY = 55;
+constexpr uint16_t kDateY = 45;
 constexpr uint16_t kTempValueX = 546;
 constexpr uint16_t kTempValueY = 33;
 constexpr uint16_t kHumidityValueX = 546;
@@ -36,7 +36,7 @@ constexpr uint16_t kIconValueSpacing = 6;
 constexpr uint16_t kValueUnitSpacing = 5;
 constexpr uint16_t kCharSpacing = 5;
 constexpr uint16_t kDateCharSpacing = 6;
-constexpr uint16_t kTimeColonSpacing = 6;
+constexpr uint16_t kTimeCharSpacing = 10;
 
 uint8_t ImageBW[kFrameBufferSize];
 
@@ -88,6 +88,10 @@ const uint8_t *NumberLBitmaps[] = {
     NumberL0, NumberL1, NumberL2, NumberL3, NumberL4,
     NumberL5, NumberL6, NumberL7, NumberL8, NumberL9};
 
+const uint16_t NumberLWidths[] = {
+    NumberL0_WIDTH, NumberL1_WIDTH, NumberL2_WIDTH, NumberL3_WIDTH, NumberL4_WIDTH,
+    NumberL5_WIDTH, NumberL6_WIDTH, NumberL7_WIDTH, NumberL8_WIDTH, NumberL9_WIDTH};
+
 const uint8_t *NumberMBitmaps[] = {
     NumberM0, NumberM1, NumberM2, NumberM3, NumberM4,
     NumberM5, NumberM6, NumberM7, NumberM8, NumberM9};
@@ -113,7 +117,7 @@ void drawDigit(uint8_t digit, uint16_t x, uint16_t y)
 
 void drawDigitL(uint8_t digit, uint16_t x, uint16_t y)
 {
-  drawDigitGeneric(digit, x, y, NumberLBitmaps, nullptr, NumberL0_HEIGHT, NumberL0_WIDTH);
+  drawDigitGeneric(digit, x, y, NumberLBitmaps, NumberLWidths, NumberL0_HEIGHT, 0);
 }
 
 void drawDigitM(uint8_t digit, uint16_t x, uint16_t y)
@@ -125,6 +129,13 @@ uint16_t getDigitWidth(uint8_t digit)
 {
   if (digit > 9) return 0;
   return NumberWidths[digit];
+}
+
+uint16_t getDigitLWidth(uint8_t digit)
+{
+  if (digit > 9)
+    return 0;
+  return NumberLWidths[digit];
 }
 
 void drawPeriod(uint16_t x, uint16_t y)
@@ -312,7 +323,34 @@ uint16_t drawInteger(int value, uint16_t x, uint16_t y)
 
 void drawColon(uint16_t x, uint16_t y)
 {
-  drawBitmapCorrect(x, y, NumberColon_WIDTH, NumberColon_HEIGHT, NumberColon);
+  drawBitmapCorrect(x, y, NumberLColon_WIDTH, NumberLColon_HEIGHT, NumberLColon);
+}
+
+uint16_t calculateDateWidth(uint16_t year, uint8_t month, uint8_t day)
+{
+  uint16_t width = 0;
+
+  // Year: 4 digits
+  width += getDigitMWidth((year / 1000) % 10) + kDateCharSpacing;
+  width += getDigitMWidth((year / 100) % 10) + kDateCharSpacing;
+  width += getDigitMWidth((year / 10) % 10) + kDateCharSpacing;
+  width += getDigitMWidth(year % 10) + kDateCharSpacing;
+
+  // Period
+  width += NumberMPeriod_WIDTH + kDateCharSpacing;
+
+  // Month: 2 digits
+  width += getDigitMWidth(month / 10) + kDateCharSpacing;
+  width += getDigitMWidth(month % 10) + kDateCharSpacing;
+
+  // Period
+  width += NumberMPeriod_WIDTH + kDateCharSpacing;
+
+  // Day: 2 digits
+  width += getDigitMWidth(day / 10) + kDateCharSpacing;
+  width += getDigitMWidth(day % 10);
+
+  return width;
 }
 
 void drawDate(uint16_t year, uint8_t month, uint8_t day, uint16_t x, uint16_t y)
@@ -399,25 +437,50 @@ void drawDateM(uint16_t year, uint8_t month, uint8_t day, uint16_t x, uint16_t y
   drawDigitM(digit, currentX, y);
 }
 
+uint16_t calculateTimeWidth(uint8_t hour, uint8_t minute)
+{
+  uint16_t width = 0;
+
+  // Hour 10s
+  width += getDigitLWidth(hour / 10);
+  width += kTimeCharSpacing;
+
+  // Hour 1s
+  width += getDigitLWidth(hour % 10);
+  width += kTimeCharSpacing;
+
+  // Colon
+  width += NumberLColon_WIDTH;
+  width += kTimeCharSpacing;
+
+  // Minute 10s
+  width += getDigitLWidth(minute / 10);
+  width += kTimeCharSpacing;
+
+  // Minute 1s
+  width += getDigitLWidth(minute % 10);
+
+  return width;
+}
+
 void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
 {
   uint16_t currentX = x;
 
   uint8_t digit = hour / 10;
   drawDigitL(digit, currentX, y);
-  currentX += NumberL0_WIDTH;
+  currentX += getDigitLWidth(digit) + kTimeCharSpacing;
 
   digit = hour % 10;
   drawDigitL(digit, currentX, y);
-  currentX += NumberL0_WIDTH;
+  currentX += getDigitLWidth(digit) + kTimeCharSpacing;
 
-  currentX += kTimeColonSpacing;
   drawColon(currentX, y);
-  currentX += NumberColon_WIDTH + kTimeColonSpacing;
+  currentX += NumberLColon_WIDTH + kTimeCharSpacing;
 
   digit = minute / 10;
   drawDigitL(digit, currentX, y);
-  currentX += NumberL0_WIDTH;
+  currentX += getDigitLWidth(digit) + kTimeCharSpacing;
 
   digit = minute % 10;
   drawDigitL(digit, currentX, y);
@@ -558,8 +621,17 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
     const uint8_t month = timeinfo.tm_mon + 1;
     const uint8_t day = timeinfo.tm_mday;
 
-    drawTime(hour, currentMinute, kTimeX, kTimeY);
-    drawDateM(year, month, day, kDateX, kDateY);
+    // Calculate centered X for time (Range: 15 to 468, Center: 241)
+    uint16_t timeWidth = calculateTimeWidth(hour, currentMinute);
+    uint16_t timeX = 241 - (timeWidth / 2);
+
+    drawTime(hour, currentMinute, timeX, kTimeY);
+
+    // Calculate centered X for date (Range: 15 to 468, Center: 241)
+    uint16_t dateWidth = calculateDateWidth(year, month, day);
+    uint16_t dateX = 241 - (dateWidth / 2);
+
+    drawDateM(year, month, day, dateX, kDateY);
 
     // Update lastDisplayedMinute for next check
     RTCState &rtcState = DeepSleepManager_GetRTCState();
