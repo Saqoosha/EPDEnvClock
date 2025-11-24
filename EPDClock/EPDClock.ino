@@ -207,12 +207,30 @@ void setup()
         networkState.ntpSynced = false;
         Logger_SetNtpSynced(false);
         LOGW("Setup", "NTP sync failed");
+        // Setup timezone and restore time from RTC when NTP sync fails
+        if (NetworkManager_SetupTimeFromRTC())
+        {
+          LOGI("Setup", "Time restored from RTC after NTP failure");
+        }
+        else
+        {
+          LOGW("Setup", "Failed to restore time from RTC");
+        }
       }
     }
     else
     {
       networkState.wifiConnected = false;
       LOGW("Setup", "WiFi connection failed");
+      // Setup timezone and restore time from RTC when WiFi/NTP fails
+      if (NetworkManager_SetupTimeFromRTC())
+      {
+        LOGI("Setup", "Time restored from RTC after WiFi failure");
+      }
+      else
+      {
+        LOGW("Setup", "Failed to restore time from RTC");
+      }
     }
   }
   else
@@ -230,6 +248,7 @@ void setup()
     LOGI("Setup", "Using RTC time (no WiFi connection)");
   }
 
+  // Show "Starting..." before final display update
   DisplayManager_DrawSetupStatus("Starting...");
   DisplayManager_SetStatus("Running");
   updateDisplay(true);

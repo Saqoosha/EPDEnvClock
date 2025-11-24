@@ -11,7 +11,7 @@
 #include "sensor_manager.h"
 #include "deep_sleep_manager.h"
 #include "logger.h"
-
+#include "network_manager.h"
 
 namespace
 {
@@ -496,6 +496,154 @@ void drawStatus(const NetworkState &networkState)
   EPD_ShowString(8, yPos, statusLine, fontSize, BLACK);
 }
 
+void drawStatus(const NetworkState &networkState); // Forward declaration
+
+bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool fullUpdate)
+{
+  struct tm timeinfo;
+  bool timeAvailable = false;
+
+  if (!getLocalTime(&timeinfo))
+  {
+    LOGE(LogTag::DISPLAY_MGR, "Failed to get local time, trying RTC fallback");
+    // Try to restore time from RTC as fallback
+    if (NetworkManager_SetupTimeFromRTC())
+    {
+      // Try again after RTC restore
+      if (getLocalTime(&timeinfo))
+      {
+        LOGI(LogTag::DISPLAY_MGR, "Time restored from RTC fallback");
+        timeAvailable = true;
+      }
+      else
+      {
+        LOGE(LogTag::DISPLAY_MGR, "Failed to get local time even after RTC restore");
+      }
+    }
+    else
+    {
+      LOGE(LogTag::DISPLAY_MGR, "Failed to get local time and RTC fallback also failed");
+    }
+  }
+  else
+  {
+    timeAvailable = true;
+  }
+
+  // Check if we should skip update (only if time is available and not forced)
+  // Note: For full update, we usually want to force update regardless of minute change
+  // But the caller can control this via forceUpdate parameter.
+  // DisplayManager_FullUpdate calls this with forceUpdate=true.
+  if (timeAvailable)
+  {
+    const uint8_t currentMinute = timeinfo.tm_min;
+    RTCState &rtcState = DeepSleepManager_GetRTCState();
+    uint8_t &lastDisplayedMinute = rtcState.lastDisplayedMinute;
+
+    if (!forceUpdate && currentMinute == lastDisplayedMinute)
+    {
+      return false;
+    }
+  }
+
+  unsigned long startTime = micros();
+  Paint_Clear(WHITE);
+
+  // Draw time and date only if time is available
+  if (timeAvailable)
+  {
+    const uint8_t hour = timeinfo.tm_hour;
+    const uint8_t currentMinute = timeinfo.tm_min;
+    const uint16_t year = timeinfo.tm_year + 1900;
+    const uint8_t month = timeinfo.tm_mon + 1;
+    const uint8_t day = timeinfo.tm_mday;
+
+    drawTime(hour, currentMinute, kTimeX, kTimeY);
+    drawDateM(year, month, day, kDateX, kDateY);
+
+    // Update lastDisplayedMinute for next check
+    RTCState &rtcState = DeepSleepManager_GetRTCState();
+    rtcState.lastDisplayedMinute = currentMinute;
+  }
+  else
+  {
+    // Draw error message instead of time
+    const uint16_t fontSize = 12;
+    EPD_ShowString(kTimeX, kTimeY, "No Time", fontSize, BLACK);
+    EPD_ShowString(kDateX, kDateY, "WiFi Failed", fontSize, BLACK);
+  }
+
+  drawStatus(networkState);
+
+  // Draw sensor icons and values
+  if (SensorManager_IsInitialized())
+  {
+    // Get sensor values
+    float temp = SensorManager_GetTemperature();
+    float humidity = SensorManager_GetHumidity();
+    uint16_t co2 = SensorManager_GetCO2();
+
+    // Calculate icon X positions (icons are drawn before the numbers)
+    uint16_t tempIconX = kTempValueX - IconTemp_WIDTH - kIconValueSpacing;
+    uint16_t humidityIconX = kHumidityValueX - IconHumidity_WIDTH - kIconValueSpacing;
+    uint16_t co2IconX = kCO2ValueX - IconCO2_WIDTH - kIconValueSpacing;
+
+    // Draw temperature
+    drawBitmapCorrect(tempIconX, kTempValueY, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
+    uint16_t tempEndX = drawTemperature(temp, kTempValueX, kTempValueY);
+    drawBitmapCorrect(tempEndX + kValueUnitSpacing, kTempValueY + kUnitYOffset, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
+
+    // Draw humidity
+    drawBitmapCorrect(humidityIconX, kHumidityValueY, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
+    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), kHumidityValueX, kHumidityValueY);
+    drawBitmapCorrect(humidityEndX + kValueUnitSpacing, kHumidityValueY + kUnitYOffset, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
+
+    // Draw CO2
+    drawBitmapCorrect(co2IconX, kCO2ValueY, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
+    uint16_t co2EndX = drawInteger(co2, kCO2ValueX, kCO2ValueY);
+    drawBitmapCorrect(co2EndX + kValueUnitSpacing, kCO2ValueY + kUnitYOffset, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
+  }
+
+  const unsigned long drawDuration = micros() - startTime;
+
+  startTime = micros();
+  EPD_Display(ImageBW);
+  const unsigned long displayDuration = micros() - startTime;
+
+  startTime = micros();
+  if (fullUpdate)
+  {
+    DisplayManager_SetStatus("Full Updating...");
+    EPD_Update();
+  }
+  else
+  {
+    DisplayManager_SetStatus("Updating...");
+    EPD_PartUpdate();
+  }
+  const unsigned long updateDuration = micros() - startTime;
+
+  if (timeAvailable)
+  {
+    LOGI(LogTag::DISPLAY_MGR, "%s: %d:%02d", fullUpdate ? "Full update" : "Updated", timeinfo.tm_hour, timeinfo.tm_min);
+  }
+  else
+  {
+    LOGI(LogTag::DISPLAY_MGR, "%s (no time available)", fullUpdate ? "Full update" : "Updated");
+  }
+  LOGD(LogTag::DISPLAY_MGR, "Draw: %lu us, EPD_Display: %lu us, Update: %lu us, Total: %lu us",
+       drawDuration, displayDuration, updateDuration, drawDuration + displayDuration + updateDuration);
+
+  // Save frame buffer to RTC memory for next wake up
+  DeepSleepManager_SaveFrameBuffer(ImageBW, kFrameBufferSize);
+
+  // Put EPD into deep sleep after update
+  EPD_DeepSleep();
+  LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep");
+
+  return true;
+}
+
 } // namespace
 
 void DisplayManager_Init(bool wakeFromSleep)
@@ -570,179 +718,12 @@ void DisplayManager_DrawSetupStatus(const char *message)
 
 bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate)
 {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
-    LOGE(LogTag::DISPLAY_MGR, "Failed to get local time");
-    return false;
-  }
-
-  const uint8_t currentMinute = timeinfo.tm_min;
-  RTCState &rtcState = DeepSleepManager_GetRTCState();
-  uint8_t &lastDisplayedMinute = rtcState.lastDisplayedMinute;
-
-  if (!forceUpdate && currentMinute == lastDisplayedMinute)
-  {
-    return false;
-  }
-
-  // EPD is already woken up in DisplayManager_Init() if wakeFromSleep is true
-  // So we don't need to wake it up again here
-
-  // Note: Sensor is read in setup(), so we don't need to read it again here.
-  // Reading here would block for ~5 seconds and might cause EPD noise issues.
-
-  const uint8_t hour = timeinfo.tm_hour;
-  const uint16_t year = timeinfo.tm_year + 1900;
-  const uint8_t month = timeinfo.tm_mon + 1;
-  const uint8_t day = timeinfo.tm_mday;
-
-  unsigned long startTime = micros();
-  Paint_Clear(WHITE);
-  drawTime(hour, currentMinute, kTimeX, kTimeY);
-  drawDateM(year, month, day, kDateX, kDateY);
-  drawStatus(networkState);
-
-  // Draw sensor icons and values
-  if (SensorManager_IsInitialized())
-  {
-    // Get sensor values
-    float temp = SensorManager_GetTemperature();
-    float humidity = SensorManager_GetHumidity();
-    uint16_t co2 = SensorManager_GetCO2();
-
-    // Calculate icon X positions (icons are drawn before the numbers)
-    uint16_t tempIconX = kTempValueX - IconTemp_WIDTH - kIconValueSpacing;
-    uint16_t humidityIconX = kHumidityValueX - IconHumidity_WIDTH - kIconValueSpacing;
-    uint16_t co2IconX = kCO2ValueX - IconCO2_WIDTH - kIconValueSpacing;
-
-    // Draw temperature
-    drawBitmapCorrect(tempIconX, kTempValueY, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
-    uint16_t tempEndX = drawTemperature(temp, kTempValueX, kTempValueY);
-    drawBitmapCorrect(tempEndX + kValueUnitSpacing, kTempValueY + kUnitYOffset, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
-
-    // Draw humidity
-    drawBitmapCorrect(humidityIconX, kHumidityValueY, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
-    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), kHumidityValueX, kHumidityValueY);
-    drawBitmapCorrect(humidityEndX + kValueUnitSpacing, kHumidityValueY + kUnitYOffset, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
-
-    // Draw CO2
-    drawBitmapCorrect(co2IconX, kCO2ValueY, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
-    uint16_t co2EndX = drawInteger(co2, kCO2ValueX, kCO2ValueY);
-    drawBitmapCorrect(co2EndX + kValueUnitSpacing, kCO2ValueY + kUnitYOffset, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
-  }
-
-  const unsigned long drawDuration = micros() - startTime;
-
-  startTime = micros();
-  EPD_Display(ImageBW);
-  const unsigned long displayDuration = micros() - startTime;
-
-  startTime = micros();
-  DisplayManager_SetStatus("Updating...");
-  EPD_PartUpdate();
-  const unsigned long updateDuration = micros() - startTime;
-
-  lastDisplayedMinute = currentMinute;
-
-  LOGI(LogTag::DISPLAY_MGR, "Updated: %d:%02d", hour, currentMinute);
-  LOGD(LogTag::DISPLAY_MGR, "Draw: %lu us, EPD_Display: %lu us, EPD_PartUpdate: %lu us, Total: %lu us",
-       drawDuration, displayDuration, updateDuration, drawDuration + displayDuration + updateDuration);
-
-  // Save frame buffer to RTC memory for next wake up
-  DeepSleepManager_SaveFrameBuffer(ImageBW, kFrameBufferSize);
-
-  // Put EPD into deep sleep after update
-  EPD_DeepSleep();
-  LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep");
-
-  return true;
+  return performUpdate(networkState, forceUpdate, false);
 }
 
 void DisplayManager_FullUpdate(const NetworkState &networkState)
 {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
-    LOGE(LogTag::DISPLAY_MGR, "Failed to get local time");
-    return;
-  }
-
-  const uint8_t hour = timeinfo.tm_hour;
-  const uint8_t currentMinute = timeinfo.tm_min;
-  const uint16_t year = timeinfo.tm_year + 1900;
-  const uint8_t month = timeinfo.tm_mon + 1;
-  const uint8_t day = timeinfo.tm_mday;
-
-  // Note: Sensor is read in checkAnyButton() -> loop() -> setup() path or before calling this,
-  // so we don't strictly need to read it again here unless we want the absolutely latest data.
-  // For now, we'll use the data already read to avoid blocking.
-  /*
-  // Read sensor value before drawing
-  if (SensorManager_IsInitialized())
-  {
-    DisplayManager_SetStatus("Reading...");
-    SensorManager_ReadBlocking(6000); // 6 second timeout
-    DisplayManager_SetStatus("");     // Clear status message after reading
-  }
-  */
-
-  unsigned long startTime = micros();
-  Paint_Clear(WHITE);
-  drawTime(hour, currentMinute, kTimeX, kTimeY);
-  drawDateM(year, month, day, kDateX, kDateY);
-  drawStatus(networkState);
-
-  // Draw sensor icons and values
-  if (SensorManager_IsInitialized())
-  {
-    // Get sensor values
-    float temp = SensorManager_GetTemperature();
-    float humidity = SensorManager_GetHumidity();
-    uint16_t co2 = SensorManager_GetCO2();
-
-    // Calculate icon X positions (icons are drawn before the numbers)
-    uint16_t tempIconX = kTempValueX - IconTemp_WIDTH - kIconValueSpacing;
-    uint16_t humidityIconX = kHumidityValueX - IconHumidity_WIDTH - kIconValueSpacing;
-    uint16_t co2IconX = kCO2ValueX - IconCO2_WIDTH - kIconValueSpacing;
-
-    // Draw temperature
-    drawBitmapCorrect(tempIconX, kTempValueY, IconTemp_WIDTH, IconTemp_HEIGHT, IconTemp);
-    uint16_t tempEndX = drawTemperature(temp, kTempValueX, kTempValueY);
-    drawBitmapCorrect(tempEndX + kValueUnitSpacing, kTempValueY + kUnitYOffset, UnitC_WIDTH, UnitC_HEIGHT, UnitC);
-
-    // Draw humidity
-    drawBitmapCorrect(humidityIconX, kHumidityValueY, IconHumidity_WIDTH, IconHumidity_HEIGHT, IconHumidity);
-    uint16_t humidityEndX = drawInteger((int)(humidity + 0.5f), kHumidityValueX, kHumidityValueY);
-    drawBitmapCorrect(humidityEndX + kValueUnitSpacing, kHumidityValueY + kUnitYOffset, UnitPercent_WIDTH, UnitPercent_HEIGHT, UnitPercent);
-
-    // Draw CO2
-    drawBitmapCorrect(co2IconX, kCO2ValueY, IconCO2_WIDTH, IconCO2_HEIGHT, IconCO2);
-    uint16_t co2EndX = drawInteger(co2, kCO2ValueX, kCO2ValueY);
-    drawBitmapCorrect(co2EndX + kValueUnitSpacing, kCO2ValueY + kUnitYOffset, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
-  }
-
-  const unsigned long drawDuration = micros() - startTime;
-
-  startTime = micros();
-  EPD_Display(ImageBW);
-  const unsigned long displayDuration = micros() - startTime;
-
-  startTime = micros();
-  DisplayManager_SetStatus("Full Updating...");
-  EPD_Update(); // Full screen update instead of partial update
-  const unsigned long updateDuration = micros() - startTime;
-
-  LOGI(LogTag::DISPLAY_MGR, "Full update: %d:%02d", hour, currentMinute);
-  LOGD(LogTag::DISPLAY_MGR, "Draw: %lu us, EPD_Display: %lu us, EPD_Update: %lu us, Total: %lu us",
-       drawDuration, displayDuration, updateDuration, drawDuration + displayDuration + updateDuration);
-
-  // Save frame buffer to RTC memory for next wake up
-  DeepSleepManager_SaveFrameBuffer(ImageBW, kFrameBufferSize);
-
-  // Put EPD into deep sleep after update
-  EPD_DeepSleep();
-  LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep");
+  performUpdate(networkState, true, true);
 }
 
 uint8_t *DisplayManager_GetFrameBuffer()

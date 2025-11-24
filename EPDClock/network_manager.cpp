@@ -2,9 +2,11 @@
 
 #include <WiFi.h>
 #include <time.h>
+#include <esp_timer.h>
 
 #include "wifi_config.h"
 #include "logger.h"
+#include "deep_sleep_manager.h"
 
 namespace
 {
@@ -140,4 +142,43 @@ bool NetworkManager_CheckNtpResync(NetworkState &state, unsigned long intervalMs
 void NetworkManager_UpdateConnectionState(NetworkState &state)
 {
   state.wifiConnected = (WiFi.status() == WL_CONNECTED);
+}
+
+bool NetworkManager_SetupTimeFromRTC()
+{
+  // Setup timezone (same as NTP sync)
+  constexpr long gmtOffset_sec = 9 * 3600;
+  constexpr int daylightOffset_sec = 0;
+  constexpr const char *ntpServer = ""; // Empty string means no NTP server (we'll use RTC time)
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  // Get RTC state
+  RTCState &rtcState = DeepSleepManager_GetRTCState();
+
+  // If RTC has saved time, restore it
+  if (rtcState.savedTime > 0)
+  {
+    // Calculate elapsed time since sleep started
+    int64_t currentTimeUs = esp_timer_get_time();
+    int64_t bootOverheadUs = currentTimeUs; // Time since boot until now
+
+    // Calculate wakeup time: savedTime + sleepDuration + bootOverhead
+    time_t wakeupTime = rtcState.savedTime + (rtcState.sleepDurationUs / 1000000) + (bootOverheadUs / 1000000);
+
+    struct timeval tv;
+    tv.tv_sec = wakeupTime;
+    tv.tv_usec = 0;
+    settimeofday(&tv, NULL);
+
+    // Re-apply timezone
+    setenv("TZ", "JST-9", 1);
+    tzset();
+
+    LOGI(LogTag::NETWORK, "Time restored from RTC: %lu", (unsigned long)wakeupTime);
+    return true;
+  }
+
+  LOGW(LogTag::NETWORK, "No RTC time available");
+  return false;
 }
