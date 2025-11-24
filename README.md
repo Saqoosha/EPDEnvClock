@@ -49,7 +49,7 @@ EPDClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x2
 - **SCD41 VDD** → ESP32-S3 **3.3V**
 - **SCD41 GND** → ESP32-S3 **GND**
 - **SCD41 SDA** → ESP32-S3 **GPIO 38**
-- **SCD41 SCL** → ESP32-S3 **GPIO 21**
+- **SCD41 SCL** → ESP32-S3 **GPIO 20**
 
 **注意**: プルアップ抵抗はSCD41モジュールに内蔵されているため、追加のハードウェアは不要です。
 

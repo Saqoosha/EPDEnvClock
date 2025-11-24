@@ -9,7 +9,7 @@
 - **SCD41 VDD** → ESP32-S3 **3.3V**
 - **SCD41 GND** → ESP32-S3 **GND**
 - **SCD41 SDA** → ESP32-S3 **GPIO 38**
-- **SCD41 SCL** → ESP32-S3 **GPIO 21**
+- **SCD41 SCL** → ESP32-S3 **GPIO 20**
 
 **注意**: プルアップ抵抗はSCD41モジュールに内蔵されているため、追加のハードウェアは不要です。
 
@@ -54,7 +54,7 @@ arduino-cli lib list | grep -i scd4x
 
 ```cpp
 #define I2C_SDA_PIN 38
-#define I2C_SCL_PIN 21
+#define I2C_SCL_PIN 20
 ```
 
 ### センサー読み取り間隔
@@ -167,7 +167,7 @@ Humidity: 45.2 %RH
 
 1. **接続を確認**:
    - SDAがGPIO 38に接続されているか
-   - SCLがGPIO 21に接続されているか
+   - SCLがGPIO 20に接続されているか
    - VDDが3.3Vに接続されているか
    - GNDが接続されているか
 

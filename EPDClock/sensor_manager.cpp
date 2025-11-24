@@ -8,8 +8,8 @@
 
 namespace
 {
-constexpr uint8_t I2C_SDA_PIN = 38;
-constexpr uint8_t I2C_SCL_PIN = 21;
+// constexpr uint8_t I2C_SDA_PIN = 38; // Moved to header
+// constexpr uint8_t I2C_SCL_PIN = 20; // Moved to header
 constexpr uint8_t SCD4X_I2C_ADDRESS = 0x62;
 
 SensirionI2cScd4x scd4x;
@@ -25,7 +25,7 @@ bool SensorManager_Begin(bool wakeFromSleep)
   uint16_t error;
   char errorMessage[256];
 
-  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  Wire.begin(SENSOR_I2C_SDA_PIN, SENSOR_I2C_SCL_PIN);
   Wire.setClock(100000); // Set I2C frequency to 100kHz (Standard Mode)
   delay(100);            // Wait a bit for I2C bus to stabilize
 

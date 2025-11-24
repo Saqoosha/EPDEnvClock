@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 
+constexpr uint8_t SENSOR_I2C_SDA_PIN = 38;
+constexpr uint8_t SENSOR_I2C_SCL_PIN = 20;
+
 bool SensorManager_Begin(bool wakeFromSleep);
 void SensorManager_Read();
 bool SensorManager_ReadBlocking(unsigned long timeoutMs = 10000);

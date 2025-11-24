@@ -9,6 +9,7 @@
 #include <SPI.h>
 #include <sys/time.h>
 #include "logger.h"
+#include "sensor_manager.h"
 
 namespace
 {
@@ -417,12 +418,12 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
 
 void DeepSleepManager_HoldI2CPins()
 {
-  // I2C Pins for SCD41: SDA=38, SCL=21
+  // I2C Pins for SCD41: SDA, SCL
   // We set them to INPUT_PULLUP to keep them high during deep sleep
   // This prevents glitches that might reset the sensor
 
-  gpio_num_t sda = (gpio_num_t)38;
-  gpio_num_t scl = (gpio_num_t)21;
+  gpio_num_t sda = (gpio_num_t)SENSOR_I2C_SDA_PIN;
+  gpio_num_t scl = (gpio_num_t)SENSOR_I2C_SCL_PIN;
 
   pinMode(sda, INPUT_PULLUP);
   pinMode(scl, INPUT_PULLUP);
@@ -435,8 +436,8 @@ void DeepSleepManager_HoldI2CPins()
 
 void DeepSleepManager_ReleaseI2CPins()
 {
-  gpio_num_t sda = (gpio_num_t)38;
-  gpio_num_t scl = (gpio_num_t)21;
+  gpio_num_t sda = (gpio_num_t)SENSOR_I2C_SDA_PIN;
+  gpio_num_t scl = (gpio_num_t)SENSOR_I2C_SCL_PIN;
 
   gpio_hold_dis(sda);
   gpio_hold_dis(scl);

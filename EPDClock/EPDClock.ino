@@ -61,8 +61,8 @@ void handleSensorInitializationResult(bool wakeFromSleep)
   DisplayManager_SetStatus("Sensor FAILED!");
   LOGW(LogTag::SENSOR, "SCD41 sensor initialization failed!");
   LOGW(LogTag::SENSOR, "Please check connections:");
-  LOGW(LogTag::SENSOR, "  SDA -> GPIO 38");
-  LOGW(LogTag::SENSOR, "  SCL -> GPIO 21");
+  LOGW(LogTag::SENSOR, "  SDA -> GPIO %d", SENSOR_I2C_SDA_PIN);
+  LOGW(LogTag::SENSOR, "  SCL -> GPIO %d", SENSOR_I2C_SCL_PIN);
   LOGW(LogTag::SENSOR, "  VDD -> 3.3V");
   LOGW(LogTag::SENSOR, "  GND -> GND");
 }
