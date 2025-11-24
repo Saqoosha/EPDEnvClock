@@ -111,8 +111,6 @@ void setup()
   // Release EPD pins hold if they were held during deep sleep
   DeepSleepManager_ReleaseEPDPins();
 
-  delay(1000);
-
   // Initialize logger (default: DEBUG level, BOTH timestamp mode)
   Logger_Init(LogLevel::DEBUG, TimestampMode::BOTH);
 
@@ -139,6 +137,11 @@ void setup()
   }
 
   randomSeed(analogRead(0));
+
+  // Read battery voltage early (before WiFi/sensor operations)
+  // This ensures we measure voltage when battery is in near-idle state (no load)
+  // After deep sleep, battery voltage recovers, so measuring early gives more accurate reading
+  g_batteryVoltage = DisplayManager_ReadBatteryVoltage();
 
   // Initialize button pins
   pinMode(HOME_KEY, INPUT_PULLUP);

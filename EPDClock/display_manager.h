@@ -12,3 +12,7 @@ void DisplayManager_SetStatus(const char *message);
 bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate = false);
 void DisplayManager_FullUpdate(const NetworkState &networkState);
 uint8_t *DisplayManager_GetFrameBuffer();
+// Battery voltage measurement - should be called early in setup() before WiFi/sensor operations
+float DisplayManager_ReadBatteryVoltage();
+// Global variable to store battery voltage (measured early in setup, before WiFi/sensor operations)
+extern float g_batteryVoltage;

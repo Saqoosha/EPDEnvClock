@@ -569,19 +569,6 @@ void drawStatus(const NetworkState &networkState, float batteryVoltage)
 
 void drawStatus(const NetworkState &networkState, float batteryVoltage); // Forward declaration
 
-// Battery voltage measurement
-// Voltage divider is connected to GPIO8
-// ESP32-S3 ADC is non-linear, so we use a linear calibration equation instead of ideal divider ratio
-// Calibration data (measured):
-//   ADC 2166 = 3.712V
-//   ADC 2237 = 3.846V
-//   ADC 2293 = 4.011V
-// Linear fit equation: Vbat = 0.002334 * adc_raw - 1.353
-// This compensates for ADC non-linearity and provides ±0.6% accuracy in 3.7-4.1V range
-constexpr int BATTERY_ADC_PIN = 8;
-constexpr float BATTERY_VOLTAGE_SLOPE = 0.002334f; // Linear calibration slope
-constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;  // Linear calibration offset
-
 bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool fullUpdate)
 {
   struct tm timeinfo;
@@ -633,20 +620,9 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
   unsigned long startTime = micros();
   Paint_Clear(WHITE);
 
-  // Read battery voltage from ADC (update every minute)
-  // For 470kΩ voltage divider: first do dummy read, then read 16 times with 50µs delay
-  // Use linear calibration equation to compensate for ESP32-S3 ADC non-linearity
-  // Vbat = 0.002334 * adc_raw - 1.353
-  constexpr int NUM_SAMPLES = 16; // 8-16 times recommended for 470kΩ divider
-  analogRead(BATTERY_ADC_PIN);    // Dummy read to stabilize ADC
-  long adcSum = 0;
-  for (int i = 0; i < NUM_SAMPLES; i++)
-  {
-    adcSum += analogRead(BATTERY_ADC_PIN);
-    delayMicroseconds(50); // 50µs delay between readings for 470kΩ divider
-  }
-  int rawAdc = adcSum / NUM_SAMPLES;
-  float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
+  // Use battery voltage measured early in setup() (before WiFi/sensor operations)
+  // This ensures we measure voltage when battery is in near-idle state (no load)
+  float batteryVoltage = g_batteryVoltage;
 
   // Draw time and date only if time is available
   if (timeAvailable)
@@ -757,6 +733,23 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
 
 } // namespace
 
+// Battery voltage measurement
+// Voltage divider is connected to GPIO8
+// ESP32-S3 ADC is non-linear, so we use a linear calibration equation instead of ideal divider ratio
+// Calibration data (measured):
+//   ADC 2166 = 3.712V
+//   ADC 2237 = 3.846V
+//   ADC 2293 = 4.011V
+// Linear fit equation: Vbat = 0.002334 * adc_raw - 1.353
+// This compensates for ADC non-linearity and provides ±0.6% accuracy in 3.7-4.1V range
+constexpr int BATTERY_ADC_PIN = 8;
+constexpr float BATTERY_VOLTAGE_SLOPE = 0.002334f; // Linear calibration slope
+constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;  // Linear calibration offset
+
+// Global variable to store battery voltage (measured early in setup, before WiFi/sensor operations)
+// Defined outside namespace so it can be accessed from EPDClock.ino
+float g_batteryVoltage = 0.0f;
+
 void DisplayManager_Init(bool wakeFromSleep)
 {
   pinMode(7, OUTPUT);
@@ -840,4 +833,36 @@ void DisplayManager_FullUpdate(const NetworkState &networkState)
 uint8_t *DisplayManager_GetFrameBuffer()
 {
   return ImageBW;
+}
+
+float DisplayManager_ReadBatteryVoltage()
+{
+  // Read battery voltage from ADC
+  // Should be called early in setup() before WiFi/sensor operations
+  // For 470kΩ voltage divider: first do dummy read, then read 16 times with 50µs delay
+  // Use linear calibration equation to compensate for ESP32-S3 ADC non-linearity
+  // Vbat = 0.002334 * adc_raw - 1.353
+  //
+  // Note: After deep sleep, ADC needs to stabilize. We do a dummy read first,
+  // then read 16 times with small delays to get accurate average.
+  // This ensures we measure voltage when battery is in near-idle state (no load).
+
+  constexpr int NUM_SAMPLES = 16; // 8-16 times recommended for 470kΩ divider
+
+  // Small delay after wake from deep sleep to let ADC stabilize
+  delay(10); // 10ms delay for ADC to stabilize after deep sleep
+
+  analogRead(BATTERY_ADC_PIN); // Dummy read to stabilize ADC
+  long adcSum = 0;
+  for (int i = 0; i < NUM_SAMPLES; i++)
+  {
+    adcSum += analogRead(BATTERY_ADC_PIN);
+    delayMicroseconds(50); // 50µs delay between readings for 470kΩ divider
+  }
+  int rawAdc = adcSum / NUM_SAMPLES;
+  float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
+
+  LOGI(LogTag::DISPLAY_MGR, "Battery voltage measured: %.3fV (ADC: %d)", batteryVoltage, rawAdc);
+
+  return batteryVoltage;
 }
