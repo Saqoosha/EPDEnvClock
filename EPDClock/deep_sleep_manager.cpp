@@ -239,6 +239,15 @@ void DeepSleepManager_EnterDeepSleep()
   // Disable Bluetooth if enabled
   btStop();
 
+  // Power off SD card to save battery during deep sleep
+  // SD card can consume several mA even when idle
+  if (sdCardAvailable)
+  {
+    SD.end();  // Unmount SD card
+    digitalWrite(SD_POWER_PIN, LOW);  // Cut power to SD card
+    LOGD(LogTag::DEEPSLEEP, "SD card powered off for deep sleep");
+  }
+
   // Hold EPD pins to prevent noise
   DeepSleepManager_HoldEPDPins();
 
