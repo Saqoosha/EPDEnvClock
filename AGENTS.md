@@ -1,411 +1,112 @@
-# Arduino CLI コンパイル・アップロード手順書
+# AGENTS.md - AI Agent Guidelines for EPDEnvClock
 
-このドキュメントは、arduino-cliを使用してESP32-S3 Dev Moduleにスケッチをコンパイル・アップロードする手順を記録している。
+## Project Overview
 
-## 概要
+ESP32-S3 based e-paper clock with SCD41 CO2/temperature/humidity sensor. Uses CrowPanel 5.79" E-Paper display (792x272 pixels).
 
-ESP32-S3 Dev ModuleとEPDディスプレイ（792x272ピクセル）を使用したプロジェクトのビルド・アップロード手順。
-
-**注意**: EPDディスプレイは実際には792x272ピクセルですが、マスター/スレーブの2つのコントローラー（各396px）で制御されており、中央に4pxのギャップがあります。そのため、プログラムでは`EPD_W`を800として定義していますが、実際の表示領域は792x272です。
-
-## 必要な環境
-
-- arduino-cli（Homebrewでインストール可能）
-- ESP32-S3 Dev Module
-- USBケーブル
-
-## arduino-cliのインストール
-
-```bash
-brew install arduino-cli
-```
-
-## ボード設定の確認
-
-使用するボードの詳細を確認：
-
-```bash
-arduino-cli board details -b esp32:esp32:esp32s3
-```
-
-## コンパイル・アップロード手順
-
-### arduino-cliの動作について
-
-`arduino-cli upload`コマンドの動作：
-
-- **公式ヘルプ**: "This does NOT compile the sketch prior to upload"と明記されている
-- **実際の動作**: ビルドディレクトリ（`.build/`）に既存のバイナリがある場合、それを使用してアップロードする
-- **バイナリがない場合**: バージョンによっては自動的にコンパイルを実行する場合があるが、**保証されていない**
-
-**推奨方法**:
-
-1. **確実な方法**: `compile --upload`を使用（コンパイルとアップロードを一度に実行）
-2. **分離したい場合**: `compile`を実行してから`upload`を実行
-3. **`upload`のみ**: 既存のバイナリがある場合のみ使用（コード変更後は再コンパイルが必要）
-
-## コンパイル手順（オプション）
-
-### 1. プロジェクトディレクトリに移動
+## Build & Upload
 
 ```bash
 cd /path/to/Desktop/EPDEnvClock
-```
-
-### 2. コンパイル実行
-
-ESP32-S3 Dev Module用にコンパイル：
-
-```bash
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
-```
-
-**重要な設定パラメータ：**
-
-- **FQBN**: `esp32:esp32:esp32s3`
-- **PartitionScheme**: `huge_app` (Huge APP: 3MB No OTA/1MB SPIFFS)
-- **PSRAM**: `opi` (OPI PSRAM)
-
-### 3. コンパイル結果の確認
-
-成功すると以下のような出力が表示される：
-
-```
-Sketch uses 279665 bytes (8%) of program storage space. Maximum is 3145728 bytes.
-Global variables use 46916 bytes (14%) of dynamic memory, leaving 280764 bytes for local variables. Maximum is 327680 bytes.
-```
-
-## アップロード手順（推奨）
-
-通常はこの手順だけでコンパイルとアップロードが完了します。
-
-### 1. USBシリアルポートの確認
-
-接続されているボードを確認：
-
-```bash
-arduino-cli board list
-```
-
-出力例：
-
-```
-Port                            Protocol Type              Board Name FQBN Core
-/dev/cu.wchusbserial110         serial   Serial Port (USB) Unknown
-/dev/cu.usbserial-110           serial   Serial Port (USB) Unknown
-```
-
-### 2. アップロード実行
-
-適切なポートを指定してアップロード：
-
-```bash
-arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
-```
-
-**注意**: ポート名は環境によって異なる可能性がある。`arduino-cli board list`で確認すること。
-
-### 3. アップロード成功の確認
-
-成功すると以下のような出力が表示される：
-
-```
-Writing at 0x00010000... (100 %)
-Wrote 280032 bytes (145860 compressed) at 0x00010000 in 2.4 seconds...
-Hash of data verified.
-Hard resetting via RTS pin...
-```
-
-## ワンライナー（推奨方法）
-
-### 方法1: compile --upload（推奨）
-
-コンパイルとアップロードを一度に実行（最も確実）：
-
-```bash
-cd /path/to/Desktop/EPDEnvClock && \
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
 ```
 
-### 方法2: 分離実行
+- Always use `compile --upload` together (upload alone doesn't guarantee recompile)
+- Check port with `arduino-cli board list` - port name varies
+- Required library: `arduino-cli lib install "Sensirion I2C SCD4x"`
 
-コンパイルとアップロードを分けて実行：
+## Critical Hardware Details
 
-```bash
-cd /path/to/Desktop/EPDEnvClock && \
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock && \
-arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
-```
+### EPD Display
+- **Actual resolution**: 792x272 pixels
+- **Buffer size**: 800x272 = 27,200 bytes (EPD_W=800 for address offset)
+- **Controller**: Dual SSD1683 ICs (master/slave, 396px each, 4px gap in center)
 
-### 方法3: uploadのみ（既存バイナリがある場合）
+### SCD41 Sensor I2C Pins
+- **SDA**: GPIO 38
+- **SCL**: GPIO 20
+- **I2C Address**: 0x62
 
-**注意**: コードを変更した場合は、必ず`compile`を実行してから`upload`してください。`upload`コマンドは自動的にコンパイルを実行することを保証していません。
+### SD Card SPI Pins (HSPI bus)
+- MOSI=40, MISO=13, SCK=39, CS=10, Power=42
 
-## トラブルシューティング
+### Button Pins (active LOW)
+- HOME=2, EXIT=1, PRV=6, NEXT=4, OK=5
 
-### コンパイルエラー
+### Battery ADC
+- GPIO 8, Linear calibration: `Vbat = 0.002334 * adc_raw - 1.353`
 
-- **エラー**: "Invalid FQBN"
-  - **解決策**: FQBNの形式を確認。オプションは`:`で区切る（例: `esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi`）
-
-- **エラー**: "expected '}' before numeric constant"
-  - **解決策**: ヘッダーファイルの配列フォーマットを確認
-
-### アップロードエラー
-
-- **エラー**: "Unable to verify flash chip connection"
-  - **解決策**:
-    - 別のUSBポートを試す（`arduino-cli board list`で確認）
-    - ボードのリセットボタンを押す
-    - USBケーブルを確認（データ転送対応のケーブルか確認）
-
-- **エラー**: "This chip is ESP32-S3 not ESP32"
-  - **解決策**: FQBNを`esp32:esp32:esp32s3`に変更
-
-- **エラー**: ポートが見つからない
-  - **解決策**:
-    - USBケーブルを接続し直す
-    - `arduino-cli board list`でポートを再確認
-    - デバイスドライバが正しくインストールされているか確認
-
-## よく使うコマンド
-
-### ボード情報の確認
-
-```bash
-# 接続されているボード一覧
-arduino-cli board list
-
-# 特定のボードの詳細情報
-arduino-cli board details -b esp32:esp32:esp32s3
-
-# インストールされているコア一覧
-arduino-cli core list
-```
-
-### コンパイル + アップロード（推奨）
-
-```bash
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
-```
-
-### コンパイルのみ
-
-```bash
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
-```
-
-### アップロードのみ（既存バイナリを使用）
-
-**注意**: コード変更後は必ず`compile`を実行してから使用してください。
-
-```bash
-arduino-cli upload -p /dev/cu.wchusbserial110 --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
-```
-
-## EPDディスプレイの解像度について
-
-### 実際の表示領域
-
-- **実際の解像度**: 792x272ピクセル
-- **コントローラー構成**: マスター/スレーブの2つのSSD1683 IC
-  - 各コントローラー: 396x272ピクセルを担当
-  - 中央に4pxのギャップ（コントローラー間の接続部分）
-
-### プログラムでの定義
-
-- **EPD_W**: 800ピクセル（アドレスオフセット用）
-- **EPD_H**: 272ピクセル
-- **バッファサイズ**: 800x272 = 27,200バイト
-
-### 画像表示関数の違い
-
-- **EPD_Display()**: 800x272のビットマップデータが必要（全画面表示用）
-- **EPD_ShowPicture()**: 792x272のビットマップデータが必要（実際の表示領域）
-
-詳細は`EPD_Init.h`のコメントを参照。
-
-## ImageBW WiFi Export サーバー
-
-### サーバーの起動
-
-Python HTTPサーバーを起動して、ArduinoからImageBWデータを受信します：
-
-```bash
-cd /path/to/Desktop/EPDEnvClock
-python3 scripts/imagebw_server.py --port 8080
-```
-
-**オプション**:
-- `--port`: サーバーポート（デフォルト: 8080）
-- `--host`: サーバーホスト（デフォルト: 0.0.0.0）
-
-**バックグラウンドで起動**:
-```bash
-python3 scripts/imagebw_server.py --port 8080 &
-```
-
-### サーバーの停止
-
-実行中のサーバーを停止：
-
-```bash
-pkill -f "imagebw_server.py"
-```
-
-または、プロセスIDを確認して停止：
-
-```bash
-ps aux | grep "imagebw_server.py" | grep -v grep
-kill <PID>
-```
-
-### サーバー状態の確認
-
-サーバーが動作しているか確認：
-
-```bash
-curl http://localhost:8080/status
-```
-
-### エンドポイント
-
-- `POST /imagebw` - バイナリImageBWデータ（27,200バイト）を受信
-- `POST /imagebw/base64` - Base64エンコードされたImageBWデータを受信
-- `GET /status` - サーバー状態を確認
-
-### 設定
-
-サーバーのIPアドレスとポートは`EPDEnvClock/server_config.h`で設定：
-
-```c
-#define ENABLE_IMAGEBW_EXPORT 1  // 1で有効、0で無効
-#define SERVER_IP "192.168.11.9"  // MacのIPアドレス
-#define SERVER_PORT 8080           // サーバーポート
-```
-
-### 出力
-
-受信したImageBWデータは`output/`ディレクトリにPNGファイルとして保存されます：
-- ファイル名形式: `imagebw_YYYYMMDD_HHMMSS.png`
-- 画像サイズ: 792x272ピクセル（1ビット白黒）
-
-## プロジェクト構成
+## Code Architecture
 
 ```
 EPDEnvClock/
-├── EPDEnvClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
-│   ├── EPDEnvClock.ino          # メインスケッチ
-│   ├── EPD.h / EPD.cpp       # EPDライブラリ
-│   ├── EPD_Init.h / EPD_Init.cpp  # EPD初期化ライブラリ
-│   ├── spi.h / spi.cpp       # SPIライブラリ
-│   ├── EPDfont.h             # フォントデータ
-│   ├── wifi_config.h          # Wi-Fi設定（gitignore）
-│   ├── server_config.h        # サーバー設定
-│   └── bitmaps/               # ビットマップヘッダーファイル
-│       ├── Number_S_bitmap.h  # 数字フォント（小）
-│       ├── Number_L_bitmap.h  # 数字フォント（大）
-│       └── ...
-├── scripts/                   # Pythonスクリプト
-│   ├── convert_image.py       # 画像変換スクリプト
-│   ├── convert_imagebw.py     # ImageBW変換スクリプト
-│   ├── convert_numbers.py     # 数字画像変換スクリプト
-│   ├── create_number_bitmaps.py  # 数字ビットマップ生成スクリプト
-│   └── imagebw_server.py      # ImageBW受信サーバー
-├── assets/                    # アセット（画像ファイルなど）
-│   ├── Number L/              # 大きい数字フォント画像
-│   ├── Number M/              # 中サイズ数字フォント画像（58px高）
-│   └── Number S/              # 小さい数字フォント画像
-├── output/                    # 生成された画像出力（gitignore）
-├── docs/                      # ドキュメント
-│   └── README_IMAGEBW.md      # ImageBW関連ドキュメント
-├── AGENTS.md                  # このファイル（Arduino CLI手順書）
-└── README.md                  # プロジェクトREADME
+├── EPDEnvClock.ino      # Main sketch (setup/loop)
+├── display_manager.*    # Display rendering, layout, battery reading
+├── sensor_manager.*     # SCD41 sensor (single-shot mode with light sleep)
+├── network_manager.*    # WiFi connection, NTP sync
+├── deep_sleep_manager.* # Deep sleep, RTC state, SD/SPIFFS frame buffer
+├── font_renderer.*      # Glyph drawing with kerning support
+├── logger.*             # Logging with levels (DEBUG/INFO/WARN/ERROR)
+├── EPD.*, EPD_Init.*    # Low-level EPD driver
+├── spi.*                # Bit-banging SPI for EPD
+└── bitmaps/             # Number fonts (L/M), icons, units, kerning table
 ```
 
-**注意**: arduino-cliを使用する場合、スケッチディレクトリ`EPDEnvClock`を指定してコンパイル・アップロードを実行します。スケッチディレクトリ名と`.ino`ファイル名（`EPDEnvClock.ino`）が一致している必要があります。
+## Key Implementation Details
 
-## 参考情報
+### Power Management
+- Deep sleep ~52-54 seconds, wake at minute boundary
+- Light sleep during 5-second sensor measurement
+- WiFi/NTP sync only every 60 boots (~1 hour)
+- SD card power off during deep sleep (GPIO 42 LOW)
+- I2C pins held HIGH during sleep to keep sensor in idle mode
 
-### 公式チュートリアル
+### Display Update Flow
+1. Check if minute changed (skip update if same)
+2. Clear buffer, draw time/date/sensor values
+3. `EPD_Display()` → `EPD_PartUpdate()` (or `EPD_Update()` for full refresh)
+4. Save frame buffer to SD (or SPIFFS fallback)
+5. `EPD_DeepSleep()` before entering deep sleep
 
-Elecrow公式のCrowPanel ESP32 E-Paper 5.79インチ Arduinoチュートリアル：
+### Time Management
+- NTP server: `ntp.nict.jp`, Timezone: JST (UTC+9)
+- Time saved to RTC memory before sleep, restored on wake
+- `kNtpSyncIntervalBoots = 60` (sync every 60 wakes)
 
-- **URL**: <https://www.elecrow.com/wiki/CrowPanel_ESP32_E-Paper_5.79inch_Arduino_Tutorial.html#upload-the-code>
-- このチュートリアルには、Arduino IDEでのボード設定やアップロード手順が詳しく記載されている
+### Sensor Reading
+- Single-shot mode: send 0x219d command, light sleep 5s, read result
+- Temperature offset: 4.0°C (compensates for self-heating)
+- Falls back to periodic mode if single-shot fails
 
-### ESP32-S3 Dev Module 設定
+## Conventions
 
-公式チュートリアルに基づく推奨設定：
+- All commit messages in English
+- Sketch directory name must match .ino filename (`EPDEnvClock/EPDEnvClock.ino`)
+- `wifi_config.h` is gitignored - use `wifi_config.h.example` as template
+- Number fonts use "Baloo Bhai 2 Extra Bold" font
 
-- **Board**: ESP32S3 Dev Module
-- **Partition Scheme**: Huge APP (3MB No OTA/1MB SPIFFS)
-- **PSRAM**: OPI PSRAM
-- **CPU Frequency**: 240MHz (WiFi)
-- **Flash Mode**: QIO 80MHz
-- **Flash Size**: 4MB (32Mb)
-- **Upload Speed**: 921600
+## Common Pitfalls
 
-**Arduino IDEでの設定手順**（公式チュートリアル参照）：
+1. **SCL pin is GPIO 20**, not 21
+2. **Date format uses periods**: YYYY.MM.DD (not slashes)
+3. **Frame buffer is 27,200 bytes** (800x272, not 792x272)
+4. **EPD uses bit-banging SPI** (pins 11,12,45,46,47,48), SD uses hardware HSPI
+5. **Button pins are active LOW** with internal pullup
+6. **SD card needs power enable** (GPIO 42 HIGH) before use
 
-1. Tools → Board → esp32 → ESP32S3 Dev Module を選択
-2. Partition Scheme → "Huge APP (3MB No OTA/1MB SPIFFS)" を選択
-3. PSRAM → "OPI PSRAM" を選択
-
-### FQBN形式
-
-```
-<パッケージ>:<アーキテクチャ>:<ボード>:<オプション1>=<値1>,<オプション2>=<値2>
-```
-
-例：
-
-```
-esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi
-```
-
-## 数字フォントの生成
-
-数字フォント（Number S、Number M、Number L）は`scripts/create_number_bitmaps.py`を使用して生成します。
-
-### 使用フォント
-
-**重要**: すべての数字フォントは以下のフォントファイルを使用します：
-
-- **フォントパス**: `/path/to/Library/Fonts/BalooBhai2-ExtraBold.ttf`
-- **フォント名**: Baloo Bhai 2
-- **スタイル**: Extra Bold
-
-### Number Mフォントの生成
-
-Number Mフォント（58px高）を生成する場合：
+## ImageBW Export Server (Optional)
 
 ```bash
-cd /path/to/Desktop/EPDEnvClock
+python3 scripts/imagebw_server.py --port 8080
+```
+
+Enable in `server_config.h`: `#define ENABLE_IMAGEBW_EXPORT 1`
+
+## Font Bitmap Generation
+
+```bash
 python3 scripts/create_number_bitmaps.py \
   --font-path "/path/to/Library/Fonts/BalooBhai2-ExtraBold.ttf" \
   --font-size-px 90 \
   --output-dir "assets/Number M"
 ```
-
-**パラメータ**:
-- `--font-path`: フォントファイルのパス（必須）
-- `--font-size-px`: フォントサイズ（ピクセル）。90pxで58pxの出力高になる
-- `--output-dir`: 出力ディレクトリ
-
-### 他のフォントサイズ
-
-- **Number S**: 小さいフォント（約43px高）
-- **Number L**: 大きいフォント（約116px高）
-
-各フォントサイズに応じて`--font-size-px`を調整してください。
-
-## メモ
-
-- コンパイルとアップロードは別々に実行できる
-- コンパイル成功後、`EPDEnvClock/.build/`ディレクトリにバイナリが生成される
-- ポート名は環境によって異なるため、毎回`arduino-cli board list`で確認することを推奨
-- アップロード前にボードが正しく接続されているか確認すること
-- **重要**: arduino-cliコマンドはプロジェクトルート（`EPDEnvClock/`）から実行し、スケッチディレクトリ`EPDEnvClock`を指定する。スケッチディレクトリ名と`.ino`ファイル名（`EPDEnvClock.ino`）が一致している必要がある
-- Arduino IDEを使用する場合は、`EPDEnvClock/`ディレクトリをスケッチフォルダとして開くか、[公式チュートリアル](https://www.elecrow.com/wiki/CrowPanel_ESP32_E-Paper_5.79inch_Arduino_Tutorial.html#upload-the-code)を参照
-- **フォント生成**: 数字フォントを生成する際は、必ず`/path/to/Library/Fonts/BalooBhai2-ExtraBold.ttf`を使用すること
