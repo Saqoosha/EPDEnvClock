@@ -3,8 +3,8 @@
 #include <Arduino.h>
 #include <sys/time.h>
 
-// NTP sync interval: sync every 10 boots (~10 minutes, assuming ~1 minute per boot)
-constexpr uint32_t kNtpSyncIntervalBoots = 10;
+// NTP sync interval: sync every 60 boots (~60 minutes, assuming ~1 minute per boot)
+constexpr uint32_t kNtpSyncIntervalBoots = 60;
 
 // RTC memory structure to persist across deep sleep
 struct RTCState

@@ -193,11 +193,11 @@ void setup()
     }
   }
 
-  // Connect WiFi and sync NTP every 10 minutes
+  // Connect WiFi and sync NTP every 60 minutes (1 hour)
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
   if (DeepSleepManager_ShouldSyncWiFiNtp())
   {
-    LOGI("Setup", "WiFi/NTP sync needed (10 minute interval)");
+    LOGI("Setup", "WiFi/NTP sync needed (1 hour interval)");
 
     // Save RTC time before NTP sync to calculate drift
     DeepSleepManager_SaveRtcTimeBeforeSync();

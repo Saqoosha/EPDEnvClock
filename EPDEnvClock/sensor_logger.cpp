@@ -115,6 +115,9 @@ void SensorLogger_Init()
 
   initialized = true;
   LOGI(LogTag::SENSOR, "Sensor logger initialized (SD card)");
+
+  // Clean up old log files (older than 30 days)
+  SensorLogger_DeleteOldFiles(30);
 }
 
 bool SensorLogger_LogValues(
@@ -171,4 +174,85 @@ bool SensorLogger_LogValues(
     LOGE(LogTag::SENSOR, "Sensor logger: Write incomplete (wrote %zu of %zu)", written, strlen(jsonLine));
     return false;
   }
+}
+
+int SensorLogger_DeleteOldFiles(int maxAgeDays)
+{
+  if (!sdCardAvailable)
+  {
+    return 0;
+  }
+
+  // Get current time
+  time_t now;
+  time(&now);
+  struct tm currentTime;
+  localtime_r(&now, &currentTime);
+
+  // Calculate cutoff date (maxAgeDays ago)
+  time_t cutoffTime = now - (maxAgeDays * 24 * 60 * 60);
+
+  File dir = SD.open(kLogDirectory);
+  if (!dir || !dir.isDirectory())
+  {
+    LOGW(LogTag::SENSOR, "Sensor logger: Cannot open log directory for cleanup");
+    return 0;
+  }
+
+  int deletedCount = 0;
+  File entry;
+
+  while ((entry = dir.openNextFile()))
+  {
+    const char *name = entry.name();
+    entry.close();
+
+    // Check if filename matches pattern: sensor_log_YYYYMMDD.jsonl
+    // name() returns just the filename without path
+    if (strncmp(name, "sensor_log_", 11) != 0)
+    {
+      continue;
+    }
+
+    // Parse date from filename: sensor_log_YYYYMMDD.jsonl
+    int year, month, day;
+    if (sscanf(name, "sensor_log_%4d%2d%2d.jsonl", &year, &month, &day) != 3)
+    {
+      continue;
+    }
+
+    // Convert to time_t for comparison
+    struct tm fileTime = {0};
+    fileTime.tm_year = year - 1900;
+    fileTime.tm_mon = month - 1;
+    fileTime.tm_mday = day;
+    fileTime.tm_hour = 12; // Noon to avoid DST issues
+    time_t fileTimestamp = mktime(&fileTime);
+
+    // Delete if older than cutoff
+    if (fileTimestamp < cutoffTime)
+    {
+      char fullPath[kMaxFilenameLength];
+      snprintf(fullPath, sizeof(fullPath), "%s/%s", kLogDirectory, name);
+
+      if (SD.remove(fullPath))
+      {
+        LOGI(LogTag::SENSOR, "Sensor logger: Deleted old log file %s", name);
+        deletedCount++;
+      }
+      else
+      {
+        LOGW(LogTag::SENSOR, "Sensor logger: Failed to delete %s", name);
+      }
+    }
+  }
+
+  dir.close();
+
+  if (deletedCount > 0)
+  {
+    LOGI(LogTag::SENSOR, "Sensor logger: Deleted %d old log files (>%d days)", deletedCount, maxAgeDays);
+  }
+
+  return deletedCount;
 }
