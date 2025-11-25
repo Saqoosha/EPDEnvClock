@@ -18,22 +18,27 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 ## Critical Hardware Details
 
 ### EPD Display
+
 - **Actual resolution**: 792x272 pixels
 - **Buffer size**: 800x272 = 27,200 bytes (EPD_W=800 for address offset)
 - **Controller**: Dual SSD1683 ICs (master/slave, 396px each, 4px gap in center)
 
 ### SCD41 Sensor I2C Pins
+
 - **SDA**: GPIO 38
 - **SCL**: GPIO 20
 - **I2C Address**: 0x62
 
 ### SD Card SPI Pins (HSPI bus)
+
 - MOSI=40, MISO=13, SCK=39, CS=10, Power=42
 
 ### Button Pins (active LOW)
+
 - HOME=2, EXIT=1, PRV=6, NEXT=4, OK=5
 
 ### Battery ADC
+
 - GPIO 8, Linear calibration: `Vbat = 0.002334 * adc_raw - 1.353`
 
 ## Code Architecture
@@ -55,6 +60,7 @@ EPDEnvClock/
 ## Key Implementation Details
 
 ### Power Management
+
 - Deep sleep ~52-54 seconds, wake at minute boundary
 - Light sleep during 5-second sensor measurement
 - WiFi/NTP sync only every 60 boots (~1 hour)
@@ -62,6 +68,7 @@ EPDEnvClock/
 - I2C pins held HIGH during sleep to keep sensor in idle mode
 
 ### Display Update Flow
+
 1. Check if minute changed (skip update if same)
 2. Clear buffer, draw time/date/sensor values
 3. `EPD_Display()` → `EPD_PartUpdate()` (or `EPD_Update()` for full refresh)
@@ -69,11 +76,13 @@ EPDEnvClock/
 5. `EPD_DeepSleep()` before entering deep sleep
 
 ### Time Management
+
 - NTP server: `ntp.nict.jp`, Timezone: JST (UTC+9)
 - Time saved to RTC memory before sleep, restored on wake
 - `kNtpSyncIntervalBoots = 60` (sync every 60 wakes)
 
 ### Sensor Reading
+
 - Single-shot mode: send 0x219d command, light sleep 5s, read result
 - Temperature offset: 4.0°C (compensates for self-heating)
 - Falls back to periodic mode if single-shot fails
