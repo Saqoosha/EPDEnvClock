@@ -38,16 +38,25 @@ constexpr int16_t AdvanceWidths[] = {
 constexpr int16_t kSpacingAdjustL = -4;  // Adjust for Number L (time display)
 constexpr int16_t kSpacingAdjustM = 0;   // Adjust for Number M (date/temp display)
 
-// Get advance width in pixels for Number L
-inline int16_t getAdvanceL(uint8_t glyphIndex) {
-  if (glyphIndex > 11) return 0;
-  return (int16_t)(AdvanceWidths[glyphIndex] * 181.5f / 1000.0f + 0.5f) + kSpacingAdjustL;
+// Get advance width in pixels for Number L (float for precision)
+inline float getAdvanceLf(uint8_t glyphIndex) {
+  if (glyphIndex > 11) return 0.0f;
+  return AdvanceWidths[glyphIndex] * 181.5f / 1000.0f + kSpacingAdjustL;
 }
 
-// Get advance width in pixels for Number M
+// Get advance width in pixels for Number M (float for precision)
+inline float getAdvanceMf(uint8_t glyphIndex) {
+  if (glyphIndex > 11) return 0.0f;
+  return AdvanceWidths[glyphIndex] * 90.8f / 1000.0f + kSpacingAdjustM;
+}
+
+// Integer versions (for backward compatibility)
+inline int16_t getAdvanceL(uint8_t glyphIndex) {
+  return (int16_t)(getAdvanceLf(glyphIndex) + 0.5f);
+}
+
 inline int16_t getAdvanceM(uint8_t glyphIndex) {
-  if (glyphIndex > 11) return 0;
-  return (int16_t)(AdvanceWidths[glyphIndex] * 90.8f / 1000.0f + 0.5f) + kSpacingAdjustM;
+  return (int16_t)(getAdvanceMf(glyphIndex) + 0.5f);
 }
 
 // Kerning pair structure
@@ -208,44 +217,41 @@ constexpr KerningPair KerningTableMS[] PROGMEM = {
 constexpr size_t KerningTableMS_SIZE = sizeof(KerningTableMS) / sizeof(KerningTableMS[0]);
 
 // Font size constants (in pixels, for kerning calculation)
-constexpr float FONT_SIZE_S = 67.3f;   // Number S (height 43px)
 constexpr float FONT_SIZE_M = 90.8f;   // Number M (height 58px)
 constexpr float FONT_SIZE_L = 181.5f;  // Number L (height 116px)
 constexpr float FONT_UNITS_PER_EM = 1000.0f;
 
-// Helper function to get kerning value for a pair
+// Helper function to get kerning value for a pair (float for precision)
 // Returns kerning adjustment in pixels (positive = add space, negative = reduce space)
-inline int16_t getKerningL(uint8_t left, uint8_t right) {
+inline float getKerningLf(uint8_t left, uint8_t right) {
   for (size_t i = 0; i < KerningTableL_SIZE; i++) {
     KerningPair pair;
     memcpy_P(&pair, &KerningTableL[i], sizeof(KerningPair));
     if (pair.left == left && pair.right == right) {
-      return (int16_t)(pair.value * FONT_SIZE_L / FONT_UNITS_PER_EM + 0.5f);
+      return pair.value * FONT_SIZE_L / FONT_UNITS_PER_EM;
     }
   }
-  return 0;
+  return 0.0f;
+}
+
+inline float getKerningMf(uint8_t left, uint8_t right) {
+  for (size_t i = 0; i < KerningTableMS_SIZE; i++) {
+    KerningPair pair;
+    memcpy_P(&pair, &KerningTableMS[i], sizeof(KerningPair));
+    if (pair.left == left && pair.right == right) {
+      return pair.value * FONT_SIZE_M / FONT_UNITS_PER_EM;
+    }
+  }
+  return 0.0f;
+}
+
+// Integer versions (for backward compatibility)
+inline int16_t getKerningL(uint8_t left, uint8_t right) {
+  return (int16_t)(getKerningLf(left, right) + 0.5f);
 }
 
 inline int16_t getKerningM(uint8_t left, uint8_t right) {
-  for (size_t i = 0; i < KerningTableMS_SIZE; i++) {
-    KerningPair pair;
-    memcpy_P(&pair, &KerningTableMS[i], sizeof(KerningPair));
-    if (pair.left == left && pair.right == right) {
-      return (int16_t)(pair.value * FONT_SIZE_M / FONT_UNITS_PER_EM + 0.5f);
-    }
-  }
-  return 0;
-}
-
-inline int16_t getKerningS(uint8_t left, uint8_t right) {
-  for (size_t i = 0; i < KerningTableMS_SIZE; i++) {
-    KerningPair pair;
-    memcpy_P(&pair, &KerningTableMS[i], sizeof(KerningPair));
-    if (pair.left == left && pair.right == right) {
-      return (int16_t)(pair.value * FONT_SIZE_S / FONT_UNITS_PER_EM + 0.5f);
-    }
-  }
-  return 0;
+  return (int16_t)(getKerningMf(left, right) + 0.5f);
 }
 
 // Convert digit (0-9) to glyph index
@@ -257,21 +263,30 @@ inline uint8_t digitToGlyphIndex(uint8_t digit) {
 // Unified API - Use these functions for consistent glyph handling
 // ============================================================
 
-// Get advance width for any font size
-inline int16_t getAdvance(uint8_t glyphIndex, FontSize size) {
-  return (size == FONT_L) ? getAdvanceL(glyphIndex) : getAdvanceM(glyphIndex);
+// Get advance width for any font size (float for precision)
+inline float getAdvancef(uint8_t glyphIndex, FontSize size) {
+  return (size == FONT_L) ? getAdvanceLf(glyphIndex) : getAdvanceMf(glyphIndex);
 }
 
-// Get kerning for any font size
+// Get kerning for any font size (float for precision)
+inline float getKerningf(uint8_t left, uint8_t right, FontSize size) {
+  return (size == FONT_L) ? getKerningLf(left, right) : getKerningMf(left, right);
+}
+
+// Integer versions (for backward compatibility)
+inline int16_t getAdvance(uint8_t glyphIndex, FontSize size) {
+  return (int16_t)(getAdvancef(glyphIndex, size) + 0.5f);
+}
+
 inline int16_t getKerning(uint8_t left, uint8_t right, FontSize size) {
-  return (size == FONT_L) ? getKerningL(left, right) : getKerningM(left, right);
+  return (int16_t)(getKerningf(left, right, size) + 0.5f);
 }
 
 // Calculate width of a glyph sequence
 inline uint16_t calculateGlyphsWidth(const uint8_t* glyphs, uint8_t count, FontSize size,
                                      uint16_t (*getBitmapWidth)(uint8_t)) {
   if (count == 0) return 0;
-  
+
   uint16_t width = 0;
   for (uint8_t i = 0; i < count - 1; i++) {
     int16_t kern = getKerning(glyphs[i], glyphs[i + 1], size);

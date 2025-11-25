@@ -155,52 +155,54 @@ uint16_t getGlyphBitmapWidth(uint8_t glyphIndex, FontSize size)
 }
 
 // ============================================================
-// Glyph sequence rendering
+// Glyph sequence rendering (using float accumulation for precision)
 // ============================================================
 
 uint16_t drawGlyphSequence(const uint8_t* glyphs, uint8_t count, uint16_t x, uint16_t y, FontSize size)
 {
   if (count == 0) return x;
 
-  uint16_t currentX = x;
+  float currentX = (float)x; // Accumulate in float for precision
 
   for (uint8_t i = 0; i < count; i++)
   {
-    drawGlyph(glyphs[i], currentX, y, size);
+    // Round to integer only when drawing
+    uint16_t drawX = (uint16_t)(currentX + 0.5f);
+    drawGlyph(glyphs[i], drawX, y, size);
 
     if (i < count - 1) // Not the last glyph
     {
-      int16_t advance = getAdvance(glyphs[i], size);
-      int16_t kern = getKerning(glyphs[i], glyphs[i + 1], size);
-      LOGD(LogTag::FONT, "  [%d] glyph=%d, adv=%d, kern=%d", i, glyphs[i], advance, kern);
+      float advance = getAdvancef(glyphs[i], size);
+      float kern = getKerningf(glyphs[i], glyphs[i + 1], size);
+      LOGD(LogTag::FONT, "  [%d] glyph=%d, x=%d, adv=%.1f, kern=%.1f", i, glyphs[i], drawX, advance, kern);
       currentX += advance + kern;
     }
     else // Last glyph
     {
       uint16_t bitmapWidth = getGlyphBitmapWidth(glyphs[i], size);
-      LOGD(LogTag::FONT, "  [%d] glyph=%d, width=%d (last)", i, glyphs[i], bitmapWidth);
+      LOGD(LogTag::FONT, "  [%d] glyph=%d, x=%d, width=%d (last)", i, glyphs[i], drawX, bitmapWidth);
       currentX += bitmapWidth;
     }
   }
 
-  return currentX;
+  return (uint16_t)(currentX + 0.5f);
 }
 
 uint16_t calcGlyphSequenceWidth(const uint8_t* glyphs, uint8_t count, FontSize size)
 {
   if (count == 0) return 0;
 
-  uint16_t width = 0;
+  float width = 0.0f; // Accumulate in float for precision
 
   for (uint8_t i = 0; i < count - 1; i++)
   {
-    int16_t kern = getKerning(glyphs[i], glyphs[i + 1], size);
-    width += getAdvance(glyphs[i], size) + kern;
+    float kern = getKerningf(glyphs[i], glyphs[i + 1], size);
+    width += getAdvancef(glyphs[i], size) + kern;
   }
   // Last glyph uses bitmap width
   width += getGlyphBitmapWidth(glyphs[count - 1], size);
 
-  return width;
+  return (uint16_t)(width + 0.5f);
 }
 
 void fontRendererInit()
