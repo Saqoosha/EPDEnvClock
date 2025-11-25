@@ -408,12 +408,13 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
   LOGD(LogTag::DISPLAY_MGR, "Draw: %lu us, EPD_Display: %lu us, Update: %lu us, Total: %lu us",
        drawDuration, displayDuration, updateDuration, drawDuration + displayDuration + updateDuration);
 
-  // Save frame buffer to RTC memory for next wake up
-  DeepSleepManager_SaveFrameBuffer(ImageBW, kFrameBufferSize);
-
-  // Put EPD into deep sleep after update
+  // Put EPD into deep sleep FIRST - secure the display before any other operations
+  // EPD is sensitive and should not be disturbed by SD card or other I/O operations
   EPD_DeepSleep();
   LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep");
+
+  // Save frame buffer to SD card AFTER EPD is safely in deep sleep
+  DeepSleepManager_SaveFrameBuffer(ImageBW, kFrameBufferSize);
 
   return true;
 }
@@ -436,6 +437,8 @@ constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;  // Linear calibration offset
 // Global variable to store battery voltage (measured early in setup, before WiFi/sensor operations)
 // Defined outside namespace so it can be accessed from EPDEnvClock.ino
 float g_batteryVoltage = 0.0f;
+// Global variable to store battery raw ADC value
+int g_batteryRawADC = 0;
 
 void DisplayManager_Init(bool wakeFromSleep)
 {
@@ -549,7 +552,15 @@ float DisplayManager_ReadBatteryVoltage()
   int rawAdc = adcSum / NUM_SAMPLES;
   float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
 
+  // Store raw ADC value globally for logging
+  g_batteryRawADC = rawAdc;
+
   LOGI(LogTag::DISPLAY_MGR, "Battery voltage measured: %.3fV (ADC: %d)", batteryVoltage, rawAdc);
 
   return batteryVoltage;
+}
+
+int DisplayManager_GetBatteryRawADC()
+{
+  return g_batteryRawADC;
 }

@@ -44,6 +44,13 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 - **NTP同期**: 約60分ごとにNTPサーバーから時刻を同期（RTC時刻を保持）
 - **ImageBW Export**: WiFi経由で表示データをサーバーに送信（オプション）
 
+### データロギング機能
+
+- **センサーログ**: SDカードにJSONL形式でセンサー値を自動記録
+- **記録項目**: 日付、時刻、Unixタイムスタンプ、NTP同期からの経過時間、温度、湿度、CO2、バッテリーADC値、バッテリー電圧
+- **ファイル形式**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl`（日付ごとにファイルを分割）
+- **フォールバック**: SDカードが使用できない場合はSPIFFSに保存
+
 ### ボタン機能
 
 - **HOMEボタン (GPIO 2)**: Deep Sleepから復帰し、全画面更新を実行
@@ -74,6 +81,34 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 
 ### 1. 必要なソフトウェア
 
+#### USBシリアルドライバのインストール
+
+CrowPanel ESP32-S3は **CH340** USBシリアルチップを使用しています。
+
+**macOS (10.14 Mojave以降)**:
+追加のドライバは**不要**です。macOS 10.14以降はCH340をネイティブサポートしています。
+
+- デバイスを接続すると `/dev/cu.usbserial-*` または `/dev/cu.wchusbserial*` として認識されます
+- **注意**: 追加ドライバをインストールすると逆に問題が発生する場合があります
+
+**macOS (10.13以前)**:
+ドライバのインストールが必要です：
+
+- Homebrew: `brew install --cask wch-ch34x-usb-serial-driver`
+- または [SparkFun CH340ドライバガイド](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)
+
+**Windows**:
+通常は自動認識されます。認識されない場合：
+
+- [SparkFun CH340ドライバガイド](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)からダウンロード
+
+**Linux**:
+カーネルに組み込み済みで追加インストール不要です。認識されない場合：
+
+```bash
+sudo modprobe ch34x
+```
+
 #### arduino-cliのインストール
 
 **macOS**:
@@ -95,14 +130,37 @@ curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.
 
 ```bash
 arduino-cli core update-index
-arduino-cli core install esp32:esp32
+arduino-cli core install esp32:esp32@2.0.7
 ```
+
+**注意**: ESP32コアのバージョンは`2.0.7`を使用してください。新しいバージョンでは互換性の問題が発生する可能性があります。
 
 #### ライブラリのインストール
 
 ```bash
-# Sensirion SCD4xライブラリ
-arduino-cli lib install "Sensirion I2C SCD4x"
+# Sensirion SCD4xライブラリ（依存するSensirion Coreも自動でインストールされます）
+arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"
+```
+
+### 開発環境のバージョン情報
+
+| コンポーネント | バージョン | 備考 |
+|---------------|-----------|------|
+| arduino-cli | 最新版推奨 | `brew install arduino-cli` (macOS) |
+| ESP32 Core | 2.0.7 | `esp32:esp32@2.0.7` |
+| Sensirion I2C SCD4x | 0.4.0 | CO2/温度/湿度センサーライブラリ |
+| Sensirion Core | 0.6.0 | 依存ライブラリ（自動インストール） |
+
+#### インストール済みライブラリの確認
+
+```bash
+arduino-cli lib list
+```
+
+#### ESP32コアバージョンの確認
+
+```bash
+arduino-cli core list
 ```
 
 ### 2. Wi-Fi設定
@@ -364,6 +422,16 @@ python3 scripts/create_number_bitmaps.py \
 - **エラー**: "Invalid FQBN"
   - **解決策**: FQBNの形式を確認。オプションは`:`で区切る（例: `esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi`）
 
+- **エラー**: "SensirionI2cScd4x.h: No such file or directory"
+  - **解決策**: 正しいヘッダー名は `SensirionI2CScd4x.h`（大文字小文字に注意）
+  - ライブラリをインストール: `arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"`
+
+- **エラー**: "no matching function for call to 'SensirionI2CScd4x::begin'"
+  - **解決策**: ライブラリバージョン0.4.0では `scd4x.begin(Wire)` を使用（I2Cアドレス引数は不要）
+
+- **エラー**: "'class SensirionI2CScd4x' has no member named 'getDataReadyStatus'"
+  - **解決策**: バージョン0.4.0では `getDataReadyFlag()` に変更されました
+
 ### アップロードエラー
 
 - **エラー**: "Unable to verify flash chip connection"
@@ -376,7 +444,9 @@ python3 scripts/create_number_bitmaps.py \
   - **解決策**:
     - USBケーブルを接続し直す
     - `arduino-cli board list`でポートを再確認
-    - デバイスドライバが正しくインストールされているか確認
+    - データ転送対応のUSBケーブルを使用（充電専用ケーブルでは動作しない）
+    - macOS 10.13以前の場合はCH340ドライバをインストール（上記「USBシリアルドライバのインストール」参照）
+    - 別のUSBポートを試す
 
 ### センサーが初期化できない場合
 

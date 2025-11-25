@@ -38,6 +38,7 @@ constexpr char kFrameBufferFile[] = "/frame.bin";
 bool sdCardAvailable = false;
 bool spiffsMounted = false;
 bool initialized = false;
+struct timeval rtcTimeBeforeNtpSync = {0, 0}; // Stores RTC time before NTP sync attempt (with microseconds)
 
 void restoreTimeFromRTC()
 {
@@ -105,6 +106,9 @@ void DeepSleepManager_Init()
     rtcState.sensorInitialized = false;
     rtcState.bootCount = 1;
     rtcState.lastNtpSyncBootCount = 0;
+    rtcState.lastNtpSyncTime = 0;
+    rtcState.lastRtcDriftMs = 0;
+    rtcState.lastRtcDriftValid = false;
     rtcState.imageSize = 0;
     rtcState.savedTime = 0;
     rtcState.sleepDurationUs = 0;
@@ -284,10 +288,50 @@ bool DeepSleepManager_ShouldSyncWiFiNtp()
   return DeepSleepManager_ShouldResyncNtp(kNtpSyncIntervalBoots);
 }
 
+void DeepSleepManager_SaveRtcTimeBeforeSync()
+{
+  gettimeofday(&rtcTimeBeforeNtpSync, NULL);
+  LOGD(LogTag::DEEPSLEEP, "RTC time before NTP sync: %ld.%06ld",
+       (long)rtcTimeBeforeNtpSync.tv_sec, (long)rtcTimeBeforeNtpSync.tv_usec);
+}
+
 void DeepSleepManager_MarkNtpSynced()
 {
   rtcState.lastNtpSyncBootCount = rtcState.bootCount;
-  LOGI(LogTag::DEEPSLEEP, "NTP synced at boot count: %u", rtcState.bootCount);
+
+  // Get NTP time (after sync)
+  struct timeval ntpTime;
+  gettimeofday(&ntpTime, NULL);
+  rtcState.lastNtpSyncTime = ntpTime.tv_sec;
+
+  // Calculate drift in milliseconds (NTP time - RTC time)
+  // Positive = RTC was behind (slow), Negative = RTC was ahead (fast)
+  // Skip drift calculation on first boot or if RTC time is invalid (< year 2020)
+  constexpr time_t kMinValidTime = 1577836800; // 2020-01-01 00:00:00 UTC
+  if (rtcTimeBeforeNtpSync.tv_sec > kMinValidTime)
+  {
+    int64_t rtcMs = (int64_t)rtcTimeBeforeNtpSync.tv_sec * 1000 + rtcTimeBeforeNtpSync.tv_usec / 1000;
+    int64_t ntpMs = (int64_t)ntpTime.tv_sec * 1000 + ntpTime.tv_usec / 1000;
+    rtcState.lastRtcDriftMs = (int32_t)(ntpMs - rtcMs);
+    rtcState.lastRtcDriftValid = true;
+    LOGI(LogTag::DEEPSLEEP, "NTP synced at boot %u, RTC drift: %d ms", rtcState.bootCount, rtcState.lastRtcDriftMs);
+  }
+  else
+  {
+    rtcState.lastRtcDriftMs = 0;
+    rtcState.lastRtcDriftValid = false;
+    LOGI(LogTag::DEEPSLEEP, "NTP synced at boot %u (first sync or invalid RTC, drift skipped)", rtcState.bootCount);
+  }
+}
+
+bool DeepSleepManager_IsLastRtcDriftValid()
+{
+  return rtcState.lastRtcDriftValid;
+}
+
+int32_t DeepSleepManager_GetLastRtcDriftMs()
+{
+  return rtcState.lastRtcDriftMs;
 }
 
 bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)

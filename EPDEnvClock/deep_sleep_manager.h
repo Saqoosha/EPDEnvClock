@@ -3,8 +3,8 @@
 #include <Arduino.h>
 #include <sys/time.h>
 
-// NTP sync interval: sync every 60 boots (~60 minutes, assuming ~1 minute per boot)
-constexpr uint32_t kNtpSyncIntervalBoots = 60;
+// NTP sync interval: sync every 10 boots (~10 minutes, assuming ~1 minute per boot)
+constexpr uint32_t kNtpSyncIntervalBoots = 10;
 
 // RTC memory structure to persist across deep sleep
 struct RTCState
@@ -14,6 +14,9 @@ struct RTCState
   bool sensorInitialized = false;
   uint32_t bootCount = 0;
   uint32_t lastNtpSyncBootCount = 0; // Boot count when NTP was last synced
+  time_t lastNtpSyncTime = 0;        // Unix timestamp when NTP was last synced
+  int32_t lastRtcDriftMs = 0;        // RTC drift in milliseconds (NTP time - RTC time) at last sync
+  bool lastRtcDriftValid = false;    // True if lastRtcDriftMs contains valid measurement
   size_t imageSize = 0;              // Size of image data (uncompressed)
   time_t savedTime = 0;              // Saved epoch time before sleep
   uint64_t sleepDurationUs = 0;      // Intended sleep duration
@@ -45,8 +48,17 @@ bool DeepSleepManager_ShouldResyncNtp(uint32_t intervalBoots = kNtpSyncIntervalB
 // Returns true if WiFi connection and NTP sync are needed
 bool DeepSleepManager_ShouldSyncWiFiNtp();
 
-// Mark NTP as synced (updates lastNtpSyncBootCount)
+// Save RTC time before NTP sync (call this before attempting NTP sync)
+void DeepSleepManager_SaveRtcTimeBeforeSync();
+
+// Mark NTP as synced and calculate RTC drift (call after successful NTP sync)
 void DeepSleepManager_MarkNtpSynced();
+
+// Get RTC drift from last NTP sync (in milliseconds, positive = RTC was behind)
+int32_t DeepSleepManager_GetLastRtcDriftMs();
+
+// Check if the last RTC drift measurement is valid
+bool DeepSleepManager_IsLastRtcDriftValid();
 
 // Save frame buffer to SD card (or SPIFFS if SD card not available)
 // Returns true if successful

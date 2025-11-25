@@ -9,6 +9,7 @@
 #include "EPD_Init.h"
 #include "deep_sleep_manager.h"
 #include "logger.h"
+#include "sensor_logger.h"
 
 namespace
 {
@@ -24,6 +25,7 @@ namespace
 
   NetworkState networkState;
   bool sensorInitialized = false;
+  bool ntpSyncedThisBoot = false; // Track if NTP synced during THIS boot cycle
 
 #if ENABLE_IMAGEBW_EXPORT
 bool enableImageBWExport = true;
@@ -191,18 +193,23 @@ void setup()
     }
   }
 
-  // Connect WiFi and sync NTP only once per hour
+  // Connect WiFi and sync NTP every 10 minutes
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
   if (DeepSleepManager_ShouldSyncWiFiNtp())
   {
-    LOGI("Setup", "WiFi/NTP sync needed (1 hour interval)");
+    LOGI("Setup", "WiFi/NTP sync needed (10 minute interval)");
+
+    // Save RTC time before NTP sync to calculate drift
+    DeepSleepManager_SaveRtcTimeBeforeSync();
+
     DisplayManager_DrawSetupStatus("Connecting WiFi...");
     if (NetworkManager_ConnectWiFi(networkState, DisplayManager_DrawSetupStatus))
     {
       if (NetworkManager_SyncNtp(networkState, DisplayManager_DrawSetupStatus))
       {
-        DeepSleepManager_MarkNtpSynced(); // Mark NTP as synced in RTC memory
+        DeepSleepManager_MarkNtpSynced(); // Mark NTP as synced and calculate drift
         Logger_SetNtpSynced(true);        // Update logger with NTP sync status
+        ntpSyncedThisBoot = true;         // Mark that NTP synced THIS boot
         LOGI("Setup", "WiFi/NTP sync completed");
       }
       else
@@ -251,10 +258,48 @@ void setup()
     LOGI("Setup", "Using RTC time (no WiFi connection)");
   }
 
+  // Initialize sensor logger (after SD card is initialized by DeepSleepManager_Init)
+  SensorLogger_Init();
+
   // Show "Starting..." before final display update
   DisplayManager_DrawSetupStatus("Starting...");
   DisplayManager_SetStatus("Running");
   updateDisplay(true);
+
+  // Log sensor values to JSONL file
+  if (sensorInitialized && SensorManager_IsInitialized())
+  {
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo))
+    {
+      // Get Unix timestamp
+      time_t unixTimestamp;
+      time(&unixTimestamp);
+
+      // Get RTC drift (only valid if NTP was synced this boot AND drift was successfully calculated)
+      int32_t rtcDriftMs = DeepSleepManager_GetLastRtcDriftMs();
+      bool driftValid = ntpSyncedThisBoot && DeepSleepManager_IsLastRtcDriftValid();
+
+      float temp = SensorManager_GetTemperature();
+      float humidity = SensorManager_GetHumidity();
+      uint16_t co2 = SensorManager_GetCO2();
+      int batteryRawADC = DisplayManager_GetBatteryRawADC();
+      float batteryVoltage = g_batteryVoltage;
+
+      if (SensorLogger_LogValues(timeinfo, unixTimestamp, rtcDriftMs, driftValid, temp, humidity, co2, batteryRawADC, batteryVoltage))
+      {
+        LOGI(LogTag::SETUP, "Sensor values logged successfully");
+      }
+      else
+      {
+        LOGW(LogTag::SETUP, "Failed to log sensor values");
+      }
+    }
+    else
+    {
+      LOGW(LogTag::SETUP, "Cannot log sensor values: time not available");
+    }
+  }
 }
 
 void loop()

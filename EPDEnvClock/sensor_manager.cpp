@@ -1,7 +1,7 @@
 #include "sensor_manager.h"
 
 #include <Arduino.h>
-#include <SensirionI2cScd4x.h>
+#include <SensirionI2CScd4x.h>
 #include <Wire.h>
 #include "logger.h"
 #include "esp_sleep.h"
@@ -12,7 +12,7 @@ namespace
 // constexpr uint8_t I2C_SCL_PIN = 20; // Moved to header
 constexpr uint8_t SCD4X_I2C_ADDRESS = 0x62;
 
-SensirionI2cScd4x scd4x;
+SensirionI2CScd4x scd4x;
 
 bool sensorInitialized = false;
 float lastTemperature = 0.0f;
@@ -29,7 +29,7 @@ bool SensorManager_Begin(bool wakeFromSleep)
   Wire.setClock(100000); // Set I2C frequency to 100kHz (Standard Mode)
   delay(100);            // Wait a bit for I2C bus to stabilize
 
-  scd4x.begin(Wire, SCD4X_I2C_ADDRESS);
+  scd4x.begin(Wire);
 
   if (wakeFromSleep)
   {
@@ -95,11 +95,11 @@ void SensorManager_Read()
   char errorMessage[256];
   bool isDataReady = false;
 
-  error = scd4x.getDataReadyStatus(isDataReady);
+  error = scd4x.getDataReadyFlag(isDataReady);
   if (error)
   {
     errorToString(error, errorMessage, sizeof(errorMessage));
-    LOGE(LogTag::SENSOR, "getDataReadyStatus failed: %s", errorMessage);
+    LOGE(LogTag::SENSOR, "getDataReadyFlag failed: %s", errorMessage);
     return;
   }
 
@@ -190,11 +190,11 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
     LOGD(LogTag::SENSOR, "Waiting for data ready...");
     while (!isDataReady && (millis() - startTime < timeoutMs))
     {
-      error = scd4x.getDataReadyStatus(isDataReady);
+      error = scd4x.getDataReadyFlag(isDataReady);
       if (error)
       {
         errorToString(error, errorMessage, sizeof(errorMessage));
-        LOGE(LogTag::SENSOR, "getDataReadyStatus failed: %s", errorMessage);
+        LOGE(LogTag::SENSOR, "getDataReadyFlag failed: %s", errorMessage);
         scd4x.stopPeriodicMeasurement();
         return false;
       }
