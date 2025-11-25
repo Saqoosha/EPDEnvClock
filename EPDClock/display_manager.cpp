@@ -4,10 +4,9 @@
 
 #include "EPD.h"
 #include "EPD_Init.h"
-#include "bitmaps/Number_L_bitmap.h"
-#include "bitmaps/Number_S_bitmap.h"
-#include "bitmaps/Number_M_bitmap.h"
+#include "font_renderer.h"
 #include "bitmaps/Icon_bitmap.h"
+#include "bitmaps/Kerning_table.h"
 #include "sensor_manager.h"
 #include "deep_sleep_manager.h"
 #include "logger.h"
@@ -34,464 +33,152 @@ constexpr uint16_t kSideMargin = 16;
 constexpr uint16_t kUnitYOffset = 26;
 constexpr uint16_t kIconValueSpacing = 6;
 constexpr uint16_t kValueUnitSpacing = 5;
-constexpr uint16_t kCharSpacing = 5;
-constexpr uint16_t kDateCharSpacing = 6;
-constexpr uint16_t kTimeCharSpacing = 10;
+// Spacing is now handled by font advance widths + kerning from Kerning_table.h
 
 uint8_t ImageBW[kFrameBufferSize];
 
 char g_statusMessage[64] = "Init...";
 
-void drawBitmapCorrect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t *bitmap)
+// ============================================================
+// Glyph Sequence Builders
+// ============================================================
+
+// Build temperature glyph sequence: "23.5" -> [2, 3, PERIOD, 5]
+uint8_t buildTemperatureGlyphs(float temp, uint8_t *glyphs)
 {
-  const uint16_t widthByte = (width + 7) / 8;
-
-  for (uint16_t row = 0; row < height; row++)
-  {
-    uint16_t pixel_x = x;
-
-    for (uint16_t col_byte = 0; col_byte < widthByte; col_byte++)
-    {
-      uint8_t bitmap_byte = bitmap[row * widthByte + col_byte];
-
-      for (uint8_t bit = 0; bit < 8; bit++)
-      {
-        if (pixel_x >= x + width)
-        {
-          break;
-        }
-
-        if (bitmap_byte & (0x80 >> bit))
-        {
-          Paint_SetPixel(pixel_x, y + row, BLACK);
-        }
-        else
-        {
-          Paint_SetPixel(pixel_x, y + row, WHITE);
-        }
-
-        pixel_x++;
-      }
-    }
-  }
-}
-
-const uint8_t *NumberBitmaps[] = {
-    Number0, Number1, Number2, Number3, Number4,
-    Number5, Number6, Number7, Number8, Number9};
-
-const uint16_t NumberWidths[] = {
-    Number0_WIDTH, Number1_WIDTH, Number2_WIDTH, Number3_WIDTH, Number4_WIDTH,
-    Number5_WIDTH, Number6_WIDTH, Number7_WIDTH, Number8_WIDTH, Number9_WIDTH};
-
-const uint8_t *NumberLBitmaps[] = {
-    NumberL0, NumberL1, NumberL2, NumberL3, NumberL4,
-    NumberL5, NumberL6, NumberL7, NumberL8, NumberL9};
-
-const uint16_t NumberLWidths[] = {
-    NumberL0_WIDTH, NumberL1_WIDTH, NumberL2_WIDTH, NumberL3_WIDTH, NumberL4_WIDTH,
-    NumberL5_WIDTH, NumberL6_WIDTH, NumberL7_WIDTH, NumberL8_WIDTH, NumberL9_WIDTH};
-
-const uint8_t *NumberMBitmaps[] = {
-    NumberM0, NumberM1, NumberM2, NumberM3, NumberM4,
-    NumberM5, NumberM6, NumberM7, NumberM8, NumberM9};
-
-const uint16_t NumberMWidths[] = {
-    NumberM0_WIDTH, NumberM1_WIDTH, NumberM2_WIDTH, NumberM3_WIDTH, NumberM4_WIDTH,
-    NumberM5_WIDTH, NumberM6_WIDTH, NumberM7_WIDTH, NumberM8_WIDTH, NumberM9_WIDTH};
-
-// Helper for drawing digits
-void drawDigitGeneric(uint8_t digit, uint16_t x, uint16_t y,
-                      const uint8_t **bitmaps, const uint16_t *widths, uint16_t height, uint16_t defaultWidth)
-{
-  if (digit > 9) return;
-
-  uint16_t width = (widths != nullptr) ? widths[digit] : defaultWidth;
-  drawBitmapCorrect(x, y, width, height, bitmaps[digit]);
-}
-
-void drawDigit(uint8_t digit, uint16_t x, uint16_t y)
-{
-  drawDigitGeneric(digit, x, y, NumberBitmaps, NumberWidths, Number0_HEIGHT, 0);
-}
-
-void drawDigitL(uint8_t digit, uint16_t x, uint16_t y)
-{
-  drawDigitGeneric(digit, x, y, NumberLBitmaps, NumberLWidths, NumberL0_HEIGHT, 0);
-}
-
-void drawDigitM(uint8_t digit, uint16_t x, uint16_t y)
-{
-  drawDigitGeneric(digit, x, y, NumberMBitmaps, NumberMWidths, NumberM0_HEIGHT, 0);
-}
-
-uint16_t getDigitWidth(uint8_t digit)
-{
-  if (digit > 9) return 0;
-  return NumberWidths[digit];
-}
-
-uint16_t getDigitLWidth(uint8_t digit)
-{
-  if (digit > 9)
-    return 0;
-  return NumberLWidths[digit];
-}
-
-void drawPeriod(uint16_t x, uint16_t y)
-{
-  drawBitmapCorrect(x, y, NumberPeriod_WIDTH, NumberPeriod_HEIGHT, NumberPeriod);
-}
-
-void drawPeriodM(uint16_t x, uint16_t y)
-{
-  drawBitmapCorrect(x, y, NumberMPeriod_WIDTH, NumberMPeriod_HEIGHT, NumberMPeriod);
-}
-
-uint16_t getDigitMWidth(uint8_t digit)
-{
-  if (digit > 9) return 0;
-  return NumberMWidths[digit];
-}
-
-uint16_t calculateTemperatureWidth(float temp)
-{
-  uint16_t width = 0;
-
-  // Clamp negative values to 0 (no minus glyph available)
   if (temp < 0.0f)
-  {
     temp = 0.0f;
-  }
 
-  // Format: "23.5" (rounded to 1 decimal place)
   int tempInt = (int)temp;
-  int tempDecimal = (int)((temp - tempInt) * 10 + 0.5f); // Round to nearest
-
-  // Handle carry-over when decimal rounds to 10
+  int tempDecimal = (int)((temp - tempInt) * 10 + 0.5f);
   if (tempDecimal >= 10)
   {
     tempInt++;
     tempDecimal = 0;
   }
 
-  // First digit (tens)
-  uint8_t digit = tempInt / 10;
-  width += getDigitMWidth(digit) + kCharSpacing;
+  glyphs[0] = tempInt / 10;
+  glyphs[1] = tempInt % 10;
+  glyphs[2] = GLYPH_PERIOD;
+  glyphs[3] = tempDecimal;
+  return 4;
+}
 
-  // Second digit (ones)
-  digit = tempInt % 10;
-  width += getDigitMWidth(digit) + kCharSpacing;
+// Build integer glyph sequence: 1234 -> [1, 2, 3, 4]
+uint8_t buildIntegerGlyphs(int value, uint8_t *glyphs)
+{
+  if (value < 0)
+    value = 0;
+  if (value == 0)
+  {
+    glyphs[0] = 0;
+    return 1;
+  }
 
-  // Period
-  width += NumberMPeriod_WIDTH + kCharSpacing;
+  uint8_t temp[4];
+  uint8_t count = 0;
+  while (value > 0 && count < 4)
+  {
+    temp[count++] = value % 10;
+    value /= 10;
+  }
+  // Reverse
+  for (uint8_t i = 0; i < count; i++)
+    glyphs[i] = temp[count - 1 - i];
+  return count;
+}
 
-  // Decimal digit
-  digit = tempDecimal;
-  width += getDigitMWidth(digit);
+// Build date glyph sequence: 2024.11.25 -> [2,0,2,4, PERIOD, 1,1, PERIOD, 2,5]
+uint8_t buildDateGlyphs(uint16_t year, uint8_t month, uint8_t day, uint8_t *glyphs)
+{
+  glyphs[0] = (year / 1000) % 10;
+  glyphs[1] = (year / 100) % 10;
+  glyphs[2] = (year / 10) % 10;
+  glyphs[3] = year % 10;
+  glyphs[4] = GLYPH_PERIOD;
+  glyphs[5] = month / 10;
+  glyphs[6] = month % 10;
+  glyphs[7] = GLYPH_PERIOD;
+  glyphs[8] = day / 10;
+  glyphs[9] = day % 10;
+  return 10;
+}
 
-  return width;
+// Build time glyph sequence: 12:34 -> [1,2, COLON, 3,4] or 9:34 -> [9, COLON, 3,4]
+uint8_t buildTimeGlyphs(uint8_t hour, uint8_t minute, uint8_t *glyphs)
+{
+  uint8_t count = 0;
+  if (hour >= 10)
+    glyphs[count++] = hour / 10;
+  glyphs[count++] = hour % 10;
+  glyphs[count++] = GLYPH_COLON;
+  glyphs[count++] = minute / 10;
+  glyphs[count++] = minute % 10;
+  return count;
+}
+
+// ============================================================
+// Drawing Functions (using glyph sequences)
+// ============================================================
+
+uint16_t calculateTemperatureWidth(float temp)
+{
+  uint8_t glyphs[4];
+  uint8_t count = buildTemperatureGlyphs(temp, glyphs);
+  return calcGlyphSequenceWidth(glyphs, count, FONT_M);
 }
 
 uint16_t drawTemperature(float temp, uint16_t x, uint16_t y)
 {
-  uint16_t currentX = x;
-
-  // Clamp negative values to 0 (no minus glyph available)
-  if (temp < 0.0f)
-  {
-    temp = 0.0f;
-  }
-
-  // Format: "23.5" (rounded to 1 decimal place)
-  int tempInt = (int)temp;
-  int tempDecimal = (int)((temp - tempInt) * 10 + 0.5f); // Round to nearest
-
-  // Handle carry-over when decimal rounds to 10
-  if (tempDecimal >= 10)
-  {
-    tempInt++;
-    tempDecimal = 0;
-  }
-
-  // First digit (tens)
-  uint8_t digit = tempInt / 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kCharSpacing;
-
-  // Second digit (ones)
-  digit = tempInt % 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kCharSpacing;
-
-  // Period
-  drawPeriodM(currentX, y);
-  currentX += NumberMPeriod_WIDTH + kCharSpacing;
-
-  // Decimal digit
-  digit = tempDecimal;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit);
-
-  return currentX; // Return end position
+  uint8_t glyphs[4];
+  uint8_t count = buildTemperatureGlyphs(temp, glyphs);
+  LOGD(LogTag::DISPLAY_MGR, "drawTemp: %.1f at x=%d", temp, x);
+  return drawGlyphSequence(glyphs, count, x, y, FONT_M);
 }
 
 uint16_t calculateIntegerWidth(int value)
 {
-  uint16_t width = 0;
-
-  // Handle negative values
-  if (value < 0) value = 0; // Clamp to 0 for display
-
-  // Extract digits
-  int remaining = value;
-  int digits[4] = {0}; // Max 4 digits (e.g., 9999)
-  int digitCount = 0;
-
-  // Extract digits from right to left
-  if (remaining == 0)
-  {
-    digits[0] = 0;
-    digitCount = 1;
-  }
-  else
-  {
-    while (remaining > 0 && digitCount < 4)
-    {
-      digits[digitCount] = remaining % 10;
-      remaining /= 10;
-      digitCount++;
-    }
-  }
-
-  // Calculate width from left to right (reverse order)
-  for (int i = digitCount - 1; i >= 0; i--)
-  {
-    width += getDigitMWidth(digits[i]);
-    if (i > 0) // Add spacing except after last digit
-    {
-      width += kCharSpacing;
-    }
-  }
-
-  return width;
+  uint8_t glyphs[4];
+  uint8_t count = buildIntegerGlyphs(value, glyphs);
+  return calcGlyphSequenceWidth(glyphs, count, FONT_M);
 }
 
 uint16_t drawInteger(int value, uint16_t x, uint16_t y)
 {
-  uint16_t currentX = x;
-
-  // Handle negative values
-  if (value < 0) value = 0; // Clamp to 0 for display
-
-  // Extract digits
-  int remaining = value;
-  int digits[4] = {0}; // Max 4 digits (e.g., 9999)
-  int digitCount = 0;
-
-  // Extract digits from right to left
-  if (remaining == 0)
-  {
-    digits[0] = 0;
-    digitCount = 1;
-  }
-  else
-  {
-    while (remaining > 0 && digitCount < 4)
-    {
-      digits[digitCount] = remaining % 10;
-      remaining /= 10;
-      digitCount++;
-    }
-  }
-
-  // Draw digits from left to right (reverse order)
-  for (int i = digitCount - 1; i >= 0; i--)
-  {
-    drawDigitM(digits[i], currentX, y);
-    currentX += getDigitMWidth(digits[i]) + kCharSpacing;
-  }
-
-  // Subtract last spacing since it's after the last digit
-  if (digitCount > 0)
-  {
-    currentX -= kCharSpacing;
-  }
-
-  return currentX; // Return end position
-}
-
-void drawColon(uint16_t x, uint16_t y)
-{
-  drawBitmapCorrect(x, y, NumberLColon_WIDTH, NumberLColon_HEIGHT, NumberLColon);
+  uint8_t glyphs[4];
+  uint8_t count = buildIntegerGlyphs(value, glyphs);
+  LOGD(LogTag::DISPLAY_MGR, "drawInt: %d at x=%d", value, x);
+  return drawGlyphSequence(glyphs, count, x, y, FONT_M);
 }
 
 uint16_t calculateDateWidth(uint16_t year, uint8_t month, uint8_t day)
 {
-  uint16_t width = 0;
-
-  // Year: 4 digits
-  width += getDigitMWidth((year / 1000) % 10) + kDateCharSpacing;
-  width += getDigitMWidth((year / 100) % 10) + kDateCharSpacing;
-  width += getDigitMWidth((year / 10) % 10) + kDateCharSpacing;
-  width += getDigitMWidth(year % 10) + kDateCharSpacing;
-
-  // Period
-  width += NumberMPeriod_WIDTH + kDateCharSpacing;
-
-  // Month: 2 digits
-  width += getDigitMWidth(month / 10) + kDateCharSpacing;
-  width += getDigitMWidth(month % 10) + kDateCharSpacing;
-
-  // Period
-  width += NumberMPeriod_WIDTH + kDateCharSpacing;
-
-  // Day: 2 digits
-  width += getDigitMWidth(day / 10) + kDateCharSpacing;
-  width += getDigitMWidth(day % 10);
-
-  return width;
-}
-
-void drawDate(uint16_t year, uint8_t month, uint8_t day, uint16_t x, uint16_t y)
-{
-  uint16_t currentX = x;
-
-  uint8_t digit = (year / 1000) % 10;
-  drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + kDateCharSpacing;
-
-  digit = (year / 100) % 10;
-  drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + kDateCharSpacing;
-
-  digit = (year / 10) % 10;
-  drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + kDateCharSpacing;
-
-  digit = year % 10;
-  drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + kDateCharSpacing;
-
-  drawPeriod(currentX, y);
-  currentX += NumberPeriod_WIDTH + kDateCharSpacing;
-
-  digit = month / 10;
-  drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + kDateCharSpacing;
-
-  digit = month % 10;
-  drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + kDateCharSpacing;
-
-  drawPeriod(currentX, y);
-  currentX += NumberPeriod_WIDTH + kDateCharSpacing;
-
-  digit = day / 10;
-  drawDigit(digit, currentX, y);
-  currentX += getDigitWidth(digit) + kDateCharSpacing;
-
-  digit = day % 10;
-  drawDigit(digit, currentX, y);
+  uint8_t glyphs[10];
+  uint8_t count = buildDateGlyphs(year, month, day, glyphs);
+  return calcGlyphSequenceWidth(glyphs, count, FONT_M);
 }
 
 void drawDateM(uint16_t year, uint8_t month, uint8_t day, uint16_t x, uint16_t y)
 {
-  uint16_t currentX = x;
-
-  uint8_t digit = (year / 1000) % 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kDateCharSpacing;
-
-  digit = (year / 100) % 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kDateCharSpacing;
-
-  digit = (year / 10) % 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kDateCharSpacing;
-
-  digit = year % 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kDateCharSpacing;
-
-  drawPeriodM(currentX, y);
-  currentX += NumberMPeriod_WIDTH + kDateCharSpacing;
-
-  digit = month / 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kDateCharSpacing;
-
-  digit = month % 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kDateCharSpacing;
-
-  drawPeriodM(currentX, y);
-  currentX += NumberMPeriod_WIDTH + kDateCharSpacing;
-
-  digit = day / 10;
-  drawDigitM(digit, currentX, y);
-  currentX += getDigitMWidth(digit) + kDateCharSpacing;
-
-  digit = day % 10;
-  drawDigitM(digit, currentX, y);
+  uint8_t glyphs[10];
+  uint8_t count = buildDateGlyphs(year, month, day, glyphs);
+  LOGD(LogTag::DISPLAY_MGR, "drawDateM: %04d.%02d.%02d at x=%d", year, month, day, x);
+  drawGlyphSequence(glyphs, count, x, y, FONT_M);
 }
 
 uint16_t calculateTimeWidth(uint8_t hour, uint8_t minute)
 {
-  uint16_t width = 0;
-
-  // Hour 10s (only if hour >= 10)
-  if (hour >= 10)
-  {
-    width += getDigitLWidth(hour / 10);
-    width += kTimeCharSpacing;
-  }
-
-  // Hour 1s
-  width += getDigitLWidth(hour % 10);
-  width += kTimeCharSpacing;
-
-  // Colon
-  width += NumberLColon_WIDTH;
-  width += kTimeCharSpacing;
-
-  // Minute 10s
-  width += getDigitLWidth(minute / 10);
-  width += kTimeCharSpacing;
-
-  // Minute 1s
-  width += getDigitLWidth(minute % 10);
-
-  return width;
+  uint8_t glyphs[5];
+  uint8_t count = buildTimeGlyphs(hour, minute, glyphs);
+  return calcGlyphSequenceWidth(glyphs, count, FONT_L);
 }
 
 void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
 {
-  uint16_t currentX = x;
-
-  // Hour 10s (only if hour >= 10)
-  if (hour >= 10)
-  {
-    uint8_t digit = hour / 10;
-    drawDigitL(digit, currentX, y);
-    currentX += getDigitLWidth(digit) + kTimeCharSpacing;
-  }
-
-  // Hour 1s
-  uint8_t digit = hour % 10;
-  drawDigitL(digit, currentX, y);
-  currentX += getDigitLWidth(digit) + kTimeCharSpacing;
-
-  drawColon(currentX, y);
-  currentX += NumberLColon_WIDTH + kTimeCharSpacing;
-
-  digit = minute / 10;
-  drawDigitL(digit, currentX, y);
-  currentX += getDigitLWidth(digit) + kTimeCharSpacing;
-
-  digit = minute % 10;
-  drawDigitL(digit, currentX, y);
+  uint8_t glyphs[5];
+  uint8_t count = buildTimeGlyphs(hour, minute, glyphs);
+  LOGD(LogTag::DISPLAY_MGR, "drawTime: %02d:%02d at x=%d", hour, minute, x);
+  drawGlyphSequence(glyphs, count, x, y, FONT_L);
 }
 
 void drawStatus(const NetworkState &networkState, float batteryVoltage)

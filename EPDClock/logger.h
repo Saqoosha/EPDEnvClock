@@ -20,6 +20,7 @@ namespace LogTag
   constexpr const char *NETWORK = "Network";
   constexpr const char *SENSOR = "Sensor";
   constexpr const char *DISPLAY_MGR = "Display";  // DISPLAY conflicts with Arduino.h macro
+  constexpr const char *FONT = "Font";
   constexpr const char *DEEPSLEEP = "DeepSleep";
   constexpr const char *IMAGEBW = "ImageBW";
 }
