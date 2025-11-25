@@ -1,10 +1,10 @@
-# EPDClock
+# EPDEnvClock
 
 ESP32-S3ベースの電子ペーパー時計プロジェクト。SCD41 CO2/温度/湿度センサーを統合し、省電力設計で長時間動作します。
 
 ## 📋 概要
 
-EPDClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x272ピクセル）を使用した時計アプリケーションです。以下の機能を提供します：
+EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x272ピクセル）を使用した時計アプリケーションです。以下の機能を提供します：
 
 - **時刻・日付表示**: 大きな数字で時刻と日付を表示
 - **環境センサー**: SCD41センサーによるCO2、温度、湿度の測定と表示
@@ -15,22 +15,26 @@ EPDClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x2
 ## ✨ 主な機能
 
 ### 表示機能
+
 - **時刻表示**: 大きな数字フォント（Number L）で時刻を表示
 - **日付表示**: 中サイズ数字フォント（Number M）で日付を表示
 - **センサー値表示**: 温度、湿度、CO2濃度をアイコン付きで表示
 - **ステータス表示**: WiFi接続状態、NTP同期状態、起動回数などを表示
 
 ### センサー機能
+
 - **SCD41統合**: CO2（400-5000ppm）、温度（-10〜+60°C）、湿度（0-100%RH）を測定
 - **省電力モード**: Idle Single-Shotモードで約1.5mAの消費電流
 - **温度補正**: 自己発熱を補正する温度オフセット機能
 
 ### 省電力機能
+
 - **Deep Sleep**: 約1分間隔でDeep Sleepに入り、消費電流を最小化
 - **EPD Deep Sleep**: ディスプレイもDeep Sleepモードに入り、電力消費を削減
 - **フレームバッファ保存**: SDカードまたはSPIFFSにフレームバッファを保存し、起動時に復元
 
 ### ネットワーク機能
+
 - **WiFi接続**: 自動的にWiFiに接続
 - **NTP同期**: 約60分ごとにNTPサーバーから時刻を同期
 - **ImageBW Export**: WiFi経由で表示データをサーバーに送信（オプション）
@@ -38,14 +42,17 @@ EPDClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x2
 ## 🔧 ハードウェア要件
 
 ### CrowPanelに内蔵されているコンポーネント
+
 - **ESP32-S3 Dev Module**
 - **EPDディスプレイ**: 792x272ピクセル（マスター/スレーブ2つのSSD1683 ICで制御）
 - **SDカードスロット**: フレームバッファ保存用（オプション、SPIFFSより書き込み寿命が長い）
 
 ### 外部コンポーネント（オプション）
+
 - **SCD41センサー**: CO2/温度/湿度センサー（オプション）
 
 ### 接続ピン（SCD41センサー）
+
 - **SCD41 VDD** → ESP32-S3 **3.3V**
 - **SCD41 GND** → ESP32-S3 **GND**
 - **SCD41 SDA** → ESP32-S3 **GPIO 38**
@@ -60,11 +67,13 @@ EPDClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x2
 #### arduino-cliのインストール
 
 **macOS**:
+
 ```bash
 brew install arduino-cli
 ```
 
 **Linux**:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
 ```
@@ -73,12 +82,14 @@ curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.
 [公式サイト](https://arduino.github.io/arduino-cli/latest/installation/)からインストーラーをダウンロード
 
 #### ESP32ボードサポートのインストール
+
 ```bash
 arduino-cli core update-index
 arduino-cli core install esp32:esp32
 ```
 
 #### ライブラリのインストール
+
 ```bash
 # Sensirion SCD4xライブラリ
 arduino-cli lib install "Sensirion I2C SCD4x"
@@ -86,7 +97,7 @@ arduino-cli lib install "Sensirion I2C SCD4x"
 
 ### 2. Wi-Fi設定
 
-`EPDClock/wifi_config.h.example`をコピーして`EPDClock/wifi_config.h`を作成し、Wi-Fi認証情報を設定：
+`EPDEnvClock/wifi_config.h.example`をコピーして`EPDEnvClock/wifi_config.h`を作成し、Wi-Fi認証情報を設定：
 
 ```cpp
 #define WIFI_SSID "your_wifi_ssid"
@@ -97,7 +108,7 @@ arduino-cli lib install "Sensirion I2C SCD4x"
 
 ### 3. ImageBW Export設定（オプション）
 
-`EPDClock/server_config.h`でサーバーのIPアドレスとポートを設定：
+`EPDEnvClock/server_config.h`でサーバーのIPアドレスとポートを設定：
 
 ```cpp
 #define ENABLE_IMAGEBW_EXPORT 1  // 1で有効、0で無効
@@ -110,13 +121,14 @@ arduino-cli lib install "Sensirion I2C SCD4x"
 ### 推奨方法（コンパイル + アップロード）
 
 ```bash
-cd /path/to/EPDClock
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDClock
+cd /path/to/EPDEnvClock
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
 ```
 
-**注意**: `/path/to/EPDClock`を実際のプロジェクトディレクトリのパスに置き換えてください。ポート名（`/dev/cu.wchusbserial110`）も環境に応じて変更してください。
+**注意**: `/path/to/EPDEnvClock`を実際のプロジェクトディレクトリのパスに置き換えてください。ポート名（`/dev/cu.wchusbserial110`）も環境に応じて変更してください。
 
 **重要な設定パラメータ**:
+
 - **FQBN**: `esp32:esp32:esp32s3`
 - **PartitionScheme**: `huge_app` (Huge APP: 3MB No OTA/1MB SPIFFS)
 - **PSRAM**: `opi` (OPI PSRAM)
@@ -156,8 +168,9 @@ arduino-cli board list
 表示データをWiFi経由でサーバーに送信する場合：
 
 1. **サーバーの起動**（Python 3が必要）:
+
 ```bash
-cd /path/to/EPDClock
+cd /path/to/EPDEnvClock
 python3 scripts/imagebw_server.py --port 8080
 ```
 
@@ -174,9 +187,9 @@ python3 scripts/imagebw_server.py --port 8080
 ## 📁 プロジェクト構造
 
 ```
-EPDClock/
-├── EPDClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
-│   ├── EPDClock.ino          # メインスケッチ
+EPDEnvClock/
+├── EPDEnvClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
+│   ├── EPDEnvClock.ino          # メインスケッチ
 │   ├── EPD.h / EPD.cpp       # EPDライブラリ
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD初期化ライブラリ
 │   ├── spi.h / spi.cpp       # SPIライブラリ
@@ -218,12 +231,14 @@ EPDClock/
 ## 📚 ドキュメント
 
 ### 主要ドキュメント
+
 - **[AGENTS.md](./AGENTS.md)** - Arduino CLIコンパイル・アップロード手順書
 - **[docs/README.md](./docs/README.md)** - ドキュメントインデックス
 - **[docs/README_IMAGEBW.md](./docs/README_IMAGEBW.md)** - ImageBW WiFi Export機能の使い方
 - **[docs/README_SCD41.md](./docs/README_SCD41.md)** - SCD41センサー統合ガイド
 
 ### コードレビュー
+
 - **[docs/reviews/SENSOR_MANAGEMENT_REVIEW.md](./docs/reviews/SENSOR_MANAGEMENT_REVIEW.md)** - センサー管理の実装状況と改善提案
 
 ## 🔋 省電力設計
@@ -259,15 +274,16 @@ EPDClock/
 ### Number Mフォントの生成例
 
 ```bash
-cd /path/to/EPDClock
+cd /path/to/EPDEnvClock
 python3 scripts/create_number_bitmaps.py \
   --font-path "/path/to/fonts/BalooBhai2-ExtraBold.ttf" \
   --font-size-px 90 \
   --output-dir "assets/Number M"
 ```
 
-**注意**: 
-- `/path/to/EPDClock`を実際のプロジェクトディレクトリのパスに置き換えてください
+**注意**:
+
+- `/path/to/EPDEnvClock`を実際のプロジェクトディレクトリのパスに置き換えてください
 - `/path/to/fonts/BalooBhai2-ExtraBold.ttf`を実際のフォントファイルのパスに置き換えてください
 
 詳細は [AGENTS.md](./AGENTS.md) の「数字フォントの生成」セクションを参照してください。
@@ -296,11 +312,11 @@ python3 scripts/create_number_bitmaps.py \
 ### SCD41センサー仕様
 
 - **I2Cアドレス**: 0x62 (デフォルト)
-- **測定範囲**: 
+- **測定範囲**:
   - CO2: 400-5000ppm
   - 温度: -10～+60°C
   - 湿度: 0-100%RH
-- **精度**: 
+- **精度**:
   - CO2: ±(40ppm+5%)
   - 温度: ±0.8°C (15-35°Cの範囲)
   - 湿度: ±6%RH (15-35°C、20-65%RHの範囲)
@@ -315,13 +331,13 @@ python3 scripts/create_number_bitmaps.py \
 ### アップロードエラー
 
 - **エラー**: "Unable to verify flash chip connection"
-  - **解決策**: 
+  - **解決策**:
     - 別のUSBポートを試す（`arduino-cli board list`で確認）
     - ボードのリセットボタンを押す
     - USBケーブルを確認（データ転送対応のケーブルか確認）
 
 - **エラー**: ポートが見つからない
-  - **解決策**: 
+  - **解決策**:
     - USBケーブルを接続し直す
     - `arduino-cli board list`でポートを再確認
     - デバイスドライバが正しくインストールされているか確認

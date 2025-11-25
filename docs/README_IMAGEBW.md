@@ -24,7 +24,7 @@ python3 imagebw_server.py --port 8080
 
 ### 3. Arduinoのアップロード
 1. `server_config.h`をMacのIPアドレスに合わせて更新
-2. Arduino IDEまたはarduino-cliで`EPDClock.ino`をアップロード
+2. Arduino IDEまたはarduino-cliで`EPDEnvClock.ino`をアップロード
 
 ## 動作
 
@@ -33,7 +33,7 @@ python3 imagebw_server.py --port 8080
 - `IMAGEBW_EXPORT_INTERVAL`で定期的な送信も可能（デフォルト: 60秒）
 
 ### 設定オプション
-`EPDClock.ino`内で以下の設定が可能：
+`EPDEnvClock.ino`内で以下の設定が可能：
 ```cpp
 bool enableImageBWExport = true;  // falseで無効化
 const unsigned long IMAGEBW_EXPORT_INTERVAL = 60000; // 0で自動送信を無効化

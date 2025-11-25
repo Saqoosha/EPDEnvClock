@@ -85,7 +85,7 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python convert_icon.py <icon_png_path> [output_header_path]")
         print("Example: python convert_icon.py assets/icon_temp.png")
-        print("         python convert_icon.py assets/icon_temp.png EPDClock/bitmaps/Icon_temp_bitmap.h")
+        print("         python convert_icon.py assets/icon_temp.png EPDEnvClock/bitmaps/Icon_temp_bitmap.h")
         sys.exit(1)
 
     image_path = sys.argv[1]

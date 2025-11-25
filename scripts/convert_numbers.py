@@ -206,10 +206,10 @@ def main():
 
     header_content.append("#endif")
 
-    # Write header file (to EPDClock/bitmaps directory)
+    # Write header file (to EPDEnvClock/bitmaps directory)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    output_file = os.path.join(project_root, "EPDClock", "bitmaps", output_filename)
+    output_file = os.path.join(project_root, "EPDEnvClock", "bitmaps", output_filename)
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, 'w') as f:
         f.write("\n".join(header_content))

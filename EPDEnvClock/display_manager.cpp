@@ -434,7 +434,7 @@ constexpr float BATTERY_VOLTAGE_SLOPE = 0.002334f; // Linear calibration slope
 constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;  // Linear calibration offset
 
 // Global variable to store battery voltage (measured early in setup, before WiFi/sensor operations)
-// Defined outside namespace so it can be accessed from EPDClock.ino
+// Defined outside namespace so it can be accessed from EPDEnvClock.ino
 float g_batteryVoltage = 0.0f;
 
 void DisplayManager_Init(bool wakeFromSleep)

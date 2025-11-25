@@ -11,10 +11,10 @@ SCD41 CO2/温度/湿度センサーの管理方法と実装状況をまとめた
 ### ファイル構成
 
 ```
-EPDClock/
+EPDEnvClock/
 ├── sensor_manager.h          # センサー管理API（ヘッダー）
 ├── sensor_manager.cpp        # センサー管理実装
-└── EPDClock.ino             # メインスケッチ（初期化・読み取り呼び出し）
+└── EPDEnvClock.ino             # メインスケッチ（初期化・読み取り呼び出し）
 ```
 
 ### モジュール設計
@@ -176,7 +176,7 @@ void SensorManager_WakeUp();
 
 ## 🔍 使用箇所
 
-### EPDClock.ino
+### EPDEnvClock.ino
 
 1. **初期化** (`setup()`)
    ```cpp

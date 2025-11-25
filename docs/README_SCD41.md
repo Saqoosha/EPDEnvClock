@@ -113,7 +113,7 @@ Sensirionの公式データシート（[SCD4x Datasheet](https://admin.sensirion
 
 **オフセット値の調整**:
 
-`EPDClock/sensor_manager.cpp`の以下の定数を変更することで、オフセット値を調整できます：
+`EPDEnvClock/sensor_manager.cpp`の以下の定数を変更することで、オフセット値を調整できます：
 
 ```cpp
 constexpr float TEMPERATURE_OFFSET_C = -3.0f;  // デフォルト: -3.0°C
