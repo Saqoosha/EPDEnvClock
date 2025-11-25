@@ -26,6 +26,7 @@ constexpr int SD_MOSI_PIN = 40;  // SD card MOSI
 constexpr int SD_MISO_PIN = 13;  // SD card MISO
 constexpr int SD_SCK_PIN = 39;   // SD card SCK
 constexpr int SD_CS_PIN = 10;    // SD card CS
+constexpr int SD_POWER_PIN = 42; // SD card power enable
 
 // Create an instance of SPIClass for SD card SPI communication (HSPI bus)
 SPIClass SD_SPI = SPIClass(HSPI);
@@ -117,6 +118,11 @@ void DeepSleepManager_Init()
   }
 
   // Try to initialize SD card first (preferred for write endurance)
+  // Enable SD card power (GPIO 42 must be HIGH for SD card to work)
+  pinMode(SD_POWER_PIN, OUTPUT);
+  digitalWrite(SD_POWER_PIN, HIGH);
+  delay(10); // Brief delay to ensure power stability
+
   // Initialize HSPI bus for SD card with specified pins
   SD_SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN);
 
