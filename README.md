@@ -10,34 +10,44 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 - **環境センサー**: SCD41センサーによるCO2、温度、湿度の測定と表示
 - **省電力設計**: Deep Sleepモードにより長時間動作（約1分間隔で更新）
 - **WiFi接続**: NTP時刻同期とImageBWデータのWiFiエクスポート機能
-- **フレームバッファ保存**: Deep Sleep後も前回の表示を復元
+- **バッテリー電圧監視**: リアルタイムでバッテリー電圧を表示
+- **ボタンウェイクアップ**: HOMEボタンでDeep Sleepから復帰して全画面更新
 
 ## ✨ 主な機能
 
 ### 表示機能
 
-- **時刻表示**: 大きな数字フォント（Number L）で時刻を表示
-- **日付表示**: 中サイズ数字フォント（Number M）で日付を表示
+- **時刻表示**: 大きな数字フォント（Number L）で時刻を表示（カーニング対応）
+- **日付表示**: 中サイズ数字フォント（Number M）で日付を表示（YYYY.MM.DD形式）
 - **センサー値表示**: 温度、湿度、CO2濃度をアイコン付きで表示
-- **ステータス表示**: WiFi接続状態、NTP同期状態、起動回数などを表示
+- **ステータス表示**: バッテリー電圧、WiFi接続状態、NTP同期状態、稼働時間、空きメモリなどを表示
 
 ### センサー機能
 
 - **SCD41統合**: CO2（400-5000ppm）、温度（-10〜+60°C）、湿度（0-100%RH）を測定
-- **省電力モード**: Idle Single-Shotモードで約1.5mAの消費電流
-- **温度補正**: 自己発熱を補正する温度オフセット機能
+- **省電力モード**: Single-Shotモードで約1.5mAの消費電流（Light Sleep中に測定完了を待機）
+- **温度補正**: 自己発熱を補正する温度オフセット機能（4.0°C）
+- **自動キャリブレーション**: ASC（Automatic Self-Calibration）対応
 
 ### 省電力機能
 
 - **Deep Sleep**: 約1分間隔でDeep Sleepに入り、消費電流を最小化
+- **Light Sleep**: センサー測定待機中（約5秒）はLight Sleepで消費電力を削減
 - **EPD Deep Sleep**: ディスプレイもDeep Sleepモードに入り、電力消費を削減
 - **フレームバッファ保存**: SDカードまたはSPIFFSにフレームバッファを保存し、起動時に復元
+- **SDカード電源制御**: Deep Sleep中はSDカードの電源をオフにして消費電流を削減
+- **WiFi省電力**: NTP同期は約60分（60回の起動）ごとに1回のみ実行
 
 ### ネットワーク機能
 
 - **WiFi接続**: 自動的にWiFiに接続
-- **NTP同期**: 約60分ごとにNTPサーバーから時刻を同期
+- **NTP同期**: 約60分ごとにNTPサーバーから時刻を同期（RTC時刻を保持）
 - **ImageBW Export**: WiFi経由で表示データをサーバーに送信（オプション）
+
+### ボタン機能
+
+- **HOMEボタン (GPIO 2)**: Deep Sleepから復帰し、全画面更新を実行
+- **その他のボタン**: EXIT, PRV, NEXT, OKボタンもサポート（将来の拡張用）
 
 ## 🔧 ハードウェア要件
 
@@ -151,14 +161,15 @@ arduino-cli board list
 2. **初期化**: センサーとWiFiの初期化が行われます（初回起動時）
 3. **表示更新**: 約1分ごとに表示が更新されます
 4. **Deep Sleep**: 表示更新後、Deep Sleepモードに入ります
+5. **ボタン復帰**: HOMEボタンを押すとDeep Sleepから復帰して全画面更新
 
 ### 表示内容
 
 画面レイアウト（792x272ピクセル）：
 
-- **上部（y=4）**: ステータス情報（WiFi接続状態、NTP同期状態、稼働時間、空きメモリ）
-- **左側上部（y=55）**: 日付（YYYY/MM/DD形式、中サイズ数字）
-- **左側中央（y=133）**: 時刻（HH:MM形式、大きな数字）
+- **上部（y=4）**: ステータス情報（バッテリー電圧、WiFi接続状態、NTP同期状態、稼働時間、空きメモリ）
+- **左側上部（y=45）**: 日付（YYYY.MM.DD形式、中サイズ数字）
+- **左側中央（y=123）**: 時刻（H:MM または HH:MM形式、大きな数字）
 - **右側上部（y=33）**: 温度（アイコン + 値 + °C単位）
 - **右側中央（y=114）**: 湿度（アイコン + 値 + %単位）
 - **右側下部（y=193）**: CO2濃度（アイコン + 値 + ppm単位）
@@ -190,42 +201,46 @@ python3 scripts/imagebw_server.py --port 8080
 EPDEnvClock/
 ├── EPDEnvClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
 │   ├── EPDEnvClock.ino          # メインスケッチ
-│   ├── EPD.h / EPD.cpp       # EPDライブラリ
+│   ├── EPD.h / EPD.cpp          # EPDライブラリ
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD初期化ライブラリ
-│   ├── spi.h / spi.cpp       # SPIライブラリ
+│   ├── spi.h / spi.cpp          # SPIライブラリ
 │   ├── display_manager.h / display_manager.cpp  # 表示管理
+│   ├── font_renderer.h / font_renderer.cpp      # フォントレンダラー（カーニング対応）
 │   ├── sensor_manager.h / sensor_manager.cpp    # センサー管理
 │   ├── network_manager.h / network_manager.cpp  # ネットワーク管理
 │   ├── deep_sleep_manager.h / deep_sleep_manager.cpp  # Deep Sleep管理
 │   ├── imagebw_export.h / imagebw_export.cpp    # ImageBW Export
-│   ├── logger.h / logger.cpp # ログ機能
-│   ├── EPDfont.h             # フォントデータ
-│   ├── wifi_config.h          # Wi-Fi設定（gitignore）
-│   ├── server_config.h        # サーバー設定
-│   └── bitmaps/               # ビットマップヘッダーファイル
-│       ├── Number_L_bitmap.h  # 数字フォント（大）
-│       ├── Number_M_bitmap.h   # 数字フォント（中）
-│       ├── Number_S_bitmap.h   # 数字フォント（小）
-│       └── ...
-├── scripts/                   # Pythonスクリプト
-│   ├── convert_image.py       # 画像変換スクリプト
-│   ├── convert_imagebw.py     # ImageBW変換スクリプト
-│   ├── convert_numbers.py     # 数字画像変換スクリプト
-│   ├── create_number_bitmaps.py  # 数字ビットマップ生成スクリプト
-│   └── imagebw_server.py      # ImageBW受信サーバー
-├── assets/                    # アセット（画像ファイルなど）
-│   ├── Number L/              # 大きい数字フォント画像
-│   ├── Number M/              # 中サイズ数字フォント画像（58px高）
-│   └── Number S/              # 小さい数字フォント画像
-├── docs/                      # ドキュメント
-│   ├── README.md              # ドキュメントインデックス
-│   ├── README_IMAGEBW.md      # ImageBW機能ガイド
-│   ├── README_SCD41.md        # SCD41センサーガイド
-│   └── reviews/               # コードレビュー
+│   ├── logger.h / logger.cpp    # ログ機能（タグ/レベル対応）
+│   ├── EPDfont.h                # フォントデータ（12pxテキスト用）
+│   ├── wifi_config.h            # Wi-Fi設定（gitignore）
+│   ├── server_config.h          # サーバー設定
+│   └── bitmaps/                 # ビットマップヘッダーファイル
+│       ├── Number_L_bitmap.h    # 数字フォント（大）
+│       ├── Number_M_bitmap.h    # 数字フォント（中）
+│       ├── Kerning_table.h      # カーニングテーブル
+│       ├── Icon_temp_bitmap.h   # 温度アイコン
+│       ├── Icon_humidity_bitmap.h  # 湿度アイコン
+│       ├── Icon_co2_bitmap.h    # CO2アイコン
+│       └── Unit_*.h             # 単位ビットマップ
+├── scripts/                     # Pythonスクリプト
+│   ├── convert_image.py         # 画像変換スクリプト
+│   ├── convert_imagebw.py       # ImageBW変換スクリプト
+│   ├── convert_numbers.py       # 数字画像変換スクリプト
+│   ├── create_number_bitmaps.py # 数字ビットマップ生成スクリプト
+│   └── imagebw_server.py        # ImageBW受信サーバー
+├── assets/                      # アセット（画像ファイルなど）
+│   ├── Number L/                # 大きい数字フォント画像
+│   ├── Number M/                # 中サイズ数字フォント画像（58px高）
+│   └── Number S/                # 小さい数字フォント画像
+├── docs/                        # ドキュメント
+│   ├── README.md                # ドキュメントインデックス
+│   ├── README_IMAGEBW.md        # ImageBW機能ガイド
+│   ├── README_SCD41.md          # SCD41センサーガイド
+│   └── reviews/                 # コードレビュー
 │       └── SENSOR_MANAGEMENT_REVIEW.md
-├── output/                    # 生成された画像出力（gitignore）
-├── AGENTS.md                  # Arduino CLI手順書
-└── README.md                  # このファイル
+├── output/                      # 生成された画像出力（gitignore）
+├── AGENTS.md                    # Arduino CLI手順書
+└── README.md                    # このファイル
 ```
 
 ## 📚 ドキュメント
@@ -245,20 +260,31 @@ EPDEnvClock/
 
 ### 消費電流
 
-- **SCD41**: 約1.5mA（Idle Single-Shotモード、1分おき測定）
-- **ESP32-S3**: Deep Sleep中は数十〜数百µA
-- **合計**: Deep Sleep中は約0.2〜0.3mA
+| 状態 | 消費電流 |
+|------|----------|
+| SCD41 Idle Single-Shot | 約1.5mA |
+| ESP32-S3 Deep Sleep | 約0.2〜0.3mA |
+| ESP32-S3 Light Sleep (センサー測定待機中) | 約2〜3mA |
+| ESP32-S3 Active (WiFi含む) | 約80〜150mA |
 
 ### バッテリー持続時間（1480mAhバッテリーの場合）
 
-- **平均消費電流**: 約2.5mA
+- **平均消費電流**: 約2.5mA（WiFi同期は1時間に1回）
 - **持続時間**: 1480mAh ÷ 2.5mA ≈ **592時間（約25日）**
 
 ### Deep Sleepサイクル
 
-- **更新間隔**: 約1分
-- **動作時間**: 約10-15秒（センサー読み取り、表示更新、WiFi処理）
-- **Deep Sleep時間**: 約45-50秒
+- **更新間隔**: 約1分（毎分0秒に更新）
+- **動作時間**: 約6-8秒（センサー測定5秒 + 表示更新 + 初期化）
+- **Deep Sleep時間**: 約52-54秒
+- **WiFi接続**: 60回の起動ごとに1回（約1時間ごと）
+
+### 省電力最適化
+
+1. **センサー測定中のLight Sleep**: Single-Shot測定の5秒待機中にLight Sleepを使用
+2. **WiFi接続の最小化**: NTP同期は1時間ごと、それ以外はRTC時刻を使用
+3. **SDカード電源制御**: Deep Sleep中はSDカード電源をオフ
+4. **EPD Deep Sleep**: ディスプレイをDeep Sleepモードに移行
 
 ## 🎨 フォント生成
 
@@ -312,6 +338,9 @@ python3 scripts/create_number_bitmaps.py \
 ### SCD41センサー仕様
 
 - **I2Cアドレス**: 0x62 (デフォルト)
+- **I2Cピン**: SDA=GPIO 38, SCL=GPIO 20
+- **測定モード**: Single-Shot（Light Sleep中に5秒待機）
+- **温度オフセット**: 4.0°C（自己発熱補正）
 - **測定範囲**:
   - CO2: 400-5000ppm
   - 温度: -10～+60°C
@@ -320,6 +349,13 @@ python3 scripts/create_number_bitmaps.py \
   - CO2: ±(40ppm+5%)
   - 温度: ±0.8°C (15-35°Cの範囲)
   - 湿度: ±6%RH (15-35°C、20-65%RHの範囲)
+
+### ロガー機能
+
+- **ログレベル**: DEBUG, INFO, WARN, ERROR
+- **タイムスタンプ**: ブート時間、日時、または両方を表示
+- **タグ**: Setup, Loop, Network, Sensor, Display, Font, DeepSleep, ImageBW
+- **ANSIカラー**: ログレベルに応じた色分け表示
 
 ## 🐛 トラブルシューティング
 
@@ -346,7 +382,7 @@ python3 scripts/create_number_bitmaps.py \
 
 1. **接続を確認**:
    - SDAがGPIO 38に接続されているか
-   - SCLがGPIO 21に接続されているか
+   - SCLがGPIO 20に接続されているか
    - VDDが3.3Vに接続されているか
    - GNDが接続されているか
 
@@ -354,7 +390,25 @@ python3 scripts/create_number_bitmaps.py \
    - I2Cスキャナーを使用してセンサーが検出されるか確認
    - デフォルトI2Cアドレス: 0x62
 
+3. **電源の確認**:
+   - SCD41の電源電圧が3.3V±0.1Vか確認
+   - Deep Sleep後にセンサーがリセットされていないか確認
+
 詳細は [docs/README_SCD41.md](./docs/README_SCD41.md) の「トラブルシューティング」セクションを参照してください。
+
+### 時刻が正しくない場合
+
+1. **WiFi接続を確認**: NTP同期にはWiFi接続が必要
+2. **RTC時刻の確認**: Deep Sleep後はRTC時刻から復元される
+3. **タイムゾーン**: JST（UTC+9）が設定されている
+
+### SDカードが認識されない場合
+
+1. **SDカードのフォーマット**: FAT32でフォーマット
+2. **電源ピン**: GPIO 42がHIGHになっているか確認
+3. **SPIピン**: MOSI=40, MISO=13, SCK=39, CS=10
+
+**注意**: SDカードが使用できない場合、SPIFFSにフォールバックしますが、書き込み寿命が限られます。
 
 ## 📝 ライセンス
 
