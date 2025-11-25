@@ -243,8 +243,8 @@ void DeepSleepManager_EnterDeepSleep()
   // SD card can consume several mA even when idle
   if (sdCardAvailable)
   {
-    SD.end();  // Unmount SD card
-    digitalWrite(SD_POWER_PIN, LOW);  // Cut power to SD card
+    SD.end();                        // Unmount SD card
+    digitalWrite(SD_POWER_PIN, LOW); // Cut power to SD card
     LOGD(LogTag::DEEPSLEEP, "SD card powered off for deep sleep");
   }
 
