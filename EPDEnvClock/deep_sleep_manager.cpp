@@ -189,26 +189,20 @@ uint64_t DeepSleepManager_CalculateSleepDuration()
   const uint8_t currentMinute = timeinfo.tm_min;
   const uint8_t currentSecond = timeinfo.tm_sec;
 
-  // Calculate seconds until next minute
+  // Calculate seconds until next minute boundary
   uint32_t secondsUntilNextMinute = 60 - currentSecond;
 
-  // Add buffer to ensure we wake up before the minute changes
-  // Boot + EPD restore + time display takes ~2.5 seconds, so we need 3 second buffer
-  constexpr uint32_t kWakeupBufferSeconds = 3;
-  if (secondsUntilNextMinute > kWakeupBufferSeconds)
-  {
-    secondsUntilNextMinute -= kWakeupBufferSeconds;
-  }
-  else
-  {
-    // If we're very close to the minute boundary, sleep for a shorter time
-    secondsUntilNextMinute = 1;
-  }
+  // We want to wake up AFTER the minute changes, not before
+  // Add a small buffer (2 seconds) to ensure we're past the minute boundary
+  // Example: at 23:56:05, sleep for 55+2=57 seconds, wake at 23:57:02
+  //          Then display shows 23:57 (correct!)
+  constexpr uint32_t kWakeupAfterBoundary = 2;
+  uint32_t sleepSeconds = secondsUntilNextMinute + kWakeupAfterBoundary;
 
   LOGD(LogTag::DEEPSLEEP, "Current time: %d:%02d:%02d, Sleeping for %u seconds",
-       timeinfo.tm_hour, currentMinute, currentSecond, secondsUntilNextMinute);
+       timeinfo.tm_hour, currentMinute, currentSecond, sleepSeconds);
 
-  return secondsUntilNextMinute * 1000000ULL; // Convert to microseconds
+  return sleepSeconds * 1000000ULL; // Convert to microseconds
 }
 
 void DeepSleepManager_EnterDeepSleep()
