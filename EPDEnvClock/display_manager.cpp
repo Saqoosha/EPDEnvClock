@@ -556,11 +556,17 @@ bool DisplayManager_UpdateTimeOnly(const NetworkState &networkState, bool forceU
   }
 
   unsigned long startTime = micros();
-  Paint_Clear(WHITE);
+
+  // Don't clear entire buffer - keep previous sensor values from restored frame buffer
+  // Only clear the time/date/status areas (left side of screen)
+  // Status bar: y=0-20, full width
+  // Time/Date area: x=0-480, y=20-272 (left side only, sensor icons start at x=482)
+  EPD_ClearWindows(0, 0, kScreenWidth, 20, WHITE);  // Status bar
+  EPD_ClearWindows(0, 20, 480, kScreenHeight, WHITE);  // Time/date area only
 
   float batteryVoltage = g_batteryVoltage;
 
-  // Draw time and date only (no sensor values yet)
+  // Draw time and date only (sensor values remain from previous frame buffer)
   if (timeAvailable)
   {
     const uint8_t hour = timeinfo.tm_hour;
