@@ -192,11 +192,12 @@ uint64_t DeepSleepManager_CalculateSleepDuration()
   // Calculate seconds until next minute
   uint32_t secondsUntilNextMinute = 60 - currentSecond;
 
-  // Add a small buffer (2 seconds) to ensure we wake up before the minute changes
-  // This gives us time to initialize and update the display
-  if (secondsUntilNextMinute > 2)
+  // Add buffer to ensure we wake up before the minute changes
+  // Boot + EPD restore + time display takes ~2.5 seconds, so we need 3 second buffer
+  constexpr uint32_t kWakeupBufferSeconds = 3;
+  if (secondsUntilNextMinute > kWakeupBufferSeconds)
   {
-    secondsUntilNextMinute -= 2;
+    secondsUntilNextMinute -= kWakeupBufferSeconds;
   }
   else
   {
