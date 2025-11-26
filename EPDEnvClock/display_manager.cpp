@@ -620,6 +620,10 @@ void DisplayManager_UpdateSensorOnly(const NetworkState &networkState)
 {
   unsigned long startTime = micros();
 
+  // Clear sensor area before drawing new values (right side of screen)
+  // This prevents old values from showing through when digits change
+  EPD_ClearWindows(480, 20, kScreenWidth, kScreenHeight, WHITE);
+
   // Draw sensor icons and values (frame buffer already has time/date from previous phase)
   if (SensorManager_IsInitialized())
   {
