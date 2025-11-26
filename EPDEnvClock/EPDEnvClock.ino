@@ -164,34 +164,9 @@ void setup()
   DisplayManager_Init(wakeFromSleep);
   DisplayManager_DrawSetupStatus("EPD Ready!");
 
-  // Initialize sensor
-  // handleSensorInitializationResult calls SensorManager_Begin internally
+  // Initialize sensor (but don't read yet - we'll read after showing time)
   handleSensorInitializationResult(wakeFromSleep);
   sensorInitialized = SensorManager_IsInitialized();
-
-  // Read sensor once after initialization to get initial data for first display
-  // We do this here (blocking) to ensure we have data before the display update starts.
-  // This prevents blocking DURING the display update, which causes EPD noise.
-  if (sensorInitialized)
-  {
-    LOGD("Sensor", "Reading sensor data (wakeFromSleep=%s)...", wakeFromSleep ? "true" : "false");
-    unsigned long readStartTime = millis();
-
-    // Single-shot mode always takes ~5 seconds (measureSingleShot() internally waits 5s)
-    // Use 6 second timeout to allow for measurement completion
-    unsigned long timeoutMs = 6000;
-
-    if (SensorManager_ReadBlocking(timeoutMs))
-    {
-      unsigned long readDuration = millis() - readStartTime;
-      LOGI("Sensor", "Sensor data read successfully in %lums", readDuration);
-    }
-    else
-    {
-      unsigned long readDuration = millis() - readStartTime;
-      LOGW("Sensor", "Failed to read sensor data after %lums (timeout was %lums)", readDuration, timeoutMs);
-    }
-  }
 
   // Connect WiFi and sync NTP every 60 minutes (1 hour)
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
@@ -261,10 +236,46 @@ void setup()
   // Initialize sensor logger (after SD card is initialized by DeepSleepManager_Init)
   SensorLogger_Init();
 
-  // Show "Starting..." before final display update
+  // === Two-phase display update ===
+  // Phase 1: Show time immediately (user sees clock right away)
   DisplayManager_DrawSetupStatus("Starting...");
   DisplayManager_SetStatus("Running");
-  updateDisplay(true);
+  if (DisplayManager_UpdateTimeOnly(networkState, true))
+  {
+    LOGI(LogTag::SETUP, "Phase 1: Time displayed");
+  }
+
+  // Phase 2: Read sensor (takes ~5 seconds with light sleep), then update display with sensor values
+  if (sensorInitialized)
+  {
+    LOGD("Sensor", "Reading sensor data (wakeFromSleep=%s)...", wakeFromSleep ? "true" : "false");
+    unsigned long readStartTime = millis();
+
+    // Single-shot mode takes ~5 seconds (light sleep during measurement)
+    unsigned long timeoutMs = 6000;
+
+    if (SensorManager_ReadBlocking(timeoutMs))
+    {
+      unsigned long readDuration = millis() - readStartTime;
+      LOGI("Sensor", "Sensor data read successfully in %lums", readDuration);
+    }
+    else
+    {
+      unsigned long readDuration = millis() - readStartTime;
+      LOGW("Sensor", "Failed to read sensor data after %lums (timeout was %lums)", readDuration, timeoutMs);
+    }
+
+    // Phase 2: Add sensor values to display
+    DisplayManager_UpdateSensorOnly(networkState);
+    LOGI(LogTag::SETUP, "Phase 2: Sensor values displayed");
+    exportFrameBuffer();
+  }
+  else
+  {
+    // No sensor - just finalize the time-only display
+    EPD_DeepSleep();
+    LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep (no sensor)");
+  }
 
   // Log sensor values to JSONL file
   if (sensorInitialized && SensorManager_IsInitialized())
