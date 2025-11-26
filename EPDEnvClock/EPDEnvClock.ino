@@ -162,13 +162,8 @@ void setup()
   // Initialize display manager with wakeFromSleep flag
   // This determines if we do full init or minimal wake-up
   DisplayManager_Init(wakeFromSleep);
-  DisplayManager_DrawSetupStatus("EPD Ready!");
 
-  // Initialize sensor (but don't read yet - we'll read after showing time)
-  handleSensorInitializationResult(wakeFromSleep);
-  sensorInitialized = SensorManager_IsInitialized();
-
-  // Connect WiFi and sync NTP every 60 minutes (1 hour)
+  // Connect WiFi and sync NTP FIRST if needed (need time before displaying clock)
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
   if (DeepSleepManager_ShouldSyncWiFiNtp())
   {
@@ -233,17 +228,20 @@ void setup()
     LOGI("Setup", "Using RTC time (no WiFi connection)");
   }
 
-  // Initialize sensor logger (after SD card is initialized by DeepSleepManager_Init)
-  SensorLogger_Init();
-
   // === Two-phase display update ===
-  // Phase 1: Show time immediately (user sees clock right away)
-  DisplayManager_DrawSetupStatus("Starting...");
+  // Phase 1: Show time IMMEDIATELY (before sensor init - user sees clock right away)
   DisplayManager_SetStatus("Running");
   if (DisplayManager_UpdateTimeOnly(networkState, true))
   {
     LOGI(LogTag::SETUP, "Phase 1: Time displayed");
   }
+
+  // Now initialize sensor (after time is displayed)
+  handleSensorInitializationResult(wakeFromSleep);
+  sensorInitialized = SensorManager_IsInitialized();
+
+  // Initialize sensor logger (after SD card is initialized by DeepSleepManager_Init)
+  SensorLogger_Init();
 
   // Phase 2: Read sensor (takes ~5 seconds with light sleep), then update display with sensor values
   if (sensorInitialized)
