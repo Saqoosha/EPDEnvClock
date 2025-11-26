@@ -561,7 +561,7 @@ bool DisplayManager_UpdateTimeOnly(const NetworkState &networkState, bool forceU
   // Only clear the time/date/status areas (left side of screen)
   // Status bar: y=0-20, full width
   // Time/Date area: x=0-480, y=20-272 (left side only, sensor icons start at x=482)
-  EPD_ClearWindows(0, 0, kScreenWidth, 20, WHITE);  // Status bar
+  // EPD_ClearWindows(0, 0, kScreenWidth, 20, WHITE);  // Status bar
   EPD_ClearWindows(0, 20, 480, kScreenHeight, WHITE);  // Time/date area only
 
   float batteryVoltage = g_batteryVoltage;
