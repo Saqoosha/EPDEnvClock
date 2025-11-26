@@ -193,10 +193,9 @@ uint64_t DeepSleepManager_CalculateSleepDuration()
   uint32_t secondsUntilNextMinute = 60 - currentSecond;
 
   // We want to wake up AFTER the minute changes, not before
-  // Add a small buffer (2 seconds) to ensure we're past the minute boundary
-  // Example: at 23:56:05, sleep for 55+2=57 seconds, wake at 23:57:02
+  // Example: at 23:56:05, sleep for 55 seconds, wake at 23:57:00
   //          Then display shows 23:57 (correct!)
-  constexpr uint32_t kWakeupAfterBoundary = 2;
+  constexpr uint32_t kWakeupAfterBoundary = 0;
   uint32_t sleepSeconds = secondsUntilNextMinute + kWakeupAfterBoundary;
 
   LOGD(LogTag::DEEPSLEEP, "Current time: %d:%02d:%02d, Sleeping for %u seconds",
