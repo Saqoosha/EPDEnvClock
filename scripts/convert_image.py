@@ -98,7 +98,7 @@ def generate_c_array(bitmap_data, array_name="ImageData"):
 def main():
     if len(sys.argv) < 2:
         print("Usage: python convert_image.py <image_path> [output_width] [output_height]")
-        print("Example: python convert_image.py /path/to/Desktop/Document.png 800 272")
+        print("Example: python convert_image.py /path/to/image.png 800 272")
         sys.exit(1)
 
     image_path = sys.argv[1]

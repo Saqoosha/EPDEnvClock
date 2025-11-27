@@ -7,7 +7,7 @@ ESP32-S3 based e-paper clock with SCD41 CO2/temperature/humidity sensor. Uses Cr
 ## Build & Upload
 
 ```bash
-cd /path/to/Desktop/EPDEnvClock
+cd /path/to/EPDEnvClock
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
 ```
 
@@ -115,7 +115,7 @@ Enable in `server_config.h`: `#define ENABLE_IMAGEBW_EXPORT 1`
 
 ```bash
 python3 scripts/create_number_bitmaps.py \
-  --font-path "/path/to/Library/Fonts/BalooBhai2-ExtraBold.ttf" \
+  --font-path "/path/to/BalooBhai2-ExtraBold.ttf" \
   --font-size-px 90 \
   --output-dir "assets/Number M"
 ```

@@ -19,7 +19,7 @@ RTC_DATA_ATTR RTCState rtcState;
 
 // SD card pin configuration (SPI interface)
 // Using HSPI bus (separate from EPD display which uses bit-banging SPI)
-// Based on official 5.79" E-Paper example: /path/to/Downloads/Examples/5.79_TF/5.79_TF.ino
+// Based on official 5.79" E-Paper example from CrowPanel
 // EPD uses bit-banging SPI on pins 11, 12, 45, 46, 47, 48
 // SD card uses hardware HSPI on different pins
 constexpr int SD_MOSI_PIN = 40;  // SD card MOSI
