@@ -593,7 +593,9 @@ bool DisplayManager_UpdateTimeOnly(const NetworkState &networkState, bool forceU
     EPD_ShowString(kDateX, kDateY, "WiFi Failed", fontSize, BLACK);
   }
 
-  drawStatus(networkState, batteryVoltage);
+  // Status line will be updated shortly after by DrawSetupStatus("Initializing Sensor...")
+  // or by UpdateSensorOnly(), so we skip it here to avoid unnecessary flash.
+  // drawStatus(networkState, batteryVoltage);
 
   const unsigned long drawDuration = micros() - startTime;
 
@@ -650,6 +652,9 @@ void DisplayManager_UpdateSensorOnly(const NetworkState &networkState)
     uint16_t co2EndX = drawInteger(co2, kCO2ValueX, kCO2ValueY);
     drawBitmapCorrect(co2EndX + kValueUnitSpacing, kCO2ValueY + kUnitYOffset, UnitPpm_WIDTH, UnitPpm_HEIGHT, UnitPpm);
   }
+
+  // Redraw status line to clear "Initializing Sensor..." message
+  drawStatus(networkState, g_batteryVoltage);
 
   const unsigned long drawDuration = micros() - startTime;
 
