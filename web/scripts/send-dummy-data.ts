@@ -5,9 +5,10 @@
  * Usage: npx tsx scripts/send-dummy-data.ts [options]
  *
  * Options:
- *   --url=<url>     API base URL (default: http://localhost:4321)
- *   --count=<n>     Number of data points to send (default: 60)
- *   --interval=<s>  Interval between points in seconds (default: 60)
+ *   --url=<url>       API base URL (default: http://localhost:4321)
+ *   --count=<n>       Number of data points to send (default: 60)
+ *   --interval=<s>    Interval between points in seconds (default: 60)
+ *   --api-key=<key>   API key for authentication (or set API_KEY env var)
  */
 
 interface SensorReading {
@@ -19,11 +20,12 @@ interface SensorReading {
   batt_adc: number;
 }
 
-function parseArgs(): { url: string; count: number; interval: number } {
+function parseArgs(): { url: string; count: number; interval: number; apiKey: string } {
   const args = process.argv.slice(2);
   let url = 'http://localhost:4321';
   let count = 60;
   let interval = 60;
+  let apiKey = process.env.API_KEY || '';
 
   for (const arg of args) {
     if (arg.startsWith('--url=')) {
@@ -32,10 +34,12 @@ function parseArgs(): { url: string; count: number; interval: number } {
       count = parseInt(arg.slice(8), 10);
     } else if (arg.startsWith('--interval=')) {
       interval = parseInt(arg.slice(11), 10);
+    } else if (arg.startsWith('--api-key=')) {
+      apiKey = arg.slice(10);
     }
   }
 
-  return { url, count, interval };
+  return { url, count, interval, apiKey };
 }
 
 function generateDummyData(count: number, intervalSeconds: number): SensorReading[] {
@@ -66,17 +70,23 @@ function generateDummyData(count: number, intervalSeconds: number): SensorReadin
   return data;
 }
 
-async function sendData(url: string, data: SensorReading[]): Promise<void> {
+async function sendData(url: string, data: SensorReading[], apiKey: string): Promise<void> {
   const endpoint = `${url}/api/sensor`;
 
   console.log(`Sending ${data.length} data points to ${endpoint}...`);
   console.log(`Time range: ${new Date(data[0].timestamp * 1000).toLocaleString()} - ${new Date(data[data.length - 1].timestamp * 1000).toLocaleString()}`);
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(data),
   });
 
@@ -91,12 +101,13 @@ async function sendData(url: string, data: SensorReading[]): Promise<void> {
 }
 
 async function main() {
-  const { url, count, interval } = parseArgs();
+  const { url, count, interval, apiKey } = parseArgs();
 
   console.log(`\n📊 Dummy Data Sender`);
   console.log(`   URL: ${url}`);
   console.log(`   Count: ${count} points`);
-  console.log(`   Interval: ${interval}s\n`);
+  console.log(`   Interval: ${interval}s`);
+  console.log(`   API Key: ${apiKey ? '****' + apiKey.slice(-4) : '(none)'}\n`);
 
   const data = generateDummyData(count, interval);
 
@@ -107,7 +118,7 @@ async function main() {
   });
   console.log('  ...\n');
 
-  await sendData(url, data);
+  await sendData(url, data, apiKey);
 }
 
 main().catch(console.error);

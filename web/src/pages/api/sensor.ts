@@ -12,7 +12,25 @@ interface SensorReading {
 // POST /api/sensor - Receive sensor data batch from ESP32
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
-    const db = locals.runtime.env.DB;
+    const env = locals.runtime.env;
+
+    // API Key authentication (check both Cloudflare env and Vite env)
+    const serverApiKey = env.API_KEY || import.meta.env.API_KEY;
+    const requestApiKey = request.headers.get('X-API-Key') || request.headers.get('Authorization')?.replace('Bearer ', '');
+
+    // Skip auth if no API_KEY is configured (development only warning)
+    if (serverApiKey) {
+      if (!requestApiKey || requestApiKey !== serverApiKey) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      console.warn('⚠️ API_KEY not configured - authentication disabled!');
+    }
+
+    const db = env.DB;
     const data = await request.json() as SensorReading | SensorReading[];
 
     // Handle both single reading and batch

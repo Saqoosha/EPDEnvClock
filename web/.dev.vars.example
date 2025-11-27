@@ -1,0 +1,3 @@
+# Local development secrets
+# Copy this to .dev.vars and set your values
+API_KEY=your-secret-api-key-here
