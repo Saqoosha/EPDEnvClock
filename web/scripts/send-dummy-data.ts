@@ -18,6 +18,7 @@ interface SensorReading {
   co2: number;
   batt_voltage: number;
   batt_adc: number;
+  rtc_drift_ms?: number;
 }
 
 function parseArgs(): { url: string; count: number; interval: number; apiKey: string } {
@@ -49,6 +50,7 @@ function generateDummyData(count: number, intervalSeconds: number): SensorReadin
   for (let i = 0; i < count; i++) {
     const timestamp = now - (count - 1 - i) * intervalSeconds;
     const hourOfDay = new Date(timestamp * 1000).getHours();
+    const minuteOfHour = new Date(timestamp * 1000).getMinutes();
 
     // Simulate daily patterns
     const tempBase = 23 + 3 * Math.sin((hourOfDay - 6) / 24 * 2 * Math.PI);
@@ -57,14 +59,22 @@ function generateDummyData(count: number, intervalSeconds: number): SensorReadin
       ? 600 + 300 * Math.sin((hourOfDay - 9) / 9 * Math.PI)
       : 450;
 
-    data.push({
+    const reading: SensorReading = {
       timestamp,
       temp: Math.round((tempBase + (Math.random() - 0.5)) * 10) / 10,
       humidity: Math.round((humidityBase + (Math.random() - 0.5) * 5) * 10) / 10,
       co2: Math.round(co2Base + (Math.random() - 0.5) * 50),
       batt_voltage: Math.round((4.0 + Math.random() * 0.2) * 1000) / 1000,
       batt_adc: Math.round(2300 + Math.random() * 100),
-    });
+    };
+
+    // Add RTC drift once per hour (at minute 0)
+    // Simulate drift: -500ms to +500ms, with slight positive bias (clock runs fast)
+    if (minuteOfHour === 0 || (intervalSeconds >= 3600)) {
+      reading.rtc_drift_ms = Math.round((Math.random() - 0.4) * 1000);
+    }
+
+    data.push(reading);
   }
 
   return data;

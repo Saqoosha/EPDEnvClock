@@ -7,6 +7,7 @@ interface SensorReading {
   co2: number;
   batt_voltage?: number;
   batt_adc?: number;
+  rtc_drift_ms?: number;
 }
 
 // POST /api/sensor - Receive sensor data batch from ESP32
@@ -45,12 +46,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     // Insert all readings
     const stmt = db.prepare(`
-      INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_adc)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_adc, rtc_drift_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     const batch = readings.map(r =>
-      stmt.bind(r.timestamp, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_adc ?? null)
+      stmt.bind(r.timestamp, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_adc ?? null, r.rtc_drift_ms ?? null)
     );
 
     await db.batch(batch);

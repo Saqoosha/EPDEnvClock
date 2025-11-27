@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS sensor_data (
     co2 INTEGER NOT NULL,                 -- CO2 in ppm
     battery_voltage REAL,                 -- Battery voltage
     battery_adc INTEGER,                  -- Raw ADC value
+    rtc_drift_ms INTEGER,                 -- RTC drift in ms (only when NTP synced)
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
