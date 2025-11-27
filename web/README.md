@@ -1,43 +1,201 @@
-# Astro Starter Kit: Minimal
+# EPDEnvClock Dashboard
 
-```sh
-npm create astro@latest -- --template minimal
+Sensor data visualization dashboard for the EPDEnvClock device.
+
+- **Stack**: Astro + Cloudflare Pages + D1 (SQLite)
+- **Charts**: Temperature, Humidity, CO2, Battery
+
+## Local Development
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Setup
+
+```bash
+cd web
+npm install
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+### Create local D1 database
 
-## 🚀 Project Structure
+```bash
+npx wrangler d1 execute epd-sensor-db --local --file=schema.sql
+```
 
-Inside of your Astro project, you'll see the following folders and files:
+### Seed dummy data (optional)
 
-```text
-/
-├── public/
+```bash
+npx wrangler d1 execute epd-sensor-db --local --file=seed-dummy-data.sql
+```
+
+### Configure API Key (optional)
+
+Create `.dev.vars` file:
+
+```
+API_KEY=your-secret-key
+```
+
+### Run dev server
+
+```bash
+npm run dev
+```
+
+Open http://localhost:4321
+
+### Send test data
+
+```bash
+npx tsx scripts/send-dummy-data.ts --count=60 --api-key=your-secret-key
+```
+
+## Cloudflare Deployment
+
+### 1. Login to Cloudflare
+
+```bash
+npx wrangler login
+```
+
+### 2. Create D1 Database
+
+```bash
+npx wrangler d1 create epd-sensor-db
+```
+
+Copy the `database_id` from the output and update `wrangler.toml`:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "epd-sensor-db"
+database_id = "your-database-id-here"
+```
+
+### 3. Apply Schema to Production DB
+
+```bash
+npx wrangler d1 execute epd-sensor-db --remote --file=schema.sql
+```
+
+### 4. Create Pages Project
+
+```bash
+npx wrangler pages project create epd-sensor-dashboard --production-branch main
+```
+
+### 5. Build & Deploy
+
+```bash
+npm run build
+npx wrangler pages deploy --commit-dirty=true
+```
+
+### 6. Set API Key Secret
+
+```bash
+echo "your-production-api-key" | npx wrangler pages secret put API_KEY --project-name epd-sensor-dashboard
+```
+
+### 7. Verify Deployment
+
+```bash
+# Send test data
+npx tsx scripts/send-dummy-data.ts \
+  --url=https://your-project.pages.dev \
+  --count=5 \
+  --api-key=your-production-api-key
+```
+
+## API Endpoints
+
+### POST /api/sensor
+
+Receive sensor data from ESP32.
+
+**Headers:**
+- `X-API-Key`: Your API key (required in production)
+- `Content-Type`: application/json
+
+**Request Body:**
+
+Single reading:
+```json
+{
+  "timestamp": 1732700000,
+  "temp": 23.5,
+  "humidity": 45.2,
+  "co2": 650,
+  "batt_voltage": 4.1,
+  "batt_adc": 2380
+}
+```
+
+Batch (recommended for ESP32):
+```json
+[
+  { "timestamp": 1732700000, "temp": 23.5, "humidity": 45.2, "co2": 650 },
+  { "timestamp": 1732700060, "temp": 23.6, "humidity": 45.0, "co2": 655 }
+]
+```
+
+**Response:**
+```json
+{ "success": true, "inserted": 60 }
+```
+
+### GET /api/data
+
+Fetch sensor data for charts.
+
+**Query Parameters:**
+- `hours`: Number of hours to fetch (default: 24)
+- `from`: Unix timestamp start
+- `to`: Unix timestamp end
+
+**Example:**
+```
+GET /api/data?hours=24
+GET /api/data?from=1732600000&to=1732700000
+```
+
+## Project Structure
+
+```
+web/
 ├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+│   ├── pages/
+│   │   ├── index.astro      # Dashboard UI
+│   │   └── api/
+│   │       ├── sensor.ts    # POST: receive sensor data
+│   │       └── data.ts      # GET: fetch data for charts
+│   └── env.d.ts             # TypeScript types
+├── scripts/
+│   └── send-dummy-data.ts   # Test data sender
+├── schema.sql               # D1 table definition
+├── seed-dummy-data.sql      # Dummy data generator
+├── wrangler.toml            # Cloudflare config
+├── astro.config.mjs         # Astro config
+└── .dev.vars.example        # Environment template
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Updating API Key
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+```bash
+# Production
+echo "new-secret-key" | npx wrangler pages secret put API_KEY --project-name epd-sensor-dashboard
 
-Any static assets, like images, can be placed in the `public/` directory.
+# Local (.dev.vars)
+echo "API_KEY=new-secret-key" > .dev.vars
+```
 
-## 🧞 Commands
+## Redeploying
 
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+```bash
+npm run build
+npx wrangler pages deploy --commit-dirty=true
+```
