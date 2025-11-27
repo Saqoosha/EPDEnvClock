@@ -1,8 +1,9 @@
 name = "epd-sensor-dashboard"
 compatibility_date = "2024-01-01"
+pages_build_output_dir = "dist"
 
 # D1 Database binding
 [[d1_databases]]
 binding = "DB"
 database_name = "epd-sensor-db"
-database_id = "local"  # Will be replaced after `wrangler d1 create`
+database_id = "fc27137d-cc9d-48cd-bfc0-5c270356dc98"
