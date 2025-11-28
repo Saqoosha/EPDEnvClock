@@ -124,10 +124,10 @@ python3 scripts/create_number_bitmaps.py \
 
 ```bash
 cd web
-npm run build
-npx wrangler pages deploy dist --branch=main
+bun run build
+bunx wrangler pages deploy dist --branch=main
 ```
 
 - `--branch=main` is required to deploy to production domain
 - Without it, deploys to preview URL only
-- Local dev server: `npm run dev` → http://localhost:4321/
+- Local dev server: `bun run dev` → http://localhost:4321/

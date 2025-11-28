@@ -49,26 +49,25 @@ Edit `secrets.h`:
 
 ### Prerequisites
 
-- Node.js 18+
-- npm
+- [Bun](https://bun.sh/) v1.0+
 
 ### Setup
 
 ```bash
 cd web
-npm install
+bun install
 ```
 
 ### Create local D1 database
 
 ```bash
-npx wrangler d1 execute epd-sensor-db --local --file=schema.sql
+bunx wrangler d1 execute epd-sensor-db --local --file=schema.sql
 ```
 
 ### Seed dummy data (optional)
 
 ```bash
-npx wrangler d1 execute epd-sensor-db --local --file=seed-dummy-data.sql
+bunx wrangler d1 execute epd-sensor-db --local --file=seed-dummy-data.sql
 ```
 
 ### Configure API Key (optional)
@@ -82,7 +81,7 @@ API_KEY=your-secret-key
 ### Run dev server
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 Open http://localhost:4321
@@ -90,7 +89,7 @@ Open http://localhost:4321
 ### Send test data
 
 ```bash
-npx tsx scripts/send-dummy-data.ts --count=60 --api-key=your-secret-key
+bun run scripts/send-dummy-data.ts --count=60 --api-key=your-secret-key
 ```
 
 ## Cloudflare Deployment
@@ -98,13 +97,13 @@ npx tsx scripts/send-dummy-data.ts --count=60 --api-key=your-secret-key
 ### 1. Login to Cloudflare
 
 ```bash
-npx wrangler login
+bunx wrangler login
 ```
 
 ### 2. Create D1 Database
 
 ```bash
-npx wrangler d1 create epd-sensor-db
+bunx wrangler d1 create epd-sensor-db
 ```
 
 Copy the `database_id` from the output and update `wrangler.toml`:
@@ -119,33 +118,33 @@ database_id = "your-database-id-here"
 ### 3. Apply Schema to Production DB
 
 ```bash
-npx wrangler d1 execute epd-sensor-db --remote --file=schema.sql
+bunx wrangler d1 execute epd-sensor-db --remote --file=schema.sql
 ```
 
 ### 4. Create Pages Project
 
 ```bash
-npx wrangler pages project create epd-sensor-dashboard --production-branch main
+bunx wrangler pages project create epd-sensor-dashboard --production-branch main
 ```
 
 ### 5. Build & Deploy
 
 ```bash
-npm run build
-npx wrangler pages deploy --commit-dirty=true
+bun run build
+bunx wrangler pages deploy --commit-dirty=true
 ```
 
 ### 6. Set API Key Secret
 
 ```bash
-echo "your-production-api-key" | npx wrangler pages secret put API_KEY --project-name epd-sensor-dashboard
+echo "your-production-api-key" | bunx wrangler pages secret put API_KEY --project-name epd-sensor-dashboard
 ```
 
 ### 7. Verify Deployment
 
 ```bash
 # Send test data
-npx tsx scripts/send-dummy-data.ts \
+bun run scripts/send-dummy-data.ts \
   --url=https://your-project.pages.dev \
   --count=5 \
   --api-key=your-production-api-key
@@ -245,7 +244,7 @@ web/
 
 ```bash
 # Production
-echo "new-secret-key" | npx wrangler pages secret put API_KEY --project-name epd-sensor-dashboard
+echo "new-secret-key" | bunx wrangler pages secret put API_KEY --project-name epd-sensor-dashboard
 
 # Local (.dev.vars)
 echo "API_KEY=new-secret-key" > .dev.vars
@@ -254,6 +253,6 @@ echo "API_KEY=new-secret-key" > .dev.vars
 ## Redeploying
 
 ```bash
-npm run build
-npx wrangler pages deploy --commit-dirty=true
+bun run build
+bunx wrangler pages deploy --commit-dirty=true
 ```
