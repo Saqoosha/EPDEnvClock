@@ -34,7 +34,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
         ORDER BY timestamp ASC
       `;
       statsQuery = `
-        SELECT 
+        SELECT
           MIN(temperature) as temp_min, MAX(temperature) as temp_max,
           MIN(humidity) as hum_min, MAX(humidity) as hum_max,
           MIN(co2) as co2_min, MAX(co2) as co2_max,
@@ -56,7 +56,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
         ORDER BY timestamp ASC
       `;
       statsQuery = `
-        SELECT 
+        SELECT
           MIN(temperature) as temp_min, MAX(temperature) as temp_max,
           MIN(humidity) as hum_min, MAX(humidity) as hum_max,
           MIN(co2) as co2_min, MAX(co2) as co2_max,
@@ -73,21 +73,21 @@ export const GET: APIRoute = async ({ url, locals }) => {
     ]);
 
     const stats: Stats = {
-      temperature: { 
-        min: statsResult?.temp_min as number | null, 
-        max: statsResult?.temp_max as number | null 
+      temperature: {
+        min: statsResult?.temp_min as number | null,
+        max: statsResult?.temp_max as number | null
       },
-      humidity: { 
-        min: statsResult?.hum_min as number | null, 
-        max: statsResult?.hum_max as number | null 
+      humidity: {
+        min: statsResult?.hum_min as number | null,
+        max: statsResult?.hum_max as number | null
       },
-      co2: { 
-        min: statsResult?.co2_min as number | null, 
-        max: statsResult?.co2_max as number | null 
+      co2: {
+        min: statsResult?.co2_min as number | null,
+        max: statsResult?.co2_max as number | null
       },
-      battery_voltage: { 
-        min: statsResult?.bat_min as number | null, 
-        max: statsResult?.bat_max as number | null 
+      battery_voltage: {
+        min: statsResult?.bat_min as number | null,
+        max: statsResult?.bat_max as number | null
       },
     };
 
