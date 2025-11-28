@@ -45,9 +45,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       });
     }
 
-    // Validate and insert all readings
+    // Validate and insert all readings (ignore duplicates)
     const stmt = db.prepare(`
-      INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_adc, rtc_drift_ms)
+      INSERT OR IGNORE INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_adc, rtc_drift_ms)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 

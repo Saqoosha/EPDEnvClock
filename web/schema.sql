@@ -1,7 +1,7 @@
 -- Sensor data table
 CREATE TABLE IF NOT EXISTS sensor_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp INTEGER NOT NULL,           -- Unix timestamp
+    timestamp INTEGER NOT NULL UNIQUE,    -- Unix timestamp (unique to prevent duplicates)
     temperature REAL NOT NULL,            -- Temperature in Celsius
     humidity REAL NOT NULL,               -- Humidity in %
     co2 INTEGER NOT NULL,                 -- CO2 in ppm
@@ -10,9 +10,6 @@ CREATE TABLE IF NOT EXISTS sensor_data (
     rtc_drift_ms INTEGER,                 -- RTC drift in ms (only when NTP synced)
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
-
--- Index for efficient time-range queries
-CREATE INDEX IF NOT EXISTS idx_sensor_timestamp ON sensor_data(timestamp);
 
 -- Insert dummy data for testing (last 24 hours, every minute)
 -- This will be run manually for development
