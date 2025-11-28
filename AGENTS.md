@@ -119,3 +119,15 @@ python3 scripts/create_number_bitmaps.py \
   --font-size-px 90 \
   --output-dir "assets/Number M"
 ```
+
+## Web Dashboard Deployment
+
+```bash
+cd web
+npm run build
+npx wrangler pages deploy dist --branch=main
+```
+
+- `--branch=main` is required to deploy to production domain
+- Without it, deploys to preview URL only
+- Local dev server: `npm run dev` → http://localhost:4321/
