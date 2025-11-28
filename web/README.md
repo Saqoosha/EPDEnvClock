@@ -64,6 +64,44 @@ bun install
 bunx wrangler d1 execute epd-sensor-db --local --file=schema.sql
 ```
 
+#### How local D1 works (for AI agents)
+
+Cloudflare D1 is a SQLite-based database. For local development, `wrangler` creates a local SQLite database:
+
+1. **Database location**: `.wrangler/state/v3/d1/` directory (gitignored)
+2. **wrangler.toml config**: Defines database binding name (`DB`) and database ID
+3. **--local flag**: Uses local SQLite instead of remote Cloudflare D1
+4. **--remote flag**: Uses production Cloudflare D1
+
+**Key commands:**
+
+```bash
+# Create/update schema (local)
+bunx wrangler d1 execute epd-sensor-db --local --file=schema.sql
+
+# Run SQL query (local)
+bunx wrangler d1 execute epd-sensor-db --local --command="SELECT * FROM sensor_data LIMIT 5;"
+
+# Clear all data (local)
+bunx wrangler d1 execute epd-sensor-db --local --command="DELETE FROM sensor_data;"
+
+# Reset database (delete and recreate)
+rm -rf .wrangler/state
+bunx wrangler d1 execute epd-sensor-db --local --file=schema.sql
+```
+
+**Astro + Cloudflare adapter:**
+- `astro.config.mjs` uses `@astrojs/cloudflare` adapter with `platformProxy.enabled: true`
+- This enables local D1 access via `locals.runtime.env.DB` in API routes
+- Environment variables are loaded from `.dev.vars` file (gitignored)
+
+**After modifying schema:**
+If you change `schema.sql`, either:
+1. Add migration: `ALTER TABLE sensor_data ADD COLUMN new_col TYPE;`
+2. Or reset: `rm -rf .wrangler/state && bunx wrangler d1 execute ... --file=schema.sql`
+
+**Dev server must be restarted** after database changes to pick up new SQLite file.
+
 ### Seed dummy data (optional)
 
 ```bash
