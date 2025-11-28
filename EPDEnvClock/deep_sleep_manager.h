@@ -20,6 +20,7 @@ struct RTCState
   size_t imageSize = 0;              // Size of image data (uncompressed)
   time_t savedTime = 0;              // Saved epoch time before sleep
   uint64_t sleepDurationUs = 0;      // Intended sleep duration
+  time_t lastUploadedTime = 0;       // Timestamp of the last successfully uploaded data point
 };
 
 // Initialize deep sleep manager

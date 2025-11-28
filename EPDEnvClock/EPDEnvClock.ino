@@ -303,6 +303,43 @@ void setup()
       {
         LOGW(LogTag::SETUP, "Failed to log sensor values");
       }
+
+      // Send batch data to server if WiFi is connected
+      if (networkState.wifiConnected)
+      {
+        RTCState &rtcState = DeepSleepManager_GetRTCState();
+        String payload;
+        // Reserve memory to prevent reallocations (approx 100 bytes per record * 60 records = 6000 bytes)
+        // ESP32 has enough RAM for this
+        payload.reserve(6144); 
+        
+        time_t latestTimestamp = 0;
+        // Limit to one cycle of data (e.g. 60 minutes) to prevent timeouts
+        int count = SensorLogger_GetUnsentReadings(rtcState.lastUploadedTime, payload, latestTimestamp, kNtpSyncIntervalBoots);
+        
+        if (count > 0)
+        {
+          LOGI(LogTag::SETUP, "Found %d unsent readings", count);
+          if (NetworkManager_SendBatchData(payload))
+          {
+            LOGI(LogTag::SETUP, "Batch data sent successfully");
+            rtcState.lastUploadedTime = latestTimestamp;
+            LOGI(LogTag::SETUP, "Updated last uploaded time to %ld", (long)latestTimestamp);
+          }
+          else
+          {
+            LOGW(LogTag::SETUP, "Failed to send batch data");
+          }
+        }
+        else
+        {
+          LOGI(LogTag::SETUP, "No new data to send (last uploaded: %ld)", (long)rtcState.lastUploadedTime);
+        }
+      }
+      else
+      {
+        LOGI(LogTag::SETUP, "WiFi not connected, skipping server upload");
+      }
     }
     else
     {

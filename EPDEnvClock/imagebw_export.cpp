@@ -15,7 +15,7 @@ bool ImageBWExporter_Send(const uint8_t *buffer, size_t length)
   }
 
   HTTPClient http;
-  String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/imagebw";
+  String url = "http://" + String(IMAGEBW_SERVER_IP) + ":" + String(IMAGEBW_SERVER_PORT) + "/imagebw";
 
   LOGD(LogTag::IMAGEBW, "Sending to server: %s", url.c_str());
 

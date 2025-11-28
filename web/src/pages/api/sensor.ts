@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
 
 interface SensorReading {
-  timestamp: number;
+  timestamp?: number;
+  unixtimestamp?: number;  // ESP32 sends this field name
   temp: number;
   humidity: number;
   co2: number;
@@ -44,15 +45,31 @@ export const POST: APIRoute = async ({ request, locals }) => {
       });
     }
 
-    // Insert all readings
+    // Validate and insert all readings
     const stmt = db.prepare(`
       INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_adc, rtc_drift_ms)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const batch = readings.map(r =>
-      stmt.bind(r.timestamp, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_adc ?? null, r.rtc_drift_ms ?? null)
-    );
+    const batch = readings.map((r, i) => {
+      const ts = r.timestamp ?? r.unixtimestamp;
+
+      // Validate required fields
+      if (ts === undefined || ts === null) {
+        throw new Error(`Record ${i}: missing timestamp (timestamp=${r.timestamp}, unixtimestamp=${r.unixtimestamp})`);
+      }
+      if (r.temp === undefined || r.temp === null) {
+        throw new Error(`Record ${i}: missing temp`);
+      }
+      if (r.humidity === undefined || r.humidity === null) {
+        throw new Error(`Record ${i}: missing humidity`);
+      }
+      if (r.co2 === undefined || r.co2 === null) {
+        throw new Error(`Record ${i}: missing co2`);
+      }
+
+      return stmt.bind(ts, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_adc ?? null, r.rtc_drift_ms ?? null);
+    });
 
     await db.batch(batch);
 

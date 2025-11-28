@@ -5,8 +5,10 @@
 #include <esp_timer.h>
 
 #include "wifi_config.h"
+#include "server_config.h"
 #include "logger.h"
 #include "deep_sleep_manager.h"
+#include <HTTPClient.h>
 
 namespace
 {
@@ -181,4 +183,50 @@ bool NetworkManager_SetupTimeFromRTC()
 
   LOGW(LogTag::NETWORK, "No RTC time available");
   return false;
+}
+
+bool NetworkManager_SendBatchData(const String &payload)
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    LOGW(LogTag::NETWORK, "Cannot send batch data: WiFi not connected");
+    return false;
+  }
+
+  HTTPClient http;
+
+  // Construct URL
+  String url = String(SENSOR_API_URL) + String(SENSOR_API_ENDPOINT);
+
+  LOGI(LogTag::NETWORK, "Sending batch data (%d bytes) to %s", payload.length(), url.c_str());
+  // Log first 500 chars of payload for debugging
+  LOGI(LogTag::NETWORK, "Payload preview: %.500s", payload.c_str());
+
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+
+  // Add API Key if configured
+  String apiKey = String(API_KEY);
+  if (apiKey.length() > 0)
+  {
+    http.addHeader("X-API-Key", apiKey);
+  }
+
+  int httpResponseCode = http.POST(payload);
+
+  bool success = false;
+  if (httpResponseCode > 0)
+  {
+    String response = http.getString();
+    LOGI(LogTag::NETWORK, "Batch sent! Response code: %d", httpResponseCode);
+    LOGD(LogTag::NETWORK, "Response: %s", response.c_str());
+    success = (httpResponseCode >= 200 && httpResponseCode < 300);
+  }
+  else
+  {
+    LOGE(LogTag::NETWORK, "Error sending batch data: %s", http.errorToString(httpResponseCode).c_str());
+  }
+
+  http.end();
+  return success;
 }

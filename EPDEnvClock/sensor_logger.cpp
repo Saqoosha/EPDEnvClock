@@ -256,3 +256,92 @@ int SensorLogger_DeleteOldFiles(int maxAgeDays)
 
   return deletedCount;
 }
+
+int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, time_t &latestTimestamp, int maxReadings)
+{
+  if (!initialized || !sdCardAvailable)
+  {
+    return 0;
+  }
+
+  int count = 0;
+  latestTimestamp = lastUploadedTime; // Initialize with current last uploaded time
+  payload += "[";
+
+  // We need to check today's file and possibly yesterday's file if lastUploadedTime is old
+  time_t now;
+  time(&now);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  // Helper lambda to process a log file
+  auto processFile = [&](const char *filename) {
+    if (!SD.exists(filename))
+    {
+      return;
+    }
+
+    File file = SD.open(filename, FILE_READ);
+    if (!file)
+    {
+      return;
+    }
+
+    while (file.available() && count < maxReadings)
+    {
+      String line = file.readStringUntil('\n');
+      line.trim();
+      if (line.length() == 0) continue;
+
+      // Parse timestamp from JSON line
+      // Format: {"date":"...","unixtimestamp":1234567890,...}
+      int tsIndex = line.indexOf("\"unixtimestamp\":");
+      if (tsIndex > 0)
+      {
+        int start = tsIndex + 16; // length of "unixtimestamp":
+        int end = line.indexOf(",", start);
+        if (end > start)
+        {
+          String tsStr = line.substring(start, end);
+          time_t ts = (time_t)tsStr.toInt();
+
+          if (ts > lastUploadedTime)
+          {
+            if (count > 0)
+            {
+              payload += ",";
+            }
+            payload += line;
+            count++;
+            
+            // Update latest timestamp if this one is newer
+            if (ts > latestTimestamp)
+            {
+              latestTimestamp = ts;
+            }
+          }
+        }
+      }
+    }
+    file.close();
+  };
+
+  // Check yesterday's file first
+  time_t yesterday = now - 86400;
+  struct tm tmYesterday;
+  localtime_r(&yesterday, &tmYesterday);
+  
+  char filenameYesterday[kMaxFilenameLength];
+  generateLogFilename(tmYesterday, filenameYesterday, sizeof(filenameYesterday));
+  
+  processFile(filenameYesterday);
+
+  // Check today's file
+  char filenameToday[kMaxFilenameLength];
+  generateLogFilename(timeinfo, filenameToday, sizeof(filenameToday));
+  processFile(filenameToday);
+
+  payload += "]";
+  
+  return count;
+}

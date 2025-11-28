@@ -1,6 +1,9 @@
 # Wi-Fi configuration (contains sensitive credentials)
 wifi_config.h
 
+# Secrets (API URL and key)
+secrets.h
+
 # Build artifacts
 *.build/
 

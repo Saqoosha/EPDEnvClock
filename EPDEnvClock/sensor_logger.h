@@ -24,3 +24,11 @@ bool SensorLogger_LogValues(
 // Delete log files older than specified days
 // Returns number of files deleted
 int SensorLogger_DeleteOldFiles(int maxAgeDays = 30);
+
+// Get unsent sensor readings from log files
+// lastUploadedTime: timestamp of the last successfully uploaded data point
+// payload: String to append the JSON array of readings to
+// latestTimestamp: Output parameter to store the timestamp of the last reading added
+// maxReadings: maximum number of readings to retrieve
+// Returns: number of readings added to payload
+int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, time_t &latestTimestamp, int maxReadings = 60);
