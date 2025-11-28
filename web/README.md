@@ -84,7 +84,7 @@ API_KEY=your-secret-key
 bun run dev
 ```
 
-Open http://localhost:4321
+Open <http://localhost:4321>
 
 ### Send test data
 
@@ -157,12 +157,14 @@ bun run scripts/send-dummy-data.ts \
 Receive sensor data from ESP32.
 
 **Headers:**
+
 - `X-API-Key`: Your API key (required in production)
 - `Content-Type`: application/json
 
 **Request Body:**
 
 Single reading:
+
 ```json
 {
   "timestamp": 1732700000,
@@ -175,6 +177,7 @@ Single reading:
 ```
 
 Batch (recommended for ESP32):
+
 ```json
 [
   { "timestamp": 1732700000, "temp": 23.5, "humidity": 45.2, "co2": 650 },
@@ -183,6 +186,7 @@ Batch (recommended for ESP32):
 ```
 
 **Field notes:**
+
 - `timestamp` or `unixtimestamp`: Unix timestamp (both accepted, ESP32 sends `unixtimestamp`)
 - `temp`: Temperature in Celsius
 - `humidity`: Humidity in %
@@ -192,15 +196,18 @@ Batch (recommended for ESP32):
 - `rtc_drift_ms`: RTC drift in milliseconds (optional, only when NTP synced)
 
 **Duplicate handling:**
+
 - Records with the same timestamp are silently ignored (`INSERT OR IGNORE`)
 - This allows safe retries without creating duplicate data
 
 **Response:**
+
 ```json
 { "success": true, "inserted": 60 }
 ```
 
 **Error Response:**
+
 ```json
 { "error": "Failed to insert data", "details": "error message" }
 ```
@@ -210,11 +217,13 @@ Batch (recommended for ESP32):
 Fetch sensor data for charts.
 
 **Query Parameters:**
+
 - `hours`: Number of hours to fetch (default: 24)
 - `from`: Unix timestamp start
 - `to`: Unix timestamp end
 
 **Example:**
+
 ```
 GET /api/data?hours=24
 GET /api/data?from=1732600000&to=1732700000
