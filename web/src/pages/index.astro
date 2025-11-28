@@ -103,6 +103,12 @@
           font-size: 0.75rem;
         }
 
+        .stat-minmax {
+          gap: 0.5rem;
+          margin-top: 0.35rem;
+          font-size: 0.65rem;
+        }
+
         .time-selector {
           flex-wrap: wrap;
           gap: 0.35rem;
@@ -170,6 +176,29 @@
         font-size: 1rem;
         color: var(--text-secondary);
         font-weight: 400;
+      }
+
+      .stat-minmax {
+        display: flex;
+        gap: 1rem;
+        margin-top: 0.5rem;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+
+      .stat-minmax span {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .stat-minmax .arrow-down {
+        color: #3498db;
+      }
+
+      .stat-minmax .arrow-up {
+        color: #e74c3c;
       }
 
       .charts {
@@ -265,18 +294,34 @@
         <div class="stat-card">
           <div class="stat-label">Temperature</div>
           <div class="stat-value temp" id="current-temp">--<span class="stat-unit">°C</span></div>
+          <div class="stat-minmax" id="minmax-temp">
+            <span><span class="arrow-down">↓</span>--</span>
+            <span><span class="arrow-up">↑</span>--</span>
+          </div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Humidity</div>
           <div class="stat-value humidity" id="current-humidity">--<span class="stat-unit">%</span></div>
+          <div class="stat-minmax" id="minmax-humidity">
+            <span><span class="arrow-down">↓</span>--</span>
+            <span><span class="arrow-up">↑</span>--</span>
+          </div>
         </div>
         <div class="stat-card">
           <div class="stat-label">CO₂</div>
           <div class="stat-value co2" id="current-co2">--<span class="stat-unit">ppm</span></div>
+          <div class="stat-minmax" id="minmax-co2">
+            <span><span class="arrow-down">↓</span>--</span>
+            <span><span class="arrow-up">↑</span>--</span>
+          </div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Battery</div>
           <div class="stat-value battery" id="current-battery">--<span class="stat-unit">V</span></div>
+          <div class="stat-minmax" id="minmax-battery">
+            <span><span class="arrow-down">↓</span>--</span>
+            <span><span class="arrow-up">↑</span>--</span>
+          </div>
         </div>
       </div>
 
@@ -323,10 +368,23 @@
         rtc_drift_ms: number | null;
       }
 
+      interface MinMax {
+        min: number | null;
+        max: number | null;
+      }
+
+      interface Stats {
+        temperature: MinMax;
+        humidity: MinMax;
+        co2: MinMax;
+        battery_voltage: MinMax;
+      }
+
       interface ApiResponse {
         success: boolean;
         count: number;
         data: SensorData[];
+        stats?: Stats;
       }
 
       let tempHumidityChart: Chart | null = null;
@@ -350,7 +408,7 @@
         }
       }
 
-      async function fetchData(hours: number): Promise<SensorData[]> {
+      async function fetchData(hours: number): Promise<ApiResponse | null> {
         try {
           const response = await fetch(`/api/data?hours=${hours}`);
           if (!response.ok) {
@@ -359,15 +417,15 @@
           const json: ApiResponse = await response.json();
           console.log('Fetched data:', json.count, 'points');
           hideError();
-          return json.data || [];
+          return json;
         } catch (error) {
           console.error('Failed to fetch data:', error);
           showError(`Failed to fetch data: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          return [];
+          return null;
         }
       }
 
-      function updateCurrentValues(data: SensorData[]): void {
+      function updateCurrentValues(data: SensorData[], stats?: Stats): void {
         if (data.length === 0) return;
 
         const latest = data[data.length - 1];
@@ -393,6 +451,27 @@
         if (updateEl) {
           updateEl.textContent = `Last data: ${new Date(latest.timestamp * 1000).toLocaleString('ja-JP')}`;
         }
+
+        // Update min/max values
+        if (stats) {
+          updateMinMax('minmax-temp', stats.temperature, 1);
+          updateMinMax('minmax-humidity', stats.humidity, 1);
+          updateMinMax('minmax-co2', stats.co2, 0);
+          updateMinMax('minmax-battery', stats.battery_voltage, 2);
+        }
+      }
+
+      function updateMinMax(elementId: string, minmax: MinMax, decimals: number): void {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const minVal = minmax.min !== null ? minmax.min.toFixed(decimals) : '--';
+        const maxVal = minmax.max !== null ? minmax.max.toFixed(decimals) : '--';
+
+        el.innerHTML = `
+          <span><span class="arrow-down">↓</span>${minVal}</span>
+          <span><span class="arrow-up">↑</span>${maxVal}</span>
+        `;
       }
 
       function formatTime(timestamp: number, hours: number): string {
@@ -713,11 +792,11 @@
       async function loadData(hours: number): Promise<void> {
         currentHours = hours;
         console.log('Loading data for', hours, 'hours');
-        const data = await fetchData(hours);
+        const response = await fetchData(hours);
 
-        if (data.length > 0) {
-          updateCurrentValues(data);
-          createCharts(data, hours);
+        if (response && response.data && response.data.length > 0) {
+          updateCurrentValues(response.data, response.stats);
+          createCharts(response.data, hours);
         } else {
           console.log('No data received');
         }
