@@ -212,6 +212,15 @@ bool NetworkManager_SendBatchData(const String &payload)
     http.addHeader("X-API-Key", apiKey);
   }
 
+  // Add Cloudflare Access headers if configured
+  String cfClientId = String(CF_ACCESS_CLIENT_ID);
+  String cfClientSecret = String(CF_ACCESS_CLIENT_SECRET);
+  if (cfClientId.length() > 0 && cfClientSecret.length() > 0)
+  {
+    http.addHeader("CF-Access-Client-Id", cfClientId);
+    http.addHeader("CF-Access-Client-Secret", cfClientSecret);
+  }
+
   int httpResponseCode = http.POST(payload);
 
   bool success = false;

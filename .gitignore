@@ -4,6 +4,9 @@ wifi_config.h
 # Secrets (API URL and key)
 secrets.h
 
+# Environment variables for scripts
+.env
+
 # Build artifacts
 *.build/
 

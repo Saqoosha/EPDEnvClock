@@ -262,24 +262,22 @@ uint32_t DeepSleepManager_GetBootCount()
   return rtcState.bootCount;
 }
 
-bool DeepSleepManager_ShouldResyncNtp(uint32_t intervalBoots)
-{
-  // Check if enough boots have passed since last NTP sync
-  uint32_t bootsSinceLastSync = rtcState.bootCount - rtcState.lastNtpSyncBootCount;
-  return bootsSinceLastSync >= intervalBoots;
-}
-
 bool DeepSleepManager_ShouldSyncWiFiNtp()
 {
-  // Check if WiFi/NTP sync is needed (1 hour = ~60 boots)
-  // If lastNtpSyncBootCount is 0, it means never synced, so sync is needed
+  // If never synced, sync is needed
   if (rtcState.lastNtpSyncBootCount == 0)
   {
     return true;
   }
 
-  // Check if sync interval has passed since last sync
-  return DeepSleepManager_ShouldResyncNtp(kNtpSyncIntervalBoots);
+  // Sync at the top of every hour (when minutes == 0)
+  // This ensures NTP sync happens at 3:00, 4:00, etc.
+  time_t now;
+  time(&now);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  return (timeinfo.tm_min == 0);
 }
 
 void DeepSleepManager_SaveRtcTimeBeforeSync()

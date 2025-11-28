@@ -167,7 +167,7 @@ void setup()
   // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
   if (DeepSleepManager_ShouldSyncWiFiNtp())
   {
-    LOGI("Setup", "WiFi/NTP sync needed (1 hour interval)");
+    LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
 
     // Save RTC time before NTP sync to calculate drift
     DeepSleepManager_SaveRtcTimeBeforeSync();
@@ -311,20 +311,35 @@ void setup()
         String payload;
         // Reserve memory to prevent reallocations (approx 100 bytes per record * 60 records = 6000 bytes)
         // ESP32 has enough RAM for this
-        payload.reserve(6144); 
-        
+        payload.reserve(6144);
+
+        time_t now;
+        time(&now);
+
+        // First boot: get recent 60 readings and set lastUploadedTime to now
+        bool isFirstUpload = (rtcState.lastUploadedTime == 0);
+        time_t queryTime = rtcState.lastUploadedTime;
+
+        if (isFirstUpload)
+        {
+          // On first boot, only get last 60 minutes of data (approx 60 readings)
+          queryTime = now - 3600;
+          LOGI(LogTag::SETUP, "First upload - getting recent readings only");
+        }
+
         time_t latestTimestamp = 0;
-        // Limit to one cycle of data (e.g. 60 minutes) to prevent timeouts
-        int count = SensorLogger_GetUnsentReadings(rtcState.lastUploadedTime, payload, latestTimestamp, kNtpSyncIntervalBoots);
-        
+        int count = SensorLogger_GetUnsentReadings(queryTime, payload, latestTimestamp, 60);
+
         if (count > 0)
         {
           LOGI(LogTag::SETUP, "Found %d unsent readings", count);
           if (NetworkManager_SendBatchData(payload))
           {
             LOGI(LogTag::SETUP, "Batch data sent successfully");
-            rtcState.lastUploadedTime = latestTimestamp;
-            LOGI(LogTag::SETUP, "Updated last uploaded time to %ld", (long)latestTimestamp);
+            // On first upload, set to current time to skip old backlog
+            // On normal upload, set to the latest uploaded timestamp
+            rtcState.lastUploadedTime = isFirstUpload ? now : latestTimestamp;
+            LOGI(LogTag::SETUP, "Updated last uploaded time to %ld", (long)rtcState.lastUploadedTime);
           }
           else
           {
@@ -333,7 +348,16 @@ void setup()
         }
         else
         {
-          LOGI(LogTag::SETUP, "No new data to send (last uploaded: %ld)", (long)rtcState.lastUploadedTime);
+          if (isFirstUpload)
+          {
+            // No recent data, but still update lastUploadedTime to avoid re-checking old logs
+            rtcState.lastUploadedTime = now;
+            LOGI(LogTag::SETUP, "No recent data, initialized last uploaded time to %ld", (long)now);
+          }
+          else
+          {
+            LOGI(LogTag::SETUP, "No new data to send (last uploaded: %ld)", (long)rtcState.lastUploadedTime);
+          }
         }
       }
       else
