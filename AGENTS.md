@@ -48,7 +48,7 @@ EPDEnvClock/
 ├── EPDEnvClock.ino      # Main sketch (setup/loop)
 ├── display_manager.*    # Display rendering, layout, battery reading
 ├── sensor_manager.*     # SCD41 sensor (single-shot mode with light sleep)
-├── network_manager.*    # WiFi connection, NTP sync
+├── network_manager.*    # Wi-Fi connection, NTP sync
 ├── deep_sleep_manager.* # Deep sleep, RTC state, SD/SPIFFS frame buffer
 ├── font_renderer.*      # Glyph drawing with kerning support
 ├── logger.*             # Logging with levels (DEBUG/INFO/WARN/ERROR)
@@ -63,7 +63,7 @@ EPDEnvClock/
 
 - Deep sleep ~52-54 seconds, wake at minute boundary
 - Light sleep during 5-second sensor measurement
-- WiFi/NTP sync only every 60 boots (~1 hour)
+- Wi-Fi/NTP sync only every 60 boots (~1 hour)
 - SD card power off during deep sleep (GPIO 42 LOW)
 - I2C pins held HIGH during sleep to keep sensor in idle mode
 

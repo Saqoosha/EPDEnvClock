@@ -6,7 +6,7 @@
 
 ### 機能ガイド
 
-- **[ImageBW WiFi Export](./README_IMAGEBW.md)** - ImageBWデータをWiFi経由でMacに送信する機能の使い方
+- **[ImageBW Wi-Fi Export](./README_IMAGEBW.md)** - ImageBWデータをWi-Fi経由でMacに送信する機能の使い方
 - **[SCD41 センサー統合](./README_SCD41.md)** - SCD41 CO2/温度/湿度センサーの接続と設定ガイド
 
 ### コードレビュー

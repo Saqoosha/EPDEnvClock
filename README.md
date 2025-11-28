@@ -1,115 +1,158 @@
 # EPDEnvClock
 
-ESP32-S3ベースの電子ペーパー時計プロジェクト。SCD41 CO2/温度/湿度センサーを統合し、省電力設計で長時間動作します。
+[日本語版はこちら](README_ja.md)
 
-## 📋 概要
+An ESP32-S3 based e-paper clock project with integrated SCD41 CO2/temperature/humidity sensor, designed for low power consumption and long battery life.
 
-EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x272ピクセル）を使用した時計アプリケーションです。以下の機能を提供します：
+## 📋 Overview
 
-- **時刻・日付表示**: 大きな数字で時刻と日付を表示
-- **環境センサー**: SCD41センサーによるCO2、温度、湿度の測定と表示
-- **省電力設計**: Deep Sleepモードにより長時間動作（約1分間隔で更新）
-- **WiFi接続**: NTP時刻同期とImageBWデータのWiFiエクスポート機能
-- **バッテリー電圧監視**: リアルタイムでバッテリー電圧を表示
-- **ボタンウェイクアップ**: HOMEボタンでDeep Sleepから復帰して全画面更新
+EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" display (792x272 pixels). It provides the following features:
 
-## ✨ 主な機能
+- **Time & Date Display**: Shows time and date with large number fonts
+- **Environmental Sensor**: Measures and displays CO2, temperature, and humidity using SCD41 sensor
+- **Low Power Design**: Long battery life with Deep Sleep mode (updates approximately every minute)
+- **Wi-Fi Connectivity**: NTP time synchronization and optional ImageBW data export via Wi-Fi
+- **Battery Voltage Monitoring**: Real-time battery voltage display
+- **Button Wake-up**: Wake from Deep Sleep with HOME button for full screen refresh
 
-### 表示機能
+## ✨ Main Features
 
-- **時刻表示**: 大きな数字フォント（Number L）で時刻を表示（カーニング対応）
-- **日付表示**: 中サイズ数字フォント（Number M）で日付を表示（YYYY.MM.DD形式）
-- **センサー値表示**: 温度、湿度、CO2濃度をアイコン付きで表示
-- **ステータス表示**: バッテリー電圧、WiFi接続状態、NTP同期状態、稼働時間、空きメモリなどを表示
+### Display Features
 
-### センサー機能
+- **Time Display**: Large number font (Number L) with kerning support
+- **Date Display**: Medium-sized number font (Number M) in YYYY.MM.DD format
+- **Sensor Values**: Temperature, humidity, and CO2 concentration with icons
+- **Status Display**: Battery voltage, Wi-Fi status, NTP sync status, uptime, and free memory
 
-- **SCD41統合**: CO2（400-5000ppm）、温度（-10〜+60°C）、湿度（0-100%RH）を測定
-- **省電力モード**: Single-Shotモードで約1.5mAの消費電流（Light Sleep中に測定完了を待機）
-- **温度補正**: 自己発熱を補正する温度オフセット機能（4.0°C）
-- **自動キャリブレーション**: ASC（Automatic Self-Calibration）対応
+### Sensor Features
 
-### 省電力機能
+- **SCD41 Integration**: Measures CO2 (400-5000ppm), temperature (-10~+60°C), and humidity (0-100%RH)
+- **Low Power Mode**: Single-Shot mode with approximately 1.5mA current consumption (waits in Light Sleep)
+- **Temperature Compensation**: Temperature offset function to compensate for self-heating (4.0°C)
+- **Auto Calibration**: ASC (Automatic Self-Calibration) support
 
-- **Deep Sleep**: 約1分間隔でDeep Sleepに入り、消費電流を最小化
-- **Light Sleep**: センサー測定待機中（約5秒）はLight Sleepで消費電力を削減
-- **EPD Deep Sleep**: ディスプレイもDeep Sleepモードに入り、電力消費を削減
-- **フレームバッファ保存**: SDカードまたはSPIFFSにフレームバッファを保存し、起動時に復元
-- **SDカード電源制御**: Deep Sleep中はSDカードの電源をオフにして消費電流を削減
-- **WiFi省電力**: NTP同期は約60分（60回の起動）ごとに1回のみ実行
+### Power Management
 
-### ネットワーク機能
+- **Deep Sleep**: Enters Deep Sleep at approximately 1-minute intervals to minimize current consumption
+- **Light Sleep**: Uses Light Sleep during 5-second sensor measurement wait to reduce power consumption
+- **EPD Deep Sleep**: Display enters Deep Sleep mode to reduce power consumption
+- **Frame Buffer Persistence**: Saves frame buffer to SD card or SPIFFS fallback, restores on wake
+- **SD Card Power Control**: Powers off SD card during Deep Sleep to reduce current consumption
+- **Wi-Fi Power Saving**: NTP sync only every ~60 minutes (60 wake cycles)
 
-- **WiFi接続**: 自動的にWiFiに接続
-- **NTP同期**: 約60分ごとにNTPサーバーから時刻を同期（RTC時刻を保持）
-- **ImageBW Export**: WiFi経由で表示データをサーバーに送信（オプション）
+### Network Features
 
-### データロギング機能
+- **Wi-Fi Connection**: Automatic Wi-Fi connection
+- **NTP Sync**: Syncs time from NTP server every ~60 minutes (maintains RTC time between syncs)
+- **ImageBW Export**: Optional Wi-Fi export of display data to server
 
-- **センサーログ**: SDカードにJSONL形式でセンサー値を自動記録
-- **記録項目**: 日付、時刻、Unixタイムスタンプ、NTP同期からの経過時間、温度、湿度、CO2、バッテリーADC値、バッテリー電圧
-- **ファイル形式**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl`（日付ごとにファイルを分割）
-- **フォールバック**: SDカードが使用できない場合はSPIFFSに保存
+### Data Logging
 
-### ボタン機能
+- **Sensor Log**: Automatically records sensor values to SD card in JSONL format
+- **Recorded Data**: Date, time, Unix timestamp, time since NTP sync, temperature, humidity, CO2, battery ADC value, battery voltage
+- **File Format**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl` (files split by date)
+- **Fallback**: Falls back to SPIFFS if SD card is unavailable
 
-- **HOMEボタン (GPIO 2)**: Deep Sleepから復帰し、全画面更新を実行
-- **その他のボタン**: EXIT, PRV, NEXT, OKボタンもサポート（将来の拡張用）
+### Button Functions
 
-## 🔧 ハードウェア要件
+- **HOME Button (GPIO 2)**: Wake from Deep Sleep and perform full screen refresh
+- **Other Buttons**: EXIT (GPIO 1), PRV (GPIO 6), NEXT (GPIO 4), OK (GPIO 5) - for future expansion
+- All buttons are active LOW with internal pullup
 
-### CrowPanelに内蔵されているコンポーネント
+## 🔧 Hardware Requirements
+
+### Components Built into CrowPanel
 
 - **ESP32-S3 Dev Module**
-- **EPDディスプレイ**: 792x272ピクセル（マスター/スレーブ2つのSSD1683 ICで制御）
-- **SDカードスロット**: フレームバッファ保存用（オプション、SPIFFSより書き込み寿命が長い）
+- **EPD Display**: 792x272 pixels (controlled by two SSD1683 ICs in master/slave configuration)
+- **SD Card Slot**: For frame buffer storage (optional, longer write lifespan than SPIFFS)
 
-### 外部コンポーネント（オプション）
+### External Components (Optional)
 
-- **SCD41センサー**: CO2/温度/湿度センサー（オプション）
+- **SCD41 Sensor**: CO2/temperature/humidity sensor
 
-### 接続ピン（SCD41センサー）
+### Pin Configuration
 
-- **SCD41 VDD** → ESP32-S3 **3.3V**
-- **SCD41 GND** → ESP32-S3 **GND**
-- **SCD41 SDA** → ESP32-S3 **GPIO 38**
-- **SCD41 SCL** → ESP32-S3 **GPIO 20**
+#### SCD41 Sensor (I2C)
 
-**注意**: プルアップ抵抗はSCD41モジュールに内蔵されているため、追加のハードウェアは不要です。
+| Pin | GPIO |
+|-----|------|
+| SDA | 38 |
+| SCL | 20 |
+| VDD | 3.3V |
+| GND | GND |
 
-## 🚀 セットアップ
+**Note**: Pull-up resistors are built into the SCD41 module, no additional hardware required.
 
-### 1. 必要なソフトウェア
+#### SD Card (HSPI Bus)
 
-#### USBシリアルドライバのインストール
+| Pin | GPIO |
+|-----|------|
+| MOSI | 40 |
+| MISO | 13 |
+| SCK | 39 |
+| CS | 10 |
+| Power Enable | 42 |
 
-CrowPanel ESP32-S3は **CH340** USBシリアルチップを使用しています。
+#### EPD Display (Bit-banging SPI)
 
-**macOS (10.14 Mojave以降)**:
-追加のドライバは**不要**です。macOS 10.14以降はCH340をネイティブサポートしています。
+| Pin | GPIO |
+|-----|------|
+| MOSI | 11 |
+| SCK | 12 |
+| CS_M | 45 |
+| CS_S | 46 |
+| DC | 47 |
+| RST | 48 |
 
-- デバイスを接続すると `/dev/cu.usbserial-*` または `/dev/cu.wchusbserial*` として認識されます
-- **注意**: 追加ドライバをインストールすると逆に問題が発生する場合があります
+#### Buttons (Active LOW)
 
-**macOS (10.13以前)**:
-ドライバのインストールが必要です：
+| Button | GPIO |
+|--------|------|
+| HOME | 2 |
+| EXIT | 1 |
+| PRV | 6 |
+| NEXT | 4 |
+| OK | 5 |
+
+#### Battery ADC
+
+- **GPIO**: 8
+- **Calibration**: `Vbat = 0.002334 * adc_raw - 1.353`
+
+## 🚀 Setup
+
+### 1. Required Software
+
+#### USB Serial Driver Installation
+
+CrowPanel ESP32-S3 uses the **CH340** USB serial chip.
+
+**macOS (10.14 Mojave and later)**:
+No additional driver required. macOS 10.14+ natively supports CH340.
+
+- Device appears as `/dev/cu.usbserial-*` or `/dev/cu.wchusbserial*` when connected
+- **Note**: Installing additional drivers may cause issues
+
+**macOS (10.13 and earlier)**:
+Driver installation required:
 
 - Homebrew: `brew install --cask wch-ch34x-usb-serial-driver`
-- または [SparkFun CH340ドライバガイド](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)
+- Or see [SparkFun CH340 Driver Guide](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)
 
 **Windows**:
-通常は自動認識されます。認識されない場合：
+Usually auto-detected. If not recognized:
 
-- [SparkFun CH340ドライバガイド](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)からダウンロード
+- Download from [SparkFun CH340 Driver Guide](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)
 
 **Linux**:
-カーネルに組み込み済みで追加インストール不要です。認識されない場合：
+Built into kernel, no installation needed. If not recognized:
 
 ```bash
 sudo modprobe ch34x
 ```
 
-#### arduino-cliのインストール
+#### arduino-cli Installation
 
 **macOS**:
 
@@ -124,238 +167,249 @@ curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.
 ```
 
 **Windows**:
-[公式サイト](https://arduino.github.io/arduino-cli/latest/installation/)からインストーラーをダウンロード
+Download installer from [official site](https://arduino.github.io/arduino-cli/latest/installation/)
 
-#### ESP32ボードサポートのインストール
+#### ESP32 Board Support Installation
 
 ```bash
 arduino-cli core update-index
 arduino-cli core install esp32:esp32@2.0.7
 ```
 
-**注意**: ESP32コアのバージョンは`2.0.7`を使用してください。新しいバージョンでは互換性の問題が発生する可能性があります。
+**Note**: Use ESP32 core version `2.0.7`. Newer versions may have compatibility issues.
 
-#### ライブラリのインストール
+#### Library Installation
 
 ```bash
-# Sensirion SCD4xライブラリ（依存するSensirion Coreも自動でインストールされます）
+# Sensirion SCD4x library (Sensirion Core dependency is installed automatically)
 arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"
 ```
 
-### 開発環境のバージョン情報
+### Development Environment Versions
 
-| コンポーネント | バージョン | 備考 |
-|---------------|-----------|------|
-| arduino-cli | 最新版推奨 | `brew install arduino-cli` (macOS) |
+| Component | Version | Notes |
+|-----------|---------|-------|
+| arduino-cli | Latest recommended | `brew install arduino-cli` (macOS) |
 | ESP32 Core | 2.0.7 | `esp32:esp32@2.0.7` |
-| Sensirion I2C SCD4x | 0.4.0 | CO2/温度/湿度センサーライブラリ |
-| Sensirion Core | 0.6.0 | 依存ライブラリ（自動インストール） |
+| Sensirion I2C SCD4x | 0.4.0 | CO2/temperature/humidity sensor library |
+| Sensirion Core | 0.6.0 | Dependency (auto-installed) |
 
-#### インストール済みライブラリの確認
+#### Check Installed Libraries
 
 ```bash
 arduino-cli lib list
 ```
 
-#### ESP32コアバージョンの確認
+#### Check ESP32 Core Version
 
 ```bash
 arduino-cli core list
 ```
 
-### 2. Wi-Fi設定
+### 2. Wi-Fi Configuration
 
-`EPDEnvClock/wifi_config.h.example`をコピーして`EPDEnvClock/wifi_config.h`を作成し、Wi-Fi認証情報を設定：
+Copy `EPDEnvClock/wifi_config.h.example` to `EPDEnvClock/wifi_config.h` and set your Wi-Fi credentials:
 
 ```cpp
 #define WIFI_SSID "your_wifi_ssid"
 #define WIFI_PASSWORD "your_wifi_password"
 ```
 
-**注意**: `wifi_config.h`は`.gitignore`に含まれているため、コミットされません。
+**Note**: `wifi_config.h` is included in `.gitignore` and will not be committed.
 
-### 3. ImageBW Export設定（オプション）
+### 3. ImageBW Export Configuration (Optional)
 
-`EPDEnvClock/server_config.h`でサーバーのIPアドレスとポートを設定：
+Set server IP address and port in `EPDEnvClock/server_config.h`:
 
 ```cpp
-#define ENABLE_IMAGEBW_EXPORT 1  // 1で有効、0で無効
-#define SERVER_IP "192.168.1.100"  // サーバーのIPアドレス
-#define SERVER_PORT 8080           // サーバーポート
+#define ENABLE_IMAGEBW_EXPORT 1  // 1 to enable, 0 to disable
+#define SERVER_IP "192.168.1.100"  // Server IP address
+#define SERVER_PORT 8080           // Server port
 ```
 
-## 📦 ビルド・アップロード
+## 📦 Build & Upload
 
-### 推奨方法（コンパイル + アップロード）
+### Recommended Method (Compile + Upload)
 
 ```bash
 cd /path/to/EPDEnvClock
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
 ```
 
-**注意**: `/path/to/EPDEnvClock`を実際のプロジェクトディレクトリのパスに置き換えてください。ポート名（`/dev/cu.wchusbserial110`）も環境に応じて変更してください。
+**Note**: Replace `/path/to/EPDEnvClock` with your actual project directory path. The port name (`/dev/cu.wchusbserial110`) may vary depending on your environment.
 
-**重要な設定パラメータ**:
+**Important**:
+- Always use `compile --upload` together (upload alone doesn't guarantee recompile)
+- Check port with `arduino-cli board list` - port name varies
+
+**Configuration Parameters**:
 
 - **FQBN**: `esp32:esp32:esp32s3`
 - **PartitionScheme**: `huge_app` (Huge APP: 3MB No OTA/1MB SPIFFS)
 - **PSRAM**: `opi` (OPI PSRAM)
 
-### ポートの確認
+### Check Port
 
 ```bash
 arduino-cli board list
 ```
 
-### 詳細な手順
+## 💻 Usage
 
-詳細なビルド・アップロード手順は [AGENTS.md](./AGENTS.md) を参照してください。
+### Basic Operation
 
-## 💻 使用方法
+1. **Startup**: Automatically starts when power is supplied to ESP32-S3
+2. **Initialization**: Sensor and Wi-Fi initialization (on first boot)
+3. **Display Update**: Display updates approximately every minute
+4. **Deep Sleep**: Enters Deep Sleep mode after display update
+5. **Button Wake**: Press HOME button to wake from Deep Sleep and perform full screen refresh
 
-### 基本的な動作
+### Display Layout
 
-1. **起動**: ESP32-S3に電源を供給すると、自動的に起動します
-2. **初期化**: センサーとWiFiの初期化が行われます（初回起動時）
-3. **表示更新**: 約1分ごとに表示が更新されます
-4. **Deep Sleep**: 表示更新後、Deep Sleepモードに入ります
-5. **ボタン復帰**: HOMEボタンを押すとDeep Sleepから復帰して全画面更新
+Screen layout (792x272 pixels):
 
-### 表示内容
+- **Top (y=4)**: Status information (battery voltage, Wi-Fi status, NTP sync status, uptime, free memory)
+- **Upper Left (y=45)**: Date (YYYY.MM.DD format, medium-sized numbers)
+- **Center Left (y=123)**: Time (H:MM or HH:MM format, large numbers)
+- **Upper Right (y=33)**: Temperature (icon + value + °C unit)
+- **Center Right (y=114)**: Humidity (icon + value + % unit)
+- **Lower Right (y=193)**: CO2 concentration (icon + value + ppm unit)
 
-画面レイアウト（792x272ピクセル）：
+### ImageBW Export Feature (Optional)
 
-- **上部（y=4）**: ステータス情報（バッテリー電圧、WiFi接続状態、NTP同期状態、稼働時間、空きメモリ）
-- **左側上部（y=45）**: 日付（YYYY.MM.DD形式、中サイズ数字）
-- **左側中央（y=123）**: 時刻（H:MM または HH:MM形式、大きな数字）
-- **右側上部（y=33）**: 温度（アイコン + 値 + °C単位）
-- **右側中央（y=114）**: 湿度（アイコン + 値 + %単位）
-- **右側下部（y=193）**: CO2濃度（アイコン + 値 + ppm単位）
+To send display data to a server via Wi-Fi:
 
-### ImageBW Export機能（オプション）
-
-表示データをWiFi経由でサーバーに送信する場合：
-
-1. **サーバーの起動**（Python 3が必要）:
+1. **Start Server** (Python 3 required):
 
 ```bash
 cd /path/to/EPDEnvClock
 python3 scripts/imagebw_server.py --port 8080
 ```
 
-2. **Arduino側の設定**: `server_config.h`でサーバーのIPアドレスを設定
+2. **Arduino Configuration**: Set server IP address in `server_config.h`
 
-3. **自動送信**: 表示が更新されるたびに自動的にImageBWデータが送信されます
+3. **Auto Send**: ImageBW data is automatically sent whenever the display updates
 
-受信したデータは`output/`ディレクトリにPNGファイルとして保存されます。
+Received data is saved as PNG files in the `output/` directory.
 
-**注意**: サーバーはPython 3がインストールされている任意のプラットフォーム（Windows、macOS、Linuxなど）で動作します。
+**Note**: The server runs on any platform with Python 3 (Windows, macOS, Linux, etc.).
 
-詳細は [docs/README_IMAGEBW.md](./docs/README_IMAGEBW.md) を参照してください。
+See [docs/README_IMAGEBW.md](./docs/README_IMAGEBW.md) for details.
 
-## 📁 プロジェクト構造
+## 📁 Project Structure
 
 ```
 EPDEnvClock/
-├── EPDEnvClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
-│   ├── EPDEnvClock.ino          # メインスケッチ
-│   ├── EPD.h / EPD.cpp          # EPDライブラリ
-│   ├── EPD_Init.h / EPD_Init.cpp  # EPD初期化ライブラリ
-│   ├── spi.h / spi.cpp          # SPIライブラリ
-│   ├── display_manager.h / display_manager.cpp  # 表示管理
-│   ├── font_renderer.h / font_renderer.cpp      # フォントレンダラー（カーニング対応）
-│   ├── sensor_manager.h / sensor_manager.cpp    # センサー管理
-│   ├── network_manager.h / network_manager.cpp  # ネットワーク管理
-│   ├── deep_sleep_manager.h / deep_sleep_manager.cpp  # Deep Sleep管理
-│   ├── imagebw_export.h / imagebw_export.cpp    # ImageBW Export
-│   ├── logger.h / logger.cpp    # ログ機能（タグ/レベル対応）
-│   ├── EPDfont.h                # フォントデータ（12pxテキスト用）
-│   ├── wifi_config.h            # Wi-Fi設定（gitignore）
-│   ├── server_config.h          # サーバー設定
-│   └── bitmaps/                 # ビットマップヘッダーファイル
-│       ├── Number_L_bitmap.h    # 数字フォント（大）
-│       ├── Number_M_bitmap.h    # 数字フォント（中）
-│       ├── Kerning_table.h      # カーニングテーブル
-│       ├── Icon_temp_bitmap.h   # 温度アイコン
-│       ├── Icon_humidity_bitmap.h  # 湿度アイコン
-│       ├── Icon_co2_bitmap.h    # CO2アイコン
-│       └── Unit_*.h             # 単位ビットマップ
-├── scripts/                     # Pythonスクリプト
-│   ├── convert_image.py         # 画像変換スクリプト
-│   ├── convert_imagebw.py       # ImageBW変換スクリプト
-│   ├── convert_numbers.py       # 数字画像変換スクリプト
-│   ├── create_number_bitmaps.py # 数字ビットマップ生成スクリプト
-│   └── imagebw_server.py        # ImageBW受信サーバー
-├── assets/                      # アセット（画像ファイルなど）
-│   ├── Number L/                # 大きい数字フォント画像
-│   ├── Number M/                # 中サイズ数字フォント画像（58px高）
-│   └── Number S/                # 小さい数字フォント画像
-├── docs/                        # ドキュメント
-│   ├── README.md                # ドキュメントインデックス
-│   ├── README_IMAGEBW.md        # ImageBW機能ガイド
-│   ├── README_SCD41.md          # SCD41センサーガイド
-│   └── reviews/                 # コードレビュー
-│       └── SENSOR_MANAGEMENT_REVIEW.md
-├── output/                      # 生成された画像出力（gitignore）
-├── AGENTS.md                    # Arduino CLI手順書
-└── README.md                    # このファイル
+├── EPDEnvClock/                  # Arduino/Firmware code (sketch directory)
+│   ├── EPDEnvClock.ino          # Main sketch (setup/loop)
+│   ├── EPD.h / EPD.cpp          # Low-level EPD driver
+│   ├── EPD_Init.h / EPD_Init.cpp  # EPD initialization
+│   ├── spi.h / spi.cpp          # Bit-banging SPI for EPD
+│   ├── display_manager.*        # Display rendering, layout, battery reading
+│   ├── font_renderer.*          # Glyph drawing with kerning support
+│   ├── sensor_manager.*         # SCD41 sensor (single-shot mode with light sleep)
+│   ├── network_manager.*        # Wi-Fi connection, NTP sync
+│   ├── deep_sleep_manager.*     # Deep sleep, RTC state, SD/SPIFFS frame buffer
+│   ├── imagebw_export.*         # ImageBW Export
+│   ├── logger.*                 # Logging with levels (DEBUG/INFO/WARN/ERROR)
+│   ├── EPDfont.h                # Font data (12px text)
+│   ├── wifi_config.h            # Wi-Fi configuration (gitignore)
+│   ├── server_config.h          # Server configuration
+│   └── bitmaps/                 # Number fonts (L/M), icons, units, kerning table
+├── scripts/                     # Python scripts
+│   ├── convert_image.py         # Image conversion script
+│   ├── convert_imagebw.py       # ImageBW conversion script
+│   ├── convert_numbers.py       # Number image conversion script
+│   ├── create_number_bitmaps.py # Number bitmap generation script
+│   └── imagebw_server.py        # ImageBW receiver server
+├── assets/                      # Assets (image files, etc.)
+│   ├── Number L/                # Large number font images
+│   ├── Number M/                # Medium number font images (58px height)
+│   └── Number S/                # Small number font images
+├── web/                         # Web dashboard (Astro + Cloudflare Pages)
+├── docs/                        # Documentation
+│   ├── README.md                # Documentation index
+│   ├── README_IMAGEBW.md        # ImageBW feature guide
+│   ├── README_SCD41.md          # SCD41 sensor guide
+│   └── reviews/                 # Code reviews
+├── output/                      # Generated image output (gitignore)
+└── README.md                    # This file
 ```
 
-## 📚 ドキュメント
+## 📚 Documentation
 
-### 主要ドキュメント
+- **[docs/README.md](./docs/README.md)** - Documentation index
+- **[docs/README_IMAGEBW.md](./docs/README_IMAGEBW.md)** - ImageBW Wi-Fi Export feature guide
+- **[docs/README_SCD41.md](./docs/README_SCD41.md)** - SCD41 sensor integration guide
+- **[web/README.md](./web/README.md)** - Web dashboard documentation
 
-- **[AGENTS.md](./AGENTS.md)** - Arduino CLIコンパイル・アップロード手順書
-- **[docs/README.md](./docs/README.md)** - ドキュメントインデックス
-- **[docs/README_IMAGEBW.md](./docs/README_IMAGEBW.md)** - ImageBW WiFi Export機能の使い方
-- **[docs/README_SCD41.md](./docs/README_SCD41.md)** - SCD41センサー統合ガイド
+## 🌐 Web Dashboard
 
-### コードレビュー
+The project includes a web dashboard for viewing sensor data, deployed on Cloudflare Pages.
 
-- **[docs/reviews/SENSOR_MANAGEMENT_REVIEW.md](./docs/reviews/SENSOR_MANAGEMENT_REVIEW.md)** - センサー管理の実装状況と改善提案
+### Local Development
 
-## 🔋 省電力設計
+```bash
+cd web
+bun install
+bun run dev
+```
 
-### 消費電流
+Access at http://localhost:4321/
 
-| 状態 | 消費電流 |
-|------|----------|
-| SCD41 Idle Single-Shot | 約1.5mA |
-| ESP32-S3 Deep Sleep | 約0.2〜0.3mA |
-| ESP32-S3 Light Sleep (センサー測定待機中) | 約2〜3mA |
-| ESP32-S3 Active (WiFi含む) | 約80〜150mA |
+### Deployment
 
-### バッテリー持続時間（1480mAhバッテリーの場合）
+```bash
+cd web
+bun run build
+bunx wrangler pages deploy dist --branch=main
+```
 
-- **平均消費電流**: 約2.5mA（WiFi同期は1時間に1回）
-- **持続時間**: 1480mAh ÷ 2.5mA ≈ **592時間（約25日）**
+**Note**: `--branch=main` is required to deploy to production domain. Without it, deploys to preview URL only.
 
-### Deep Sleepサイクル
+## 🔋 Low Power Design
 
-- **更新間隔**: 約1分（毎分0秒に更新）
-- **動作時間**: 約6-8秒（センサー測定5秒 + 表示更新 + 初期化）
-- **Deep Sleep時間**: 約52-54秒
-- **WiFi接続**: 60回の起動ごとに1回（約1時間ごと）
+### Current Consumption
 
-### 省電力最適化
+| State | Current Consumption |
+|-------|---------------------|
+| SCD41 Idle Single-Shot | ~1.5mA |
+| ESP32-S3 Deep Sleep | ~0.2-0.3mA |
+| ESP32-S3 Light Sleep (sensor measurement wait) | ~2-3mA |
+| ESP32-S3 Active (including Wi-Fi) | ~80-150mA |
 
-1. **センサー測定中のLight Sleep**: Single-Shot測定の5秒待機中にLight Sleepを使用
-2. **WiFi接続の最小化**: NTP同期は1時間ごと、それ以外はRTC時刻を使用
-3. **SDカード電源制御**: Deep Sleep中はSDカード電源をオフ
-4. **EPD Deep Sleep**: ディスプレイをDeep Sleepモードに移行
+### Battery Life (with 1480mAh battery)
 
-## 🎨 フォント生成
+- **Average Current Consumption**: ~2.5mA (Wi-Fi sync once per hour)
+- **Battery Life**: 1480mAh ÷ 2.5mA ≈ **592 hours (~25 days)**
 
-数字フォント（Number S、Number M、Number L）は`scripts/create_number_bitmaps.py`を使用して生成します。
+### Deep Sleep Cycle
 
-### 使用フォント
+- **Update Interval**: ~1 minute (updates at minute boundary)
+- **Active Time**: ~6-8 seconds (5s sensor measurement + display update + initialization)
+- **Deep Sleep Time**: ~52-54 seconds
+- **Wi-Fi Connection**: Once every 60 wake cycles (~once per hour)
 
-**重要**: すべての数字フォントは以下のフォントファイルを使用します：
+### Power Optimization
 
-- **フォント名**: Baloo Bhai 2
-- **スタイル**: Extra Bold
+1. **Light Sleep During Sensor Measurement**: Uses Light Sleep during 5-second Single-Shot measurement wait
+2. **Minimized Wi-Fi Connection**: NTP sync once per hour, uses RTC time otherwise
+3. **SD Card Power Control**: Powers off SD card during Deep Sleep (GPIO 42 LOW)
+4. **EPD Deep Sleep**: Transitions display to Deep Sleep mode
+5. **I2C Pins Held HIGH**: Keeps sensor in idle mode during deep sleep
 
-### Number Mフォントの生成例
+## 🎨 Font Generation
+
+Number fonts (Number S, Number M, Number L) are generated using `scripts/create_number_bitmaps.py`.
+
+### Font Used
+
+**Important**: All number fonts use the following font file:
+
+- **Font Name**: Baloo Bhai 2
+- **Style**: Extra Bold
+
+### Number M Font Generation Example
 
 ```bash
 cd /path/to/EPDEnvClock
@@ -365,125 +419,136 @@ python3 scripts/create_number_bitmaps.py \
   --output-dir "assets/Number M"
 ```
 
-**注意**:
+## ⚙️ Technical Specifications
 
-- `/path/to/EPDEnvClock`を実際のプロジェクトディレクトリのパスに置き換えてください
-- `/path/to/fonts/BalooBhai2-ExtraBold.ttf`を実際のフォントファイルのパスに置き換えてください
-
-詳細は [AGENTS.md](./AGENTS.md) の「数字フォントの生成」セクションを参照してください。
-
-## ⚙️ 技術仕様
-
-### ESP32-S3設定
+### ESP32-S3 Configuration
 
 - **Board**: ESP32S3 Dev Module
 - **Partition Scheme**: Huge APP (3MB No OTA/1MB SPIFFS)
 - **PSRAM**: OPI PSRAM
-- **CPU Frequency**: 240MHz (WiFi)
+- **CPU Frequency**: 240MHz (Wi-Fi)
 - **Flash Mode**: QIO 80MHz
 - **Flash Size**: 4MB (32Mb)
 - **Upload Speed**: 921600
 
-### EPDディスプレイ仕様
+### EPD Display Specifications
 
-- **実際の解像度**: 792x272ピクセル
-- **コントローラー**: マスター/スレーブの2つのSSD1683 IC
-  - 各コントローラー: 396x272ピクセルを担当
-  - 中央に4pxのギャップ（コントローラー間の接続部分）
-- **プログラム定義**: `EPD_W = 800`, `EPD_H = 272`（アドレスオフセット用）
-- **バッファサイズ**: 800x272 = 27,200バイト
+- **Actual Resolution**: 792x272 pixels
+- **Controller**: Two SSD1683 ICs in master/slave configuration
+  - Each controller: Handles 396x272 pixels
+  - 4px gap in center (connection between controllers)
+- **Program Definition**: `EPD_W = 800`, `EPD_H = 272` (for address offset)
+- **Buffer Size**: 800x272 = 27,200 bytes
+- **Interface**: Bit-banging SPI (pins 11, 12, 45, 46, 47, 48)
 
-### SCD41センサー仕様
+### SCD41 Sensor Specifications
 
-- **I2Cアドレス**: 0x62 (デフォルト)
-- **I2Cピン**: SDA=GPIO 38, SCL=GPIO 20
-- **測定モード**: Single-Shot（Light Sleep中に5秒待機）
-- **温度オフセット**: 4.0°C（自己発熱補正）
-- **測定範囲**:
+- **I2C Address**: 0x62 (default)
+- **I2C Pins**: SDA=GPIO 38, SCL=GPIO 20
+- **Measurement Mode**: Single-Shot (waits 5 seconds in Light Sleep)
+- **Temperature Offset**: 4.0°C (self-heating compensation)
+- **Measurement Range**:
   - CO2: 400-5000ppm
-  - 温度: -10～+60°C
-  - 湿度: 0-100%RH
-- **精度**:
+  - Temperature: -10~+60°C
+  - Humidity: 0-100%RH
+- **Accuracy**:
   - CO2: ±(40ppm+5%)
-  - 温度: ±0.8°C (15-35°Cの範囲)
-  - 湿度: ±6%RH (15-35°C、20-65%RHの範囲)
+  - Temperature: ±0.8°C (in 15-35°C range)
+  - Humidity: ±6%RH (in 15-35°C, 20-65%RH range)
 
-### ロガー機能
+### Time Management
 
-- **ログレベル**: DEBUG, INFO, WARN, ERROR
-- **タイムスタンプ**: ブート時間、日時、または両方を表示
-- **タグ**: Setup, Loop, Network, Sensor, Display, Font, DeepSleep, ImageBW
-- **ANSIカラー**: ログレベルに応じた色分け表示
+- **NTP Server**: `ntp.nict.jp`
+- **Timezone**: JST (UTC+9)
+- **Sync Interval**: Every 60 wake cycles (~1 hour)
+- **RTC Persistence**: Time saved to RTC memory before sleep, restored on wake
 
-## 🐛 トラブルシューティング
+### Logger Feature
 
-### コンパイルエラー
+- **Log Levels**: DEBUG, INFO, WARN, ERROR
+- **Timestamp**: Boot time, date/time, or both
+- **Tags**: Setup, Loop, Network, Sensor, Display, Font, DeepSleep, ImageBW
+- **ANSI Colors**: Color-coded display by log level
 
-- **エラー**: "Invalid FQBN"
-  - **解決策**: FQBNの形式を確認。オプションは`:`で区切る（例: `esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi`）
+## ⚠️ Common Pitfalls
 
-- **エラー**: "SensirionI2cScd4x.h: No such file or directory"
-  - **解決策**: 正しいヘッダー名は `SensirionI2CScd4x.h`（大文字小文字に注意）
-  - ライブラリをインストール: `arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"`
+1. **SCL pin is GPIO 20**, not 21
+2. **Date format uses periods**: YYYY.MM.DD (not slashes)
+3. **Frame buffer is 27,200 bytes** (800x272, not 792x272)
+4. **EPD uses bit-banging SPI** (pins 11,12,45,46,47,48), SD uses hardware HSPI
+5. **Button pins are active LOW** with internal pullup
+6. **SD card needs power enable** (GPIO 42 HIGH) before use
+7. **Sketch directory name must match .ino filename** (`EPDEnvClock/EPDEnvClock.ino`)
 
-- **エラー**: "no matching function for call to 'SensirionI2CScd4x::begin'"
-  - **解決策**: ライブラリバージョン0.4.0では `scd4x.begin(Wire)` を使用（I2Cアドレス引数は不要）
+## 🐛 Troubleshooting
 
-- **エラー**: "'class SensirionI2CScd4x' has no member named 'getDataReadyStatus'"
-  - **解決策**: バージョン0.4.0では `getDataReadyFlag()` に変更されました
+### Compile Errors
 
-### アップロードエラー
+- **Error**: "Invalid FQBN"
+  - **Solution**: Check FQBN format. Options are separated by `:` (e.g., `esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi`)
 
-- **エラー**: "Unable to verify flash chip connection"
-  - **解決策**:
-    - 別のUSBポートを試す（`arduino-cli board list`で確認）
-    - ボードのリセットボタンを押す
-    - USBケーブルを確認（データ転送対応のケーブルか確認）
+- **Error**: "SensirionI2cScd4x.h: No such file or directory"
+  - **Solution**: Correct header name is `SensirionI2CScd4x.h` (note case sensitivity)
+  - Install library: `arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"`
 
-- **エラー**: ポートが見つからない
-  - **解決策**:
-    - USBケーブルを接続し直す
-    - `arduino-cli board list`でポートを再確認
-    - データ転送対応のUSBケーブルを使用（充電専用ケーブルでは動作しない）
-    - macOS 10.13以前の場合はCH340ドライバをインストール（上記「USBシリアルドライバのインストール」参照）
-    - 別のUSBポートを試す
+- **Error**: "no matching function for call to 'SensirionI2CScd4x::begin'"
+  - **Solution**: Library version 0.4.0 uses `scd4x.begin(Wire)` (no I2C address argument)
 
-### センサーが初期化できない場合
+- **Error**: "'class SensirionI2CScd4x' has no member named 'getDataReadyStatus'"
+  - **Solution**: Changed to `getDataReadyFlag()` in version 0.4.0
 
-1. **接続を確認**:
-   - SDAがGPIO 38に接続されているか
-   - SCLがGPIO 20に接続されているか
-   - VDDが3.3Vに接続されているか
-   - GNDが接続されているか
+### Upload Errors
 
-2. **I2Cバスの確認**:
-   - I2Cスキャナーを使用してセンサーが検出されるか確認
-   - デフォルトI2Cアドレス: 0x62
+- **Error**: "Unable to verify flash chip connection"
+  - **Solution**:
+    - Try a different USB port (check with `arduino-cli board list`)
+    - Press the board's reset button
+    - Check USB cable (ensure it supports data transfer)
 
-3. **電源の確認**:
-   - SCD41の電源電圧が3.3V±0.1Vか確認
-   - Deep Sleep後にセンサーがリセットされていないか確認
+- **Error**: Port not found
+  - **Solution**:
+    - Reconnect USB cable
+    - Recheck port with `arduino-cli board list`
+    - Use a data-capable USB cable (charging-only cables won't work)
+    - Install CH340 driver for macOS 10.13 or earlier (see "USB Serial Driver Installation" above)
+    - Try a different USB port
 
-詳細は [docs/README_SCD41.md](./docs/README_SCD41.md) の「トラブルシューティング」セクションを参照してください。
+### Sensor Won't Initialize
 
-### 時刻が正しくない場合
+1. **Check Connections**:
+   - Is SDA connected to GPIO 38?
+   - Is SCL connected to GPIO 20?
+   - Is VDD connected to 3.3V?
+   - Is GND connected?
 
-1. **WiFi接続を確認**: NTP同期にはWiFi接続が必要
-2. **RTC時刻の確認**: Deep Sleep後はRTC時刻から復元される
-3. **タイムゾーン**: JST（UTC+9）が設定されている
+2. **Check I2C Bus**:
+   - Use I2C scanner to verify sensor is detected
+   - Default I2C address: 0x62
 
-### SDカードが認識されない場合
+3. **Check Power**:
+   - Verify SCD41 supply voltage is 3.3V±0.1V
+   - Check if sensor was reset after Deep Sleep
 
-1. **SDカードのフォーマット**: FAT32でフォーマット
-2. **電源ピン**: GPIO 42がHIGHになっているか確認
-3. **SPIピン**: MOSI=40, MISO=13, SCK=39, CS=10
+See the "Troubleshooting" section in [docs/README_SCD41.md](./docs/README_SCD41.md) for details.
 
-**注意**: SDカードが使用できない場合、SPIFFSにフォールバックしますが、書き込み寿命が限られます。
+### Time is Incorrect
 
-## 📝 ライセンス
+1. **Check Wi-Fi Connection**: NTP sync requires Wi-Fi connection
+2. **Check RTC Time**: Time is restored from RTC after Deep Sleep
+3. **Timezone**: JST (UTC+9) is configured
 
-このプロジェクトのライセンス情報は記載されていません。使用する際は、各ライブラリのライセンスを確認してください。
+### SD Card Not Recognized
 
-## 📧 連絡先
+1. **SD Card Format**: Format as FAT32
+2. **Power Pin**: Check if GPIO 42 is HIGH
+3. **SPI Pins**: MOSI=40, MISO=13, SCK=39, CS=10
 
-プロジェクトに関する質問や問題がある場合は、GitHubのIssuesで報告してください。
+**Note**: If SD card is unavailable, falls back to SPIFFS, but write lifespan is limited.
+
+## 📝 License
+
+License information for this project is not specified. Please check the license of each library when using.
+
+## 📧 Contact
+
+If you have questions or issues with the project, please report them on GitHub Issues.

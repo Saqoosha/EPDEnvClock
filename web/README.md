@@ -32,7 +32,7 @@ Edit `secrets.h`:
 ### 2. How it works
 
 - Sensor readings are logged to SD card every minute (`/sensor_logs/sensor_log_YYYYMMDD.jsonl`)
-- Every 60 boots (~60 min), when WiFi/NTP sync occurs:
+- Every 60 boots (~60 min), when Wi-Fi/NTP sync occurs:
   - ESP32 reads unsent data from SD card (up to 60 records)
   - Sends batch POST to `/api/sensor`
   - Updates `lastUploadedTime` in RTC memory to track progress

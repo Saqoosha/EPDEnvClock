@@ -1,7 +1,7 @@
-# ImageBW WiFi Export 使い方
+# ImageBW Wi-Fi Export 使い方
 
 ## 概要
-ArduinoからImageBWキャンバス配列をWiFi経由でMac上のPythonサーバーに送信し、PNG画像として保存する機能です。
+ArduinoからImageBWキャンバス配列をWi-Fi経由でMac上のPythonサーバーに送信し、PNG画像として保存する機能です。
 
 ## セットアップ
 
@@ -50,11 +50,11 @@ const unsigned long IMAGEBW_EXPORT_INTERVAL = 60000; // 0で自動送信を無�
 ### サーバーに接続できない
 - MacのIPアドレスが正しいか確認: `ifconfig | grep "inet "`
 - ファイアウォールでポート8080が開いているか確認
-- ArduinoとMacが同じWiFiネットワークに接続されているか確認
+- ArduinoとMacが同じWi-Fiネットワークに接続されているか確認
 
 ### データが受信されない
 - Arduinoのシリアルモニターで`[ImageBW]`ログを確認
-- WiFi接続状態を確認
+- Wi-Fi接続状態を確認
 - `enableImageBWExport`が`true`になっているか確認
 
 ### 画像が正しく表示されない
