@@ -78,16 +78,19 @@ According to Sensirion's official datasheet ([SCD4x Datasheet](https://admin.sen
 **Definition and Sign of Temperature Offset**:
 
 According to the datasheet, the temperature offset is defined as:
+
 - **Temperature Offset = Measured Temperature - Actual Ambient Temperature**
 
 This means if the sensor measures a **higher temperature than the actual ambient temperature**, the offset is a **positive value**.
 
 **Sensor's Internal Default Value**:
+
 - **4.0°C is stored by default in the sensor's EEPROM** (factory setting)
 - This value is stored inside the sensor and persists even when power is turned off
 - During initialization, the current offset value is read and displayed
 
 **Important Behavior**:
+
 - `setTemperatureOffset()` **overwrites (replaces)** the existing value
 - **How temperature offset is applied**: `Displayed Temperature = Actual Ambient Temperature - Offset`
 - **Calculation example**:
@@ -99,6 +102,7 @@ This means if the sensor measures a **higher temperature than the actual ambient
   - In other words, changing from +4°C to -3°C will lower the displayed temperature by 7°C
 
 **Settings in This Project**:
+
 - Setting in this project: **4.0°C** (using the sensor's default value)
 - During initialization, the current offset value inside the sensor is read, then the value is set
 - After setting, it reads again to confirm the value was set correctly
@@ -106,6 +110,7 @@ This means if the sensor measures a **higher temperature than the actual ambient
 **Note**: The datasheet's "4°C" is defined as a correction value for when the sensor measures 4°C higher than the actual ambient temperature. However, depending on the implementation of the `setTemperatureOffset()` method, the sign may differ. Please verify the actual behavior and set an appropriate value.
 
 **Recommended Offset Range**:
+
 - Official recommended range: **0°C to 20°C** (positive values)
 - Adjustment may be needed depending on actual usage environment
 
@@ -128,38 +133,26 @@ scd4x.setTemperatureOffset(4.0f);  // Default: 4.0°C
 5. Adjust the offset value based on the measured temperature difference (official recommended range: 0°C to 20°C)
 6. Restart the sensor and confirm the set offset is applied
 
-**Notes**: 
+**Notes**:
+
 - Once set, the offset is stored inside the sensor and persists even when power is turned off
 - The sensor must be restarted when setting a new offset value
 - Temperature offset **also affects relative humidity (RH) accuracy**, so accurate setting is important
 
 ## Usage
 
-### Test Mode (EPD Disabled)
+### Normal Operation
 
-The current code is in test mode with EPD features disabled, allowing you to check sensor values via serial output only.
+The sensor values are automatically read and displayed on the e-paper display along with the current time and date. The system operates as follows:
 
-1. Open serial monitor at 115200 bps
-2. The sensor will initialize and display values every 5 seconds
+1. On wake from deep sleep, the sensor is initialized
+2. A single-shot measurement is triggered (takes ~5 seconds)
+3. CO2 (ppm), temperature (°C), and humidity (%RH) are displayed on the EPD
+4. The system enters deep sleep until the next minute
 
-### Serial Output Example
+### Debugging via Serial
 
-```
-=== SCD41 Sensor Test ===
-EPD features are temporarily disabled
-Initializing SCD41 sensor...
-SCD41 sensor initialized successfully!
-Waiting for first measurement (5 seconds)...
-
-Starting sensor readings...
-Reading every 5 seconds...
-
-=== SCD41 Sensor Reading ===
-CO2: 420 ppm
-Temperature: 23.5 °C
-Humidity: 45.2 %RH
-============================
-```
+Connect to the serial monitor at 115200 bps to see sensor initialization status and any error messages.
 
 ## Troubleshooting
 
@@ -196,12 +189,13 @@ The SCD41 sensor tends to measure temperatures higher than the actual ambient te
 
 If the following messages appear in serial output, the offset setting was successful:
 
-```
+```text
 Temperature offset set to 4.0°C successfully.
 Read back temperature offset: 4.00 °C
 ```
 
-**Notes**: 
+**Notes**:
+
 - The sensor's EEPROM stores a default 4.0°C offset
 - This project uses this default value as-is
 - The temperature offset is for compensating self-heating
@@ -213,11 +207,11 @@ A warning message will be displayed, but sensor operation is not affected. Offse
 ## Sensor Specifications
 
 - **I2C Address**: 0x62 (default)
-- **Measurement Range**: 
+- **Measurement Range**:
   - CO2: 400-5000 ppm
   - Temperature: -10 to +60°C
   - Humidity: 0-100% RH
-- **Accuracy**: 
+- **Accuracy**:
   - CO2: ±(40 ppm + 5%)
   - Temperature: ±0.8°C (in the 15-35°C range)
   - Humidity: ±6% RH (in the 15-35°C, 20-65% RH range)

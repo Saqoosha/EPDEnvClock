@@ -10,7 +10,7 @@ SCD41 CO2/温度/湿度センサーの管理方法と実装状況をまとめた
 
 ### ファイル構成
 
-```
+```text
 EPDEnvClock/
 ├── sensor_manager.h          # センサー管理API（ヘッダー）
 ├── sensor_manager.cpp        # センサー管理実装
@@ -82,11 +82,13 @@ constexpr uint8_t SCD4X_I2C_ADDRESS = 0x62;
 ### 現在の実装: **Idle Single-Shot Mode**
 
 **選択理由**:
+
 - 1分おき測定では、idle single-shot（約1.5mA）がpower-cycled single-shot（約2.6mA）より省電力
 - ASC（自動セルフキャリブレーション）が有効
 - 測定間隔が380秒未満の場合に最適
 
 **動作**:
+
 - センサーは常にidle状態（約0.2mA）
 - 測定時のみ`measureSingleShot()`を呼ぶ
 - Deep Sleep前に`powerDown()`しない
@@ -134,6 +136,7 @@ SensorManager_ReadBlocking(timeoutMs)
 ```cpp
 bool SensorManager_Begin(bool wakeFromSleep);
 ```
+
 - Cold boot時: フル初期化（周期測定停止、温度オフセット設定）
 - Wake from sleep時: 簡易初期化（I2Cバス初期化のみ）
 
@@ -142,6 +145,7 @@ bool SensorManager_Begin(bool wakeFromSleep);
 ```cpp
 bool SensorManager_ReadBlocking(unsigned long timeoutMs = 10000);
 ```
+
 - **推奨**: シングルショットモード用
 - ブロッキング読み取り（最大timeoutMs待機）
 - `measureSingleShot()`を使用（内部で5秒待機）
@@ -149,6 +153,7 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs = 10000);
 ```cpp
 void SensorManager_Read();
 ```
+
 - **非推奨**: 周期測定モード用
 - 非ブロッキング読み取り
 - `getDataReadyStatus()`でデータ準備を確認
@@ -169,6 +174,7 @@ uint16_t SensorManager_GetCO2();
 void SensorManager_PowerDown();
 void SensorManager_WakeUp();
 ```
+
 - **注意**: 1分おき測定では使用しない（idle single-shotの方が省電力）
 - 380秒以上の測定間隔の場合に有効
 
@@ -179,12 +185,14 @@ void SensorManager_WakeUp();
 ### EPDEnvClock.ino
 
 1. **初期化** (`setup()`)
+
    ```cpp
    handleSensorInitializationResult(wakeFromSleep);
    sensorInitialized = SensorManager_IsInitialized();
    ```
 
 2. **初回読み取り** (`setup()`)
+
    ```cpp
    if (sensorInitialized) {
      SensorManager_ReadBlocking(timeoutMs);  // 推奨
@@ -198,6 +206,7 @@ void SensorManager_WakeUp();
 ### display_manager.cpp
 
 1. **分更新時の読み取り**
+
    ```cpp
    if (SensorManager_IsInitialized()) {
      SensorManager_Read();  // ⚠️ 問題: シングルショットモードでは動作しない
@@ -205,6 +214,7 @@ void SensorManager_WakeUp();
    ```
 
 2. **値の取得**
+
    ```cpp
    float temp = SensorManager_GetTemperature();
    float humidity = SensorManager_GetHumidity();
@@ -218,40 +228,48 @@ void SensorManager_WakeUp();
 ### 1. `SensorManager_Read()`の使用
 
 **問題**:
+
 - `display_manager.cpp:596`で`SensorManager_Read()`を使用
 - この関数は周期測定モードを前提としている
 - 現在はシングルショットモードなので、データが準備されていない可能性がある
 
 **影響**:
+
 - 分更新時にセンサー値が更新されない可能性
 - 古い値が表示され続ける
 
 **解決策**:
+
 - `display_manager.cpp`で`SensorManager_ReadBlocking()`を使用する
 - または、`SensorManager_Read()`を削除して、`setup()`で読み取った値のみを使用
 
 ### 2. `setup()`のタイムアウト設定
 
 **問題**:
+
 - `wakeFromSleep=true`時のタイムアウトが2秒
 - シングルショットモードは5秒かかるため、タイムアウトが短すぎる
 
 **現在のコード**:
+
 ```cpp
 unsigned long timeoutMs = wakeFromSleep ? 2000 : 5000;
 ```
 
 **解決策**:
+
 - シングルショットモードは常に5秒以上かかるため、タイムアウトを統一
 - `timeoutMs = 6000;` など、余裕を持たせる
 
 ### 3. フォールバック処理
 
 **問題**:
+
 - `setup()`で`SensorManager_ReadBlocking()`が失敗した場合、`SensorManager_Read()`をフォールバックとして呼んでいる
 - しかし、シングルショットモードでは`SensorManager_Read()`は動作しない
 
 **解決策**:
+
 - フォールバック処理を削除するか、エラーメッセージを出力して終了
 
 ---
@@ -283,10 +301,10 @@ unsigned long timeoutMs = wakeFromSleep ? 2000 : 5000;
 
 ### 優先度: 中
 
-3. **フォールバック処理の見直し**
+1. **フォールバック処理の見直し**
    - `SensorManager_Read()`へのフォールバックを削除
 
-4. **`SensorManager_Read()`の削除または警告**
+2. **`SensorManager_Read()`の削除または警告**
    - シングルショットモードでは使用不可であることを明確化
 
 ---
@@ -296,11 +314,13 @@ unsigned long timeoutMs = wakeFromSleep ? 2000 : 5000;
 ### 現在の実装状況
 
 ✅ **良好な点**:
+
 - Idle single-shotモードを正しく実装
 - Deep Sleep前に`powerDown()`を呼ばない（省電力）
 - 初期化フローが適切
 
 ⚠️ **改善が必要な点**:
+
 - `display_manager.cpp`で`SensorManager_Read()`を使用（シングルショットモードでは動作しない）
 - `setup()`のタイムアウト設定が不適切
 - フォールバック処理が機能しない
@@ -317,4 +337,3 @@ unsigned long timeoutMs = wakeFromSleep ? 2000 : 5000;
 
 - [Sensirion SCD4x Low Power Operation Modes](https://sensirion.com/media/documents/077BC86F/62BF01B9/CD_AN_SCD4x_Low_Power_Operation_D1.pdf)
 - [Sensirion SCD4x Datasheet](https://sensirion.com/media/documents/E0F04247/631EF271/CD_DS_SCD40_SCD41_Datasheet_D1.pdf)
-
