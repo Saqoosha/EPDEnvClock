@@ -264,15 +264,18 @@ int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, tim
     return 0;
   }
 
-  int count = 0;
-  latestTimestamp = lastUploadedTime; // Initialize with current last uploaded time
-  payload += "[";
-
-  // We need to check today's file and possibly yesterday's file if lastUploadedTime is old
+  // Get current time
   time_t now;
   time(&now);
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
+
+  // Use a circular buffer to keep only the LATEST maxReadings entries
+  // This ensures we send recent data and forget old backlog
+  String *entries = new String[maxReadings];
+  time_t *timestamps = new time_t[maxReadings];
+  int bufferCount = 0;
+  int bufferStart = 0; // Index of oldest entry in circular buffer
 
   // Helper lambda to process a log file
   auto processFile = [&](const char *filename) {
@@ -287,7 +290,7 @@ int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, tim
       return;
     }
 
-    while (file.available() && count < maxReadings)
+    while (file.available())
     {
       String line = file.readStringUntil('\n');
       line.trim();
@@ -305,19 +308,23 @@ int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, tim
           String tsStr = line.substring(start, end);
           time_t ts = (time_t)tsStr.toInt();
 
+          // Only include entries newer than lastUploadedTime
           if (ts > lastUploadedTime)
           {
-            if (count > 0)
+            if (bufferCount < maxReadings)
             {
-              payload += ",";
+              // Buffer not full yet, just add
+              int idx = (bufferStart + bufferCount) % maxReadings;
+              entries[idx] = line;
+              timestamps[idx] = ts;
+              bufferCount++;
             }
-            payload += line;
-            count++;
-            
-            // Update latest timestamp if this one is newer
-            if (ts > latestTimestamp)
+            else
             {
-              latestTimestamp = ts;
+              // Buffer full, overwrite oldest entry (circular)
+              entries[bufferStart] = line;
+              timestamps[bufferStart] = ts;
+              bufferStart = (bufferStart + 1) % maxReadings;
             }
           }
         }
@@ -326,14 +333,14 @@ int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, tim
     file.close();
   };
 
-  // Check yesterday's file first
+  // Check yesterday's file first (in case there's recent data spanning midnight)
   time_t yesterday = now - 86400;
   struct tm tmYesterday;
   localtime_r(&yesterday, &tmYesterday);
-  
+
   char filenameYesterday[kMaxFilenameLength];
   generateLogFilename(tmYesterday, filenameYesterday, sizeof(filenameYesterday));
-  
+
   processFile(filenameYesterday);
 
   // Check today's file
@@ -341,7 +348,30 @@ int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, tim
   generateLogFilename(timeinfo, filenameToday, sizeof(filenameToday));
   processFile(filenameToday);
 
+  // Build payload from buffer (in chronological order)
+  payload += "[";
+  latestTimestamp = lastUploadedTime;
+
+  for (int i = 0; i < bufferCount; i++)
+  {
+    int idx = (bufferStart + i) % maxReadings;
+    if (i > 0)
+    {
+      payload += ",";
+    }
+    payload += entries[idx];
+
+    if (timestamps[idx] > latestTimestamp)
+    {
+      latestTimestamp = timestamps[idx];
+    }
+  }
+
   payload += "]";
-  
-  return count;
+
+  // Clean up
+  delete[] entries;
+  delete[] timestamps;
+
+  return bufferCount;
 }
