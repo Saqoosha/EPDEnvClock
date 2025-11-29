@@ -312,8 +312,7 @@ EPDEnvClock/
 │   └── imagebw_server.py        # ImageBW receiver server
 ├── assets/                      # Assets (image files, etc.)
 │   ├── Number L/                # Large number font images
-│   ├── Number M/                # Medium number font images (58px height)
-│   └── Number S/                # Small number font images
+│   └── Number M/                # Medium number font images
 ├── web/                         # Web dashboard (Astro + Cloudflare Pages)
 ├── docs/                        # Documentation
 │   ├── README.md                # Documentation index
@@ -389,7 +388,7 @@ bunx wrangler pages deploy dist --branch=main
 
 ## 🎨 Font Generation
 
-Number fonts (Number S, Number M, Number L) are generated using `scripts/create_number_bitmaps.py`.
+Number fonts are generated using `scripts/create_number_bitmaps.py`.
 
 ### Font Used
 
