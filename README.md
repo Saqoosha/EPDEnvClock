@@ -12,7 +12,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 - **Environmental Sensor**: Measures and displays CO2, temperature, and humidity using SCD41 sensor
 - **Low Power Design**: Long battery life with Deep Sleep mode (updates approximately every minute)
 - **Wi-Fi Connectivity**: NTP time synchronization and optional ImageBW data export via Wi-Fi
-- **Battery Voltage Monitoring**: Real-time battery voltage display
+- **Battery Monitoring**: Real-time battery percentage and voltage display using MAX17048 fuel gauge
 - **Button Wake-up**: Wake from Deep Sleep with HOME button for full screen refresh
 
 ## ✨ Main Features
@@ -49,7 +49,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 ### Data Logging
 
 - **Sensor Log**: Automatically records sensor values to SD card in JSONL format
-- **Recorded Data**: Date, time, Unix timestamp, time since NTP sync, temperature, humidity, CO2, battery ADC value, battery voltage
+- **Recorded Data**: Date, time, Unix timestamp, RTC drift, temperature, humidity, CO2, battery voltage, battery %, charge rate
 - **File Format**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl` (files split by date)
 - **Fallback**: Falls back to SPIFFS if SD card is unavailable
 
@@ -70,10 +70,11 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 ### External Components (Optional)
 
 - **SCD41 Sensor**: CO2/temperature/humidity sensor
+- **MAX17048 Fuel Gauge**: Battery state-of-charge monitor (Adafruit breakout recommended)
 
 ### Pin Configuration
 
-#### SCD41 Sensor (I2C)
+#### SCD41 Sensor (I2C Bus 0)
 
 | Pin | GPIO |
 |-----|------|
@@ -83,6 +84,19 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 | GND | GND |
 
 **Note**: Pull-up resistors are built into the SCD41 module, no additional hardware required.
+
+#### MAX17048 Fuel Gauge (I2C Bus 1)
+
+| Pin | GPIO / Connection |
+|-----|-------------------|
+| SDA | 14 |
+| SCL | 16 |
+| VIN | 3.3V |
+| GND | GND |
+| CELL+ | LiPo Battery + |
+| CELL- | LiPo Battery - (GND) |
+
+**Note**: MAX17048 is powered by the battery, not VIN. The chip will not respond to I2C if battery is not connected.
 
 #### SD Card (HSPI Bus)
 
@@ -114,11 +128,6 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 | PRV | 6 |
 | NEXT | 4 |
 | OK | 5 |
-
-#### Battery ADC
-
-- **GPIO**: 8
-- **Calibration**: `Vbat = 0.002334 * adc_raw - 1.353`
 
 ## 🚀 Setup
 
@@ -183,6 +192,9 @@ arduino-cli core install esp32:esp32@2.0.7
 ```bash
 # Sensirion SCD4x library (Sensirion Core dependency is installed automatically)
 arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"
+
+# Adafruit MAX17048 fuel gauge library
+arduino-cli lib install "Adafruit MAX1704X"
 ```
 
 ### Development Environment Versions
@@ -193,6 +205,7 @@ arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"
 | ESP32 Core | 2.0.7 | `esp32:esp32@2.0.7` |
 | Sensirion I2C SCD4x | 0.4.0 | CO2/temperature/humidity sensor library |
 | Sensirion Core | 0.6.0 | Dependency (auto-installed) |
+| Adafruit MAX1704X | 1.0.3 | Battery fuel gauge library |
 
 #### Check Installed Libraries
 
@@ -268,7 +281,7 @@ arduino-cli board list
 
 Screen layout (792x272 pixels):
 
-- **Top (y=4)**: Status information (battery voltage, Wi-Fi status, NTP sync status, uptime, free memory)
+- **Top (y=4)**: Status information (battery % and voltage, Wi-Fi status, NTP sync status, uptime, free memory)
 - **Upper Left (y=45)**: Date (YYYY.MM.DD format, medium-sized numbers)
 - **Center Left (y=123)**: Time (H:MM or HH:MM format, large numbers)
 - **Upper Right (y=33)**: Temperature (icon + value + °C unit)
@@ -306,6 +319,7 @@ EPDEnvClock/
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD initialization
 │   ├── spi.h / spi.cpp          # Bit-banging SPI for EPD
 │   ├── display_manager.*        # Display rendering, layout, battery reading
+│   ├── fuel_gauge_manager.*     # MAX17048 battery fuel gauge
 │   ├── font_renderer.*          # Glyph drawing with kerning support
 │   ├── sensor_manager.*         # SCD41 sensor (single-shot mode with light sleep)
 │   ├── network_manager.*        # Wi-Fi connection, NTP sync
@@ -374,6 +388,7 @@ bunx wrangler pages deploy dist --branch=main
 | State | Current Consumption |
 |-------|---------------------|
 | SCD41 Idle Single-Shot | ~1.5mA |
+| MAX17048 Hibernate | ~3µA |
 | ESP32-S3 Deep Sleep | ~0.2-0.3mA |
 | ESP32-S3 Light Sleep (sensor measurement wait) | ~2-3mA |
 | ESP32-S3 Active (including Wi-Fi) | ~80-150mA |
@@ -479,6 +494,7 @@ python3 scripts/create_number_bitmaps.py \
 5. **Button pins are active LOW** with internal pullup
 6. **SD card needs power enable** (GPIO 42 HIGH) before use
 7. **Sketch directory name must match .ino filename** (`EPDEnvClock/EPDEnvClock.ino`)
+8. **MAX17048 requires battery connection** - the chip is powered by the battery and won't respond to I2C without it
 
 ## 🐛 Troubleshooting
 

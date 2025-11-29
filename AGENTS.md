@@ -13,7 +13,9 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 
 - Always use `compile --upload` together (upload alone doesn't guarantee recompile)
 - Check port with `arduino-cli board list` - port name varies
-- Required library: `arduino-cli lib install "Sensirion I2C SCD4x"`
+- Required libraries:
+  - `arduino-cli lib install "Sensirion I2C SCD4x"`
+  - `arduino-cli lib install "Adafruit MAX1704X"`
 
 ## Critical Hardware Details
 
@@ -23,11 +25,19 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 - **Buffer size**: 800x272 = 27,200 bytes (EPD_W=800 for address offset)
 - **Controller**: Dual SSD1683 ICs (master/slave, 396px each, 4px gap in center)
 
-### SCD41 Sensor I2C Pins
+### SCD41 Sensor I2C Pins (Wire - Bus 0)
 
 - **SDA**: GPIO 38
 - **SCL**: GPIO 20
 - **I2C Address**: 0x62
+
+### MAX17048 Fuel Gauge I2C Pins (Wire1 - Bus 1)
+
+- **SDA**: GPIO 14
+- **SCL**: GPIO 16
+- **I2C Address**: 0x36
+- **Note**: Uses separate I2C bus from SCD41 sensor
+- **Power**: Powered by battery (CELL+/CELL- must be connected to LiPo)
 
 ### SD Card SPI Pins (HSPI bus)
 
@@ -37,9 +47,12 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 
 - HOME=2, EXIT=1, PRV=6, NEXT=4, OK=5
 
-### Battery ADC
+### Battery Monitoring (MAX17048)
 
-- GPIO 8, Linear calibration: `Vbat = 0.002334 * adc_raw - 1.353`
+- **I2C Bus**: Wire1 (SDA=14, SCL=16)
+- **I2C Address**: 0x36
+- **Reported**: Voltage (V), State of Charge (%), Charge Rate (%/hr)
+- **Power**: Chip is powered by battery (must connect CELL+/CELL- to LiPo)
 
 ## Code Architecture
 
@@ -48,6 +61,7 @@ EPDEnvClock/
 ├── EPDEnvClock.ino      # Main sketch (setup/loop)
 ├── display_manager.*    # Display rendering, layout, battery reading
 ├── sensor_manager.*     # SCD41 sensor (single-shot mode with light sleep)
+├── fuel_gauge_manager.* # MAX17048 fuel gauge (battery %, voltage, charge rate)
 ├── network_manager.*    # Wi-Fi connection, NTP sync
 ├── deep_sleep_manager.* # Deep sleep, RTC state, SD/SPIFFS frame buffer
 ├── font_renderer.*      # Glyph drawing with kerning support
