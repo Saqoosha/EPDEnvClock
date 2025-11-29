@@ -2,6 +2,7 @@
 #include "deep_sleep_manager.h"
 #include "logger.h"
 
+#include <SPI.h>
 #include <SD.h>
 
 namespace

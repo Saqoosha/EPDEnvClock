@@ -156,10 +156,10 @@ brew install arduino-cli
 
 ```bash
 arduino-cli core update-index
-arduino-cli core install esp32:esp32@2.0.7
+arduino-cli core install esp32:esp32@2.0.12
 ```
 
-**注意**: ESP32コアのバージョンは`2.0.7`を使用してください。新しいバージョンでは互換性の問題が発生する可能性があります。
+**注意**: ESP32コアのバージョンは`2.0.12`（v2.x系の最新）を使用してください。v3.x系はSPIなどのAPIに破壊的変更があり、Adafruitライブラリ（BusIO、MAX1704Xなど）と互換性がありません。
 
 #### ライブラリのインストール
 
@@ -176,7 +176,7 @@ arduino-cli lib install "Adafruit MAX1704X"
 | コンポーネント | バージョン | 備考 |
 |---------------|-----------|------|
 | arduino-cli | 最新版推奨 | `brew install arduino-cli` (macOS) |
-| ESP32 Core | 2.0.7 | `esp32:esp32@2.0.7` |
+| ESP32 Core | 2.0.12 | `esp32:esp32@2.0.12`（v3.xはAdafruit非互換）|
 | Sensirion I2C SCD4x | 0.4.0 | CO2/温度/湿度センサーライブラリ |
 | Sensirion Core | 0.7.2 | 依存ライブラリ（自動インストール） |
 | Adafruit MAX1704X | 1.0.3 | バッテリー燃料ゲージライブラリ |

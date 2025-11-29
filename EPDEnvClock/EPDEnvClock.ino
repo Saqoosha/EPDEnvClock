@@ -1,3 +1,4 @@
+#include <SPI.h>
 #include <time.h>
 #include <WiFi.h>
 

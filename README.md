@@ -156,10 +156,10 @@ For other platforms, see: [arduino-cli Installation Guide](https://arduino.githu
 
 ```bash
 arduino-cli core update-index
-arduino-cli core install esp32:esp32@2.0.7
+arduino-cli core install esp32:esp32@2.0.12
 ```
 
-**Note**: Use ESP32 core version `2.0.7`. Newer versions may have compatibility issues.
+**Note**: Use ESP32 core version `2.0.12` (latest v2.x). Version 3.x has breaking changes in SPI and other APIs that cause compatibility issues with Adafruit libraries (BusIO, MAX1704X, etc.).
 
 #### Library Installation
 
@@ -176,7 +176,7 @@ arduino-cli lib install "Adafruit MAX1704X"
 | Component | Version | Notes |
 |-----------|---------|-------|
 | arduino-cli | Latest recommended | `brew install arduino-cli` (macOS) |
-| ESP32 Core | 2.0.7 | `esp32:esp32@2.0.7` |
+| ESP32 Core | 2.0.12 | `esp32:esp32@2.0.12` (v3.x not compatible with Adafruit libs) |
 | Sensirion I2C SCD4x | 0.4.0 | CO2/temperature/humidity sensor library |
 | Sensirion Core | 0.7.2 | Dependency (auto-installed) |
 | Adafruit MAX1704X | 1.0.3 | Battery fuel gauge library |

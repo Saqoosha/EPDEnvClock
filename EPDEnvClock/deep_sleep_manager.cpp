@@ -5,9 +5,9 @@
 #include <esp_sleep.h>
 #include <esp_timer.h>
 #include <time.h>
+#include <SPI.h>
 #include <SPIFFS.h>
 #include <SD.h>
-#include <SPI.h>
 #include <sys/time.h>
 #include "logger.h"
 #include "sensor_manager.h"
