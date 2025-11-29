@@ -1,148 +1,148 @@
-# SCD41センサー統合ガイド
+# SCD41 Sensor Integration Guide
 
-このドキュメントは、SCD41 CO2/温度/湿度センサーをCrowPanel ESP32-S3に接続する方法を説明します。
+This document explains how to connect the SCD41 CO2/temperature/humidity sensor to the CrowPanel ESP32-S3.
 
-## ハードウェア接続
+## Hardware Connection
 
-### 接続ピン
+### Pin Connections
 
 - **SCD41 VDD** → ESP32-S3 **3.3V**
 - **SCD41 GND** → ESP32-S3 **GND**
 - **SCD41 SDA** → ESP32-S3 **GPIO 38**
 - **SCD41 SCL** → ESP32-S3 **GPIO 20**
 
-**注意**: プルアップ抵抗はSCD41モジュールに内蔵されているため、追加のハードウェアは不要です。
+**Note**: Pull-up resistors are built into the SCD41 module, so no additional hardware is required.
 
-## ライブラリのインストール
+## Library Installation
 
-### Sensirion SCD4x Arduinoライブラリ
+### Sensirion SCD4x Arduino Library
 
-SCD41センサーを使用するには、Sensirion SCD4x Arduinoライブラリが必要です。
+The Sensirion SCD4x Arduino library is required to use the SCD41 sensor.
 
-#### arduino-cliを使用する場合
+#### Using arduino-cli
 
 ```bash
 arduino-cli lib install "Sensirion I2C SCD4x"
 ```
 
-または、ライブラリのGitHubリポジトリから直接インストール：
+Or install directly from the library's GitHub repository:
 
 ```bash
 arduino-cli lib install --git-url https://github.com/Sensirion/arduino-i2c-scd4x.git
 ```
 
-#### Arduino IDEを使用する場合
+#### Using Arduino IDE
 
-1. Arduino IDEを開く
-2. **スケッチ** → **ライブラリをインクルード** → **ライブラリを管理...**
-3. 検索バーに「Sensirion I2C SCD4x」と入力
-4. 「Sensirion I2C SCD4x」を選択してインストール
+1. Open Arduino IDE
+2. **Sketch** → **Include Library** → **Manage Libraries...**
+3. Type "Sensirion I2C SCD4x" in the search bar
+4. Select "Sensirion I2C SCD4x" and install
 
-### ライブラリの確認
+### Verify Library Installation
 
-インストールされたライブラリを確認：
+Check installed libraries:
 
 ```bash
 arduino-cli lib list | grep -i scd4x
 ```
 
-## ソフトウェア設定
+## Software Configuration
 
-### I2Cピン設定
+### I2C Pin Settings
 
-コード内で以下のようにI2Cピンを設定しています：
+I2C pins are configured in the code as follows:
 
 ```cpp
 #define I2C_SDA_PIN 38
 #define I2C_SCL_PIN 20
 ```
 
-### センサー読み取り間隔
+### Sensor Reading Interval
 
-デフォルトでは5秒ごとにセンサー値を読み取ります：
-
-```cpp
-#define SENSOR_READ_INTERVAL 5000  // ミリ秒
-```
-
-### 温度オフセット設定
-
-SCD41センサーは自己発熱により、実際の環境温度より高い温度を測定する傾向があります。この問題を補正するため、センサー初期化時に温度オフセットを設定しています。
-
-**公式ドキュメントによる説明**:
-
-Sensirionの公式データシート（[SCD4x Datasheet](https://admin.sensirion.com/media/documents/48C4B7FB/64C134E7/Sensirion_SCD4x_Datasheet.pdf)）によると：
-
-> 「SCD4x内の温度オフセットを正しく設定することで、RH（相対湿度）およびT（温度）の出力信号を活用できます。温度オフセットは、SCD4xの測定モード、近接する部品の自己発熱、周囲温度、気流など、さまざまな要因に依存する可能性があります。したがって、SCD4xの温度オフセットは、最終デバイスに統合し、通常の動作条件下（アプリケーションで使用する動作モードを含む）で熱平衡に達した後に決定する必要があります。」
-
-**温度オフセットの定義と符号について**:
-
-データシートによると、温度オフセットは以下のように定義されています：
-- **温度オフセット = 測定された温度 - 実際の周囲温度**
-
-つまり、センサーが実際の周囲温度より**高い温度を測定する場合**、オフセットは**正の値**になります。
-
-**センサー内部のデフォルト値**:
-- **センサーのEEPROMにデフォルトで4.0°Cが保存されています**（工場出荷時の設定）
-- この値はセンサー内部に保存されており、電源を切っても保持されます
-- 初期化時に現在のオフセット値を読み取り、表示します
-
-**重要な動作**:
-- `setTemperatureOffset()`は既存の値を**上書き（置き換え）**します
-- **温度オフセットの適用方法**: `表示温度 = 実際の環境温度 - オフセット`
-- **計算例**（ユーザーの理解通り）:
-  - デフォルトの+4°Cオフセットでセンサーが28°Cを表示する場合：
-    - 実際の環境温度 = 28 - 4 = 24°C
-  - -3°Cのオフセットを設定すると：
-    - 表示温度 = 24 - 3 = 21°C（オフセットが負の値の場合、実際の環境温度からさらに引く）
-    - **結果**: 28°C → 21°C（**7°Cの減少**）
-  - つまり、+4°Cから-3°Cに変更すると、表示温度は7°C下がります
-
-**本プロジェクトでの設定**:
-- 本プロジェクトでの設定: **4.0°C**（センサーのデフォルト値を使用）
-- 初期化時にセンサー内部の現在のオフセット値を読み取り、その後値を設定します
-- 設定後、再度読み取って正しく設定されたことを確認します
-
-**注意**: データシートの「4°C」は、センサーが実際の周囲温度より4°C高い温度を測定する場合の補正値として定義されています。しかし、`setTemperatureOffset()`メソッドの実装によっては、符号が異なる場合があります。実際の動作を確認して、適切な値を設定してください。
-
-**推奨オフセット範囲**:
-- 公式推奨範囲: **0°Cから20°C**（正の値）
-- 実際の使用環境に応じて調整が必要
-
-このオフセットはセンサー内部に保存され、読み取った温度に適用されます（実装によって加算または減算されます）。
-
-**オフセット値の調整**:
-
-`EPDEnvClock/sensor_manager.cpp`の以下の定数を変更することで、オフセット値を調整できます：
+By default, sensor values are read every 5 seconds:
 
 ```cpp
-scd4x.setTemperatureOffset(4.0f);  // デフォルト: 4.0°C
+#define SENSOR_READ_INTERVAL 5000  // milliseconds
 ```
 
-**推奨調整方法**（公式ドキュメントに基づく）:
+### Temperature Offset Setting
 
-1. **最終デバイスに統合後**に調整を行う（センサー単体ではなく、実際の使用環境で）
-2. **通常の動作条件下**で測定（アプリケーションで使用する動作モードを含む）
-3. **熱平衡に達した後**に温度差を測定（センサー起動後、十分な時間が経過してから）
-4. 正確な温度計と比較して、実際の温度差を測定
-5. 測定した温度差に基づいてオフセット値を調整（公式推奨範囲: 0°Cから20°C）
-6. センサーを再起動して、設定したオフセットが適用されているか確認
+The SCD41 sensor tends to measure temperatures higher than the actual ambient temperature due to self-heating. To compensate for this issue, a temperature offset is set during sensor initialization.
 
-**注意**: 
-- オフセット設定はセンサー内部に保存されるため、一度設定すると電源を切っても保持されます
-- 新しいオフセット値を設定する場合は、センサーを再起動する必要があります
-- 温度オフセットは、**相対湿度（RH）の精度にも影響**するため、正確な設定が重要です
+**Explanation from Official Documentation**:
 
-## 使用方法
+According to Sensirion's official datasheet ([SCD4x Datasheet](https://admin.sensirion.com/media/documents/48C4B7FB/64C134E7/Sensirion_SCD4x_Datasheet.pdf)):
 
-### テストモード（EPD無効化）
+> "The RH and T output signal of the SCD4x can be leveraged by correctly setting the temperature offset inside the SCD4x. The temperature offset can depend on various factors such as the SCD4x measurement mode, self-heating of close components, ambient temperature, air flow etc. Thus, the SCD4x temperature offset should be determined after integration into the final device and after thermal equilibration under normal operating conditions (including the operating mode used in the application)."
 
-現在のコードはEPD機能を無効化し、シリアル出力のみでセンサー値を確認するテストモードになっています。
+**Definition and Sign of Temperature Offset**:
 
-1. シリアルモニターを115200bpsで開く
-2. センサーが初期化され、5秒ごとに値が表示されます
+According to the datasheet, the temperature offset is defined as:
+- **Temperature Offset = Measured Temperature - Actual Ambient Temperature**
 
-### シリアル出力例
+This means if the sensor measures a **higher temperature than the actual ambient temperature**, the offset is a **positive value**.
+
+**Sensor's Internal Default Value**:
+- **4.0°C is stored by default in the sensor's EEPROM** (factory setting)
+- This value is stored inside the sensor and persists even when power is turned off
+- During initialization, the current offset value is read and displayed
+
+**Important Behavior**:
+- `setTemperatureOffset()` **overwrites (replaces)** the existing value
+- **How temperature offset is applied**: `Displayed Temperature = Actual Ambient Temperature - Offset`
+- **Calculation example**:
+  - If the sensor displays 28°C with the default +4°C offset:
+    - Actual ambient temperature = 28 - 4 = 24°C
+  - If you set an offset of -3°C:
+    - Displayed temperature = 24 - 3 = 21°C (if offset is negative, it subtracts further from actual ambient temperature)
+    - **Result**: 28°C → 21°C (**7°C decrease**)
+  - In other words, changing from +4°C to -3°C will lower the displayed temperature by 7°C
+
+**Settings in This Project**:
+- Setting in this project: **4.0°C** (using the sensor's default value)
+- During initialization, the current offset value inside the sensor is read, then the value is set
+- After setting, it reads again to confirm the value was set correctly
+
+**Note**: The datasheet's "4°C" is defined as a correction value for when the sensor measures 4°C higher than the actual ambient temperature. However, depending on the implementation of the `setTemperatureOffset()` method, the sign may differ. Please verify the actual behavior and set an appropriate value.
+
+**Recommended Offset Range**:
+- Official recommended range: **0°C to 20°C** (positive values)
+- Adjustment may be needed depending on actual usage environment
+
+This offset is stored inside the sensor and applied to the read temperature (either added or subtracted depending on implementation).
+
+**Adjusting the Offset Value**:
+
+You can adjust the offset value by modifying the following constant in `EPDEnvClock/sensor_manager.cpp`:
+
+```cpp
+scd4x.setTemperatureOffset(4.0f);  // Default: 4.0°C
+```
+
+**Recommended Adjustment Method** (based on official documentation):
+
+1. Make adjustments **after integration into the final device** (not the sensor alone, but in the actual usage environment)
+2. Measure under **normal operating conditions** (including the operating mode used in the application)
+3. Measure the temperature difference **after thermal equilibrium is reached** (allow sufficient time after sensor startup)
+4. Measure the actual temperature difference by comparing with an accurate thermometer
+5. Adjust the offset value based on the measured temperature difference (official recommended range: 0°C to 20°C)
+6. Restart the sensor and confirm the set offset is applied
+
+**Notes**: 
+- Once set, the offset is stored inside the sensor and persists even when power is turned off
+- The sensor must be restarted when setting a new offset value
+- Temperature offset **also affects relative humidity (RH) accuracy**, so accurate setting is important
+
+## Usage
+
+### Test Mode (EPD Disabled)
+
+The current code is in test mode with EPD features disabled, allowing you to check sensor values via serial output only.
+
+1. Open serial monitor at 115200 bps
+2. The sensor will initialize and display values every 5 seconds
+
+### Serial Output Example
 
 ```
 === SCD41 Sensor Test ===
@@ -161,79 +161,79 @@ Humidity: 45.2 %RH
 ============================
 ```
 
-## トラブルシューティング
+## Troubleshooting
 
-### センサーが初期化できない場合
+### Sensor Won't Initialize
 
-1. **接続を確認**:
-   - SDAがGPIO 38に接続されているか
-   - SCLがGPIO 20に接続されているか
-   - VDDが3.3Vに接続されているか
-   - GNDが接続されているか
+1. **Check connections**:
+   - Is SDA connected to GPIO 38?
+   - Is SCL connected to GPIO 20?
+   - Is VDD connected to 3.3V?
+   - Is GND connected?
 
-2. **I2Cバスの確認**:
-   - I2Cスキャナーを使用してセンサーが検出されるか確認
-   - デフォルトI2Cアドレス: 0x62
+2. **Verify I2C bus**:
+   - Use an I2C scanner to confirm the sensor is detected
+   - Default I2C address: 0x62
 
-3. **電源の確認**:
-   - SCD41は2.4V-5.5Vで動作しますが、3.3V推奨
-   - 電源が安定しているか確認
+3. **Check power**:
+   - SCD41 operates at 2.4V-5.5V, but 3.3V is recommended
+   - Verify power is stable
 
-### データが読み取れない場合
+### Cannot Read Data
 
-1. **初期化時間**: センサーの初回起動時は約5秒の初期化時間が必要です
-2. **読み取り間隔**: 定期的な読み取り間隔は5秒以上推奨（センサーの応答時間60秒を考慮）
-3. **シリアル出力**: エラーメッセージを確認して問題を特定
+1. **Initialization time**: The sensor requires about 5 seconds for initial startup
+2. **Reading interval**: Periodic reading intervals of 5 seconds or more are recommended (considering 60-second sensor response time)
+3. **Serial output**: Check error messages to identify the problem
 
-### 温度が高めに表示される場合
+### Temperature Reads High
 
-SCD41センサーは自己発熱により、実際の環境温度より高い温度を測定する傾向があります。この問題を解決するため、以下の対策を実装しています：
+The SCD41 sensor tends to measure temperatures higher than the actual ambient temperature due to self-heating. The following measures are implemented to address this issue:
 
-1. **温度オフセット設定**: センサー初期化時に4.0°Cのオフセットを設定（センサーのデフォルト値）
-2. **オフセット調整**: 正確な温度計と比較して、必要に応じてオフセット値を調整
+1. **Temperature offset setting**: A 4.0°C offset is set during sensor initialization (sensor's default value)
+2. **Offset adjustment**: Compare with an accurate thermometer and adjust the offset value as needed
 
-**温度オフセットの確認**:
+**Verifying Temperature Offset**:
 
-シリアル出力で以下のメッセージが表示されれば、オフセット設定は成功しています：
+If the following messages appear in serial output, the offset setting was successful:
 
 ```
 Temperature offset set to 4.0°C successfully.
 Read back temperature offset: 4.00 °C
 ```
 
-**注意**: 
-- センサー内部にはデフォルトで4.0°CのオフセットがEEPROMに保存されています
-- 本プロジェクトではこのデフォルト値をそのまま使用しています
-- 温度オフセットは自己発熱を補正するためのものです
+**Notes**: 
+- The sensor's EEPROM stores a default 4.0°C offset
+- This project uses this default value as-is
+- The temperature offset is for compensating self-heating
 
-**オフセット設定が失敗した場合**:
+**If Offset Setting Fails**:
 
-警告メッセージが表示されますが、センサーの動作には影響しません。オフセット設定はオプション機能です。
+A warning message will be displayed, but sensor operation is not affected. Offset setting is an optional feature.
 
-## センサー仕様
+## Sensor Specifications
 
-- **I2Cアドレス**: 0x62 (デフォルト)
-- **測定範囲**: 
-  - CO2: 400-5000ppm
-  - 温度: -10～+60°C
-  - 湿度: 0-100%RH
-- **精度**: 
-  - CO2: ±(40ppm+5%)
-  - 温度: ±0.8°C (15-35°Cの範囲)
-  - 湿度: ±6%RH (15-35°C、20-65%RHの範囲)
+- **I2C Address**: 0x62 (default)
+- **Measurement Range**: 
+  - CO2: 400-5000 ppm
+  - Temperature: -10 to +60°C
+  - Humidity: 0-100% RH
+- **Accuracy**: 
+  - CO2: ±(40 ppm + 5%)
+  - Temperature: ±0.8°C (in the 15-35°C range)
+  - Humidity: ±6% RH (in the 15-35°C, 20-65% RH range)
 
-## 参考リソース
+## Reference Resources
 
-### 公式ドキュメント
+### Official Documentation
 
-- **[Sensirion SCD4x Datasheet (公式データシート)](https://admin.sensirion.com/media/documents/48C4B7FB/64C134E7/Sensirion_SCD4x_Datasheet.pdf)**
-  - 温度オフセット設定についての詳細な説明が記載されています
-  - セクション: Temperature Offset Compensation
+- **[Sensirion SCD4x Datasheet (Official Datasheet)](https://admin.sensirion.com/media/documents/48C4B7FB/64C134E7/Sensirion_SCD4x_Datasheet.pdf)**
+  - Contains detailed explanation of temperature offset settings
+  - Section: Temperature Offset Compensation
 
 - **[Sensirion SCD4x Python API Documentation](https://sensirion.github.io/python-i2c-scd/api.html)**
-  - 温度オフセット設定のAPIリファレンス
+  - API reference for temperature offset settings
 
-### コミュニティリソース
+### Community Resources
 
 - [LaskaKit SCD41 GitHub](https://github.com/LaskaKit/SCD41-CO2-Sensor)
-- [Sensirion SCD4x Arduinoライブラリ](https://github.com/Sensirion/arduino-i2c-scd4x)
+- [Sensirion SCD4x Arduino Library](https://github.com/Sensirion/arduino-i2c-scd4x)

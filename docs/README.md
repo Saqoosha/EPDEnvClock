@@ -1,27 +1,27 @@
-# EPDEnvClock ドキュメント
+# EPDEnvClock Documentation
 
-このディレクトリには、EPDEnvClockプロジェクトの各種ドキュメントが含まれています。
+This directory contains various documentation for the EPDEnvClock project.
 
-## 📚 ドキュメント一覧
+## 📚 Document List
 
-### 機能ガイド
+### Feature Guides
 
-- **[ImageBW Wi-Fi Export](./README_IMAGEBW.md)** - ImageBWデータをWi-Fi経由でMacに送信する機能の使い方
-- **[SCD41 センサー統合](./README_SCD41.md)** - SCD41 CO2/温度/湿度センサーの接続と設定ガイド
+- **[ImageBW Wi-Fi Export](./README_IMAGEBW.md)** - How to use the feature that sends ImageBW data to Mac via Wi-Fi
+- **[SCD41 Sensor Integration](./README_SCD41.md)** - Connection and configuration guide for the SCD41 CO2/temperature/humidity sensor
 
-### コードレビュー
+### Code Reviews
 
-- **[センサー管理コードレビュー](./reviews/SENSOR_MANAGEMENT_REVIEW.md)** - SCD41センサー管理の実装状況と改善提案
+- **[Sensor Management Code Review](./reviews/SENSOR_MANAGEMENT_REVIEW.md)** - Implementation status and improvement suggestions for SCD41 sensor management
 
-## 📖 プロジェクト全体のドキュメント
+## 📖 Project-Wide Documentation
 
-プロジェクトルートには以下のドキュメントもあります：
+The following documents are also available in the project root:
 
-- **[AGENTS.md](../AGENTS.md)** - Arduino CLIコンパイル・アップロード手順書
-- **[README.md](../README.md)** - プロジェクト全体の概要
+- **[AGENTS.md](../AGENTS.md)** - Arduino CLI compile/upload instructions
+- **[README.md](../README.md)** - Project overview
 
-## 🔍 ドキュメントの探し方
+## 🔍 Finding Documentation
 
-- **機能の使い方を知りたい** → 機能ガイドを参照
-- **コードの問題点を確認したい** → コードレビューを参照
-- **ビルド・アップロード方法を知りたい** → [AGENTS.md](../AGENTS.md)を参照
+- **Want to know how to use a feature** → Refer to Feature Guides
+- **Want to check code issues** → Refer to Code Reviews
+- **Want to know how to build/upload** → Refer to [AGENTS.md](../AGENTS.md)
