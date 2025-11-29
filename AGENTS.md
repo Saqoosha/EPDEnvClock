@@ -77,7 +77,7 @@ EPDEnvClock/
 
 - Deep sleep ~52-54 seconds, wake at minute boundary
 - Light sleep during 5-second sensor measurement
-- Wi-Fi/NTP sync only every 60 boots (~1 hour)
+- Wi-Fi/NTP sync at the top of every hour
 - SD card power off during deep sleep (GPIO 42 LOW)
 - I2C pins held HIGH during sleep to keep sensor in idle mode
 
@@ -93,7 +93,7 @@ EPDEnvClock/
 
 - NTP server: `ntp.nict.jp`, Timezone: JST (UTC+9)
 - Time saved to RTC memory before sleep, restored on wake
-- `kNtpSyncIntervalBoots = 60` (sync every 60 wakes)
+- NTP sync at the top of every hour (when `tm_min == 0`)
 
 ### Sensor Reading
 
@@ -144,4 +144,4 @@ bunx wrangler pages deploy dist --branch=main
 
 - `--branch=main` is required to deploy to production domain
 - Without it, deploys to preview URL only
-- Local dev server: `bun run dev` → http://localhost:4321/
+- Local dev server: `bun run dev` → <http://localhost:4321/>

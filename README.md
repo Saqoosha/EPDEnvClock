@@ -11,7 +11,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 - **Time & Date Display**: Shows time and date with large number fonts
 - **Environmental Sensor**: Measures and displays CO2, temperature, and humidity using SCD41 sensor
 - **Low Power Design**: Long battery life with Deep Sleep mode (updates approximately every minute)
-- **Wi-Fi Connectivity**: NTP time synchronization and optional ImageBW data export via Wi-Fi
+- **Wi-Fi Connectivity**: NTP time synchronization via Wi-Fi
 - **Battery Monitoring**: Real-time battery percentage and voltage display using MAX17048 fuel gauge
 - **Button Wake-up**: Wake from Deep Sleep with HOME button for full screen refresh
 
@@ -19,8 +19,8 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 
 ### Display Features
 
-- **Time Display**: Large number font (Number L) with kerning support
-- **Date Display**: Medium-sized number font (Number M) in YYYY.MM.DD format
+- **Time Display**: Large number font with kerning support
+- **Date Display**: Medium-sized number font in YYYY.MM.DD format
 - **Sensor Values**: Temperature, humidity, and CO2 concentration with icons
 - **Status Display**: Battery voltage, Wi-Fi status, NTP sync status, uptime, and free memory
 
@@ -38,20 +38,18 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 - **EPD Deep Sleep**: Display enters Deep Sleep mode to reduce power consumption
 - **Frame Buffer Persistence**: Saves frame buffer to SD card or SPIFFS fallback, restores on wake
 - **SD Card Power Control**: Powers off SD card during Deep Sleep to reduce current consumption
-- **Wi-Fi Power Saving**: NTP sync only every ~60 minutes (60 wake cycles)
+- **Wi-Fi Power Saving**: NTP sync runs at the top of every hour
 
 ### Network Features
 
-- **Wi-Fi Connection**: Automatic Wi-Fi connection
-- **NTP Sync**: Syncs time from NTP server every ~60 minutes (maintains RTC time between syncs)
-- **ImageBW Export**: Optional Wi-Fi export of display data to server
+- **Wi-Fi Connection**: Connects to configured Wi-Fi (requires recompile to change SSID/password)
+- **NTP Sync**: Syncs time from NTP server at the top of every hour (maintains RTC time between syncs)
 
 ### Data Logging
 
 - **Sensor Log**: Automatically records sensor values to SD card in JSONL format
 - **Recorded Data**: Date, time, Unix timestamp, RTC drift, temperature, humidity, CO2, battery voltage, battery %, charge rate
 - **File Format**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl` (files split by date)
-- **Fallback**: Falls back to SPIFFS if SD card is unavailable
 
 ### Button Functions
 
@@ -67,7 +65,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 - **EPD Display**: 792x272 pixels (controlled by two SSD1683 ICs in master/slave configuration)
 - **SD Card Slot**: For frame buffer storage (optional, longer write lifespan than SPIFFS)
 
-### External Components (Optional)
+### External Components
 
 - **SCD41 Sensor**: CO2/temperature/humidity sensor
 - **MAX17048 Fuel Gauge**: Battery state-of-charge monitor (Adafruit breakout recommended)
@@ -137,29 +135,12 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 
 CrowPanel ESP32-S3 uses the **CH340** USB serial chip.
 
-**macOS (10.14 Mojave and later)**:
-No additional driver required. macOS 10.14+ natively supports CH340.
+- **macOS**: Built-in driver supports serial console only. Official driver required for firmware upload.
+- **Windows/Linux**: See driver installation guide.
 
-- Device appears as `/dev/cu.usbserial-*` or `/dev/cu.wchusbserial*` when connected
-- **Note**: Installing additional drivers may cause issues
+For all platforms, see: [SparkFun CH340 Driver Guide](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)
 
-**macOS (10.13 and earlier)**:
-Driver installation required:
-
-- Homebrew: `brew install --cask wch-ch34x-usb-serial-driver`
-- Or see [SparkFun CH340 Driver Guide](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)
-
-**Windows**:
-Usually auto-detected. If not recognized:
-
-- Download from [SparkFun CH340 Driver Guide](https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers)
-
-**Linux**:
-Built into kernel, no installation needed. If not recognized:
-
-```bash
-sudo modprobe ch34x
-```
+Device appears as `/dev/cu.usbserial-*` or `/dev/cu.wchusbserial*` (macOS) when connected.
 
 #### arduino-cli Installation
 
@@ -169,14 +150,7 @@ sudo modprobe ch34x
 brew install arduino-cli
 ```
 
-**Linux**:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-```
-
-**Windows**:
-Download installer from [official site](https://arduino.github.io/arduino-cli/latest/installation/)
+For other platforms, see: [arduino-cli Installation Guide](https://arduino.github.io/arduino-cli/latest/installation/)
 
 #### ESP32 Board Support Installation
 
@@ -204,7 +178,7 @@ arduino-cli lib install "Adafruit MAX1704X"
 | arduino-cli | Latest recommended | `brew install arduino-cli` (macOS) |
 | ESP32 Core | 2.0.7 | `esp32:esp32@2.0.7` |
 | Sensirion I2C SCD4x | 0.4.0 | CO2/temperature/humidity sensor library |
-| Sensirion Core | 0.6.0 | Dependency (auto-installed) |
+| Sensirion Core | 0.7.2 | Dependency (auto-installed) |
 | Adafruit MAX1704X | 1.0.3 | Battery fuel gauge library |
 
 #### Check Installed Libraries
@@ -230,14 +204,14 @@ Copy `EPDEnvClock/wifi_config.h.example` to `EPDEnvClock/wifi_config.h` and set 
 
 **Note**: `wifi_config.h` is included in `.gitignore` and will not be committed.
 
-### 3. ImageBW Export Configuration (Optional)
+### 3. ImageBW Export Configuration (Debug Feature)
 
 Set server IP address and port in `EPDEnvClock/server_config.h`:
 
 ```cpp
-#define ENABLE_IMAGEBW_EXPORT 1  // 1 to enable, 0 to disable
-#define SERVER_IP "192.168.1.100"  // Server IP address
-#define SERVER_PORT 8080           // Server port
+#define ENABLE_IMAGEBW_EXPORT 1       // 1 to enable, 0 to disable
+#define IMAGEBW_SERVER_IP "192.168.1.100"  // Server IP address
+#define IMAGEBW_SERVER_PORT 8080           // Server port
 ```
 
 ## 📦 Build & Upload
@@ -288,7 +262,7 @@ Screen layout (792x272 pixels):
 - **Center Right (y=114)**: Humidity (icon + value + % unit)
 - **Lower Right (y=193)**: CO2 concentration (icon + value + ppm unit)
 
-### ImageBW Export Feature (Optional)
+### ImageBW Export Feature (Debug)
 
 To send display data to a server via Wi-Fi:
 
@@ -403,7 +377,7 @@ bunx wrangler pages deploy dist --branch=main
 - **Update Interval**: ~1 minute (updates at minute boundary)
 - **Active Time**: ~6-8 seconds (5s sensor measurement + display update + initialization)
 - **Deep Sleep Time**: ~52-54 seconds
-- **Wi-Fi Connection**: Once every 60 wake cycles (~once per hour)
+- **Wi-Fi Connection**: At the top of every hour for NTP sync
 
 ### Power Optimization
 
@@ -459,7 +433,7 @@ python3 scripts/create_number_bitmaps.py \
 ### SCD41 Sensor Specifications
 
 - **I2C Address**: 0x62 (default)
-- **I2C Pins**: SDA=GPIO 38, SCL=GPIO 20
+- **I2C Bus**: Wire (Bus 0) - SDA=GPIO 38, SCL=GPIO 20
 - **Measurement Mode**: Single-Shot (waits 5 seconds in Light Sleep)
 - **Temperature Offset**: 4.0°C (self-heating compensation)
 - **Measurement Range**:
@@ -471,11 +445,23 @@ python3 scripts/create_number_bitmaps.py \
   - Temperature: ±0.8°C (in 15-35°C range)
   - Humidity: ±6%RH (in 15-35°C, 20-65%RH range)
 
+### MAX17048 Fuel Gauge Specifications
+
+- **I2C Address**: 0x36 (default)
+- **I2C Bus**: Wire1 (Bus 1) - SDA=GPIO 14, SCL=GPIO 16
+- **Power Source**: Powered by battery (requires battery connection to function)
+- **Sleep Mode**: Hibernate mode (~3µA current consumption)
+- **Measurements**:
+  - Battery Voltage: 0-5V
+  - State of Charge: 0-100%
+  - Charge Rate: %/hr (positive=charging, negative=discharging)
+- **Algorithm**: ModelGauge™ for accurate SOC without current sensing
+
 ### Time Management
 
 - **NTP Server**: `ntp.nict.jp`
 - **Timezone**: JST (UTC+9)
-- **Sync Interval**: Every 60 wake cycles (~1 hour)
+- **Sync Interval**: At the top of every hour
 - **RTC Persistence**: Time saved to RTC memory before sleep, restored on wake
 
 ### Logger Feature
@@ -485,85 +471,9 @@ python3 scripts/create_number_bitmaps.py \
 - **Tags**: Setup, Loop, Network, Sensor, Display, Font, DeepSleep, ImageBW
 - **ANSI Colors**: Color-coded display by log level
 
-## ⚠️ Common Pitfalls
-
-1. **SCL pin is GPIO 20**, not 21
-2. **Date format uses periods**: YYYY.MM.DD (not slashes)
-3. **Frame buffer is 27,200 bytes** (800x272, not 792x272)
-4. **EPD uses bit-banging SPI** (pins 11,12,45,46,47,48), SD uses hardware HSPI
-5. **Button pins are active LOW** with internal pullup
-6. **SD card needs power enable** (GPIO 42 HIGH) before use
-7. **Sketch directory name must match .ino filename** (`EPDEnvClock/EPDEnvClock.ino`)
-8. **MAX17048 requires battery connection** - the chip is powered by the battery and won't respond to I2C without it
-
-## 🐛 Troubleshooting
-
-### Compile Errors
-
-- **Error**: "Invalid FQBN"
-  - **Solution**: Check FQBN format. Options are separated by `:` (e.g., `esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi`)
-
-- **Error**: "SensirionI2cScd4x.h: No such file or directory"
-  - **Solution**: Correct header name is `SensirionI2CScd4x.h` (note case sensitivity)
-  - Install library: `arduino-cli lib install "Sensirion I2C SCD4x@0.4.0"`
-
-- **Error**: "no matching function for call to 'SensirionI2CScd4x::begin'"
-  - **Solution**: Library version 0.4.0 uses `scd4x.begin(Wire)` (no I2C address argument)
-
-- **Error**: "'class SensirionI2CScd4x' has no member named 'getDataReadyStatus'"
-  - **Solution**: Changed to `getDataReadyFlag()` in version 0.4.0
-
-### Upload Errors
-
-- **Error**: "Unable to verify flash chip connection"
-  - **Solution**:
-    - Try a different USB port (check with `arduino-cli board list`)
-    - Press the board's reset button
-    - Check USB cable (ensure it supports data transfer)
-
-- **Error**: Port not found
-  - **Solution**:
-    - Reconnect USB cable
-    - Recheck port with `arduino-cli board list`
-    - Use a data-capable USB cable (charging-only cables won't work)
-    - Install CH340 driver for macOS 10.13 or earlier (see "USB Serial Driver Installation" above)
-    - Try a different USB port
-
-### Sensor Won't Initialize
-
-1. **Check Connections**:
-   - Is SDA connected to GPIO 38?
-   - Is SCL connected to GPIO 20?
-   - Is VDD connected to 3.3V?
-   - Is GND connected?
-
-2. **Check I2C Bus**:
-   - Use I2C scanner to verify sensor is detected
-   - Default I2C address: 0x62
-
-3. **Check Power**:
-   - Verify SCD41 supply voltage is 3.3V±0.1V
-   - Check if sensor was reset after Deep Sleep
-
-See the "Troubleshooting" section in [docs/README_SCD41.md](./docs/README_SCD41.md) for details.
-
-### Time is Incorrect
-
-1. **Check Wi-Fi Connection**: NTP sync requires Wi-Fi connection
-2. **Check RTC Time**: Time is restored from RTC after Deep Sleep
-3. **Timezone**: JST (UTC+9) is configured
-
-### SD Card Not Recognized
-
-1. **SD Card Format**: Format as FAT32
-2. **Power Pin**: Check if GPIO 42 is HIGH
-3. **SPI Pins**: MOSI=40, MISO=13, SCK=39, CS=10
-
-**Note**: If SD card is unavailable, falls back to SPIFFS, but write lifespan is limited.
-
 ## 📝 License
 
-License information for this project is not specified. Please check the license of each library when using.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 📧 Contact
 
