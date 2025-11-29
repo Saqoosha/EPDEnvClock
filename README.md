@@ -22,7 +22,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 - **Time Display**: Large number font with kerning support
 - **Date Display**: Medium-sized number font in YYYY.MM.DD format
 - **Sensor Values**: Temperature, humidity, and CO2 concentration with icons
-- **Status Display**: Battery voltage, Wi-Fi status, NTP sync status, uptime, and free memory
+- **Status Display**: Battery % and voltage, Wi-Fi status, NTP sync status, uptime, and free memory
 
 ### Sensor Features
 
@@ -112,10 +112,10 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 |-----|------|
 | MOSI | 11 |
 | SCK | 12 |
-| CS_M | 45 |
-| CS_S | 46 |
-| DC | 47 |
-| RST | 48 |
+| CS | 45 |
+| DC | 46 |
+| RST | 47 |
+| BUSY | 48 |
 
 #### Buttons (Active LOW)
 
@@ -292,24 +292,25 @@ EPDEnvClock/
 │   ├── EPD.h / EPD.cpp          # Low-level EPD driver
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD initialization
 │   ├── spi.h / spi.cpp          # Bit-banging SPI for EPD
-│   ├── display_manager.*        # Display rendering, layout, battery reading
+│   ├── display_manager.*        # Display rendering, layout
 │   ├── fuel_gauge_manager.*     # MAX17048 battery fuel gauge
 │   ├── font_renderer.*          # Glyph drawing with kerning support
 │   ├── sensor_manager.*         # SCD41 sensor (single-shot mode with light sleep)
+│   ├── sensor_logger.*          # Sensor data logging to SD card
 │   ├── network_manager.*        # Wi-Fi connection, NTP sync
 │   ├── deep_sleep_manager.*     # Deep sleep, RTC state, SD/SPIFFS frame buffer
-│   ├── imagebw_export.*         # ImageBW Export
+│   ├── imagebw_export.*         # ImageBW Export (debug)
 │   ├── logger.*                 # Logging with levels (DEBUG/INFO/WARN/ERROR)
-│   ├── EPDfont.h                # Font data (12px text)
-│   ├── wifi_config.h            # Wi-Fi configuration (gitignore)
+│   ├── wifi_config.h            # Wi-Fi credentials (gitignored)
+│   ├── secrets.h                # API keys (gitignored)
 │   ├── server_config.h          # Server configuration
-│   └── bitmaps/                 # Number fonts (L/M), icons, units, kerning table
+│   └── bitmaps/                 # Number fonts, icons, units, kerning table
 ├── scripts/                     # Python scripts
-│   ├── convert_image.py         # Image conversion script
-│   ├── convert_imagebw.py       # ImageBW conversion script
-│   ├── convert_numbers.py       # Number image conversion script
-│   ├── create_number_bitmaps.py # Number bitmap generation script
-│   └── imagebw_server.py        # ImageBW receiver server
+│   ├── create_number_bitmaps.py # Number bitmap generation from TTF font
+│   ├── convert_numbers.py       # Convert PNG numbers to C header
+│   ├── convert_icon.py          # Convert PNG icons to C header
+│   ├── imagebw_server.py        # ImageBW receiver server (debug)
+│   └── upload_sensor_data.py    # Upload JSONL logs to dashboard API
 ├── assets/                      # Assets (image files, etc.)
 │   ├── Number L/                # Large number font images
 │   └── Number M/                # Medium number font images
@@ -424,10 +425,10 @@ python3 scripts/create_number_bitmaps.py \
 - **Actual Resolution**: 792x272 pixels
 - **Controller**: Two SSD1683 ICs in master/slave configuration
   - Each controller: Handles 396x272 pixels
-  - 4px gap in center (connection between controllers)
+  - 8px address offset in center (handled by software)
 - **Program Definition**: `EPD_W = 800`, `EPD_H = 272` (for address offset)
-- **Buffer Size**: 800x272 = 27,200 bytes
-- **Interface**: Bit-banging SPI (pins 11, 12, 45, 46, 47, 48)
+- **Buffer Size**: 27,200 bytes (800×272 pixels ÷ 8 bits)
+- **Interface**: Bit-banging SPI (MOSI=11, SCK=12, CS=45, DC=46, RST=47, BUSY=48)
 
 ### SCD41 Sensor Specifications
 

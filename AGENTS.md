@@ -23,7 +23,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 
 - **Actual resolution**: 792x272 pixels
 - **Buffer size**: 800x272 = 27,200 bytes (EPD_W=800 for address offset)
-- **Controller**: Dual SSD1683 ICs (master/slave, 396px each, 4px gap in center)
+- **Controller**: Dual SSD1683 ICs (master/slave, 396px each, 8px address offset in center)
 
 ### SCD41 Sensor I2C Pins (Wire - Bus 0)
 
