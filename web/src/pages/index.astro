@@ -208,12 +208,25 @@
         text-transform: uppercase;
       }
 
-      .stat-secondary {
-        margin-top: 0.5rem;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.9rem;
-        color: var(--text-secondary);
+      .stat-value-row {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
       }
+
+      .stat-voltage {
+        font-family: 'Space Mono', monospace;
+        font-size: 1rem;
+        color: var(--text-secondary);
+        opacity: 0.7;
+      }
+
+      .voltage-small {
+        font-size: 0.75em;
+        opacity: 0.7;
+        margin-left: 0.2em;
+      }
+
 
       .charts {
         display: grid;
@@ -331,12 +344,14 @@
         </div>
         <div class="stat-card">
           <div class="stat-label">Battery</div>
-          <div class="stat-value battery" id="current-battery">--<span class="stat-unit">%</span></div>
-          <div class="stat-minmax" id="minmax-battery">
-            <span><span class="label">min</span>--</span>
-            <span><span class="label">max</span>--</span>
+          <div class="stat-value-row">
+            <div class="stat-value battery" id="current-battery">--<span class="stat-unit">%</span></div>
+            <div class="stat-voltage" id="battery-voltage">(--V)</div>
           </div>
-          <div class="stat-secondary" id="battery-voltage">--V</div>
+          <div class="stat-minmax" id="minmax-battery-combined">
+            <span><span class="label">min</span>--% (--V)</span>
+            <span><span class="label">max</span>--% (--V)</span>
+          </div>
         </div>
       </div>
 
@@ -467,7 +482,7 @@
         }
         const batteryVoltageEl = document.getElementById('battery-voltage');
         if (batteryVoltageEl) {
-          batteryVoltageEl.textContent = latest.battery_voltage ? `${latest.battery_voltage.toFixed(2)}V` : '--V';
+          batteryVoltageEl.textContent = latest.battery_voltage ? `(${latest.battery_voltage.toFixed(2)}V)` : '(--V)';
         }
         if (updateEl) {
           updateEl.textContent = `Last data: ${new Date(latest.timestamp * 1000).toLocaleString('ja-JP')}`;
@@ -478,7 +493,7 @@
           updateMinMax('minmax-temp', stats.temperature, 1);
           updateMinMax('minmax-humidity', stats.humidity, 1);
           updateMinMax('minmax-co2', stats.co2, 0);
-          updateMinMax('minmax-battery', stats.battery_percent, 0);
+          updateBatteryMinMax(stats.battery_percent, stats.battery_voltage);
         }
       }
 
@@ -492,6 +507,21 @@
         el.innerHTML = `
           <span><span class="label">min</span>${minVal}</span>
           <span><span class="label">max</span>${maxVal}</span>
+        `;
+      }
+
+      function updateBatteryMinMax(percent: MinMax, voltage: MinMax): void {
+        const el = document.getElementById('minmax-battery-combined');
+        if (!el) return;
+
+        const minPct = percent.min !== null ? percent.min.toFixed(0) : '--';
+        const maxPct = percent.max !== null ? percent.max.toFixed(0) : '--';
+        const minV = voltage.min !== null ? voltage.min.toFixed(2) : '--';
+        const maxV = voltage.max !== null ? voltage.max.toFixed(2) : '--';
+
+        el.innerHTML = `
+          <span><span class="label">min</span>${minPct}<span class="voltage-small">(${minV})</span></span>
+          <span><span class="label">max</span>${maxPct}<span class="voltage-small">(${maxV})</span></span>
         `;
       }
 
@@ -525,6 +555,7 @@
         const humidity = sampled.map(d => d.humidity);
         const co2Values = sampled.map(d => d.co2);
         const batteryPercent = sampled.map(d => d.battery_percent);
+        const batteryVoltage = sampled.map(d => d.battery_voltage);
 
         const gridColor = 'rgba(0, 0, 0, 0.06)';
         const tickColor = '#888';
@@ -685,7 +716,7 @@
             labels: labels,
             datasets: [
               {
-                label: 'Battery (%)',
+                label: 'Percent (%)',
                 data: batteryPercent,
                 borderColor: '#27ae60',
                 backgroundColor: 'rgba(39, 174, 96, 0.15)',
@@ -693,6 +724,18 @@
                 pointRadius: 0,
                 tension: 0.3,
                 fill: true,
+                yAxisID: 'y',
+              },
+              {
+                label: 'Voltage (V)',
+                data: batteryVoltage,
+                borderColor: '#8bc34a',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.3,
+                fill: false,
+                yAxisID: 'y1',
               },
             ],
           },
@@ -727,11 +770,22 @@
                 },
               },
               y: {
+                type: 'linear',
+                position: 'left',
                 suggestedMin: 0,
                 suggestedMax: 100,
                 title: { display: true, text: '%', color: '#27ae60', font: { size: 11 } },
                 grid: { color: gridColor },
-                ticks: { color: tickColor, font: { size: 10 } },
+                ticks: { color: '#27ae60', font: { size: 10 } },
+              },
+              y1: {
+                type: 'linear',
+                position: 'right',
+                suggestedMin: 3.0,
+                suggestedMax: 4.5,
+                title: { display: true, text: 'V', color: '#8bc34a', font: { size: 11 } },
+                grid: { drawOnChartArea: false },
+                ticks: { color: '#8bc34a', font: { size: 10 } },
               },
             },
           },

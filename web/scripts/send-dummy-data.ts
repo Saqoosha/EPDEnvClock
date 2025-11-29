@@ -17,7 +17,8 @@ interface SensorReading {
   humidity: number;
   co2: number;
   batt_voltage: number;
-  batt_adc: number;
+  batt_percent: number;
+  batt_rate: number;
   rtc_drift_ms?: number;
 }
 
@@ -59,13 +60,18 @@ function generateDummyData(count: number, intervalSeconds: number): SensorReadin
       ? 600 + 300 * Math.sin((hourOfDay - 9) / 9 * Math.PI)
       : 450;
 
+    // Battery simulation: slowly draining from 100% to 80% over the period
+    const batteryPercent = 100 - (i / count) * 20 + (Math.random() - 0.5) * 2;
+    const batteryVoltage = 3.7 + (batteryPercent / 100) * 0.5; // 3.7V at 0%, 4.2V at 100%
+
     const reading: SensorReading = {
       timestamp,
       temp: Math.round((tempBase + (Math.random() - 0.5)) * 10) / 10,
       humidity: Math.round((humidityBase + (Math.random() - 0.5) * 5) * 10) / 10,
       co2: Math.round(co2Base + (Math.random() - 0.5) * 50),
-      batt_voltage: Math.round((4.0 + Math.random() * 0.2) * 1000) / 1000,
-      batt_adc: Math.round(2300 + Math.random() * 100),
+      batt_voltage: Math.round(batteryVoltage * 1000) / 1000,
+      batt_percent: Math.round(batteryPercent * 10) / 10,
+      batt_rate: Math.round((-20 / count * 60 + (Math.random() - 0.5)) * 100) / 100, // %/hr
     };
 
     // Add RTC drift once per hour (at minute 0)

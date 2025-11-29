@@ -16,7 +16,7 @@ WITH RECURSIVE
   base_time AS (
     SELECT strftime('%s', 'now', '-24 hours') AS start_ts
   )
-INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_adc)
+INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_rate)
 SELECT
   CAST(b.start_ts AS INTEGER) + (t.n * 60) AS timestamp,
   -- Temperature: base 23°C, +/-3°C daily cycle, +/-0.5°C noise
@@ -32,8 +32,10 @@ SELECT
         450 + ABS(RANDOM() % 80)
     END AS INTEGER
   ) AS co2,
-  -- Battery: slowly decreasing from 4.2V to 3.8V
-  ROUND(4.2 - (t.n / 1440.0) * 0.4 + (RANDOM() % 100) / 2000.0, 3) AS battery_voltage,
-  -- ADC: calculated from voltage using inverse of calibration formula
-  CAST((4.2 - (t.n / 1440.0) * 0.4 + 1.353) / 0.002334 AS INTEGER) AS battery_adc
+  -- Battery voltage: slowly decreasing from 4.2V to 3.9V
+  ROUND(4.2 - (t.n / 1440.0) * 0.3 + (RANDOM() % 100) / 2000.0, 3) AS battery_voltage,
+  -- Battery percent: slowly decreasing from 100% to 80%
+  ROUND(100.0 - (t.n / 1440.0) * 20.0 + (RANDOM() % 100) / 100.0, 1) AS battery_percent,
+  -- Battery rate: around -0.8 %/hr (negative = discharging)
+  ROUND(-0.8 + (RANDOM() % 100) / 500.0, 2) AS battery_rate
 FROM time_series t, base_time b;
