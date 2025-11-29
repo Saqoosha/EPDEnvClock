@@ -5,6 +5,7 @@ interface Stats {
   humidity: { min: number | null; max: number | null };
   co2: { min: number | null; max: number | null };
   battery_voltage: { min: number | null; max: number | null };
+  battery_percent: { min: number | null; max: number | null };
 }
 
 // GET /api/data - Fetch sensor data for charts
@@ -28,7 +29,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
     if (fromTs && toTs) {
       // Specific time range
       dataQuery = `
-        SELECT timestamp, temperature, humidity, co2, battery_voltage, rtc_drift_ms
+        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, rtc_drift_ms
         FROM sensor_data
         WHERE timestamp >= ? AND timestamp <= ?
         ORDER BY timestamp ASC
@@ -38,7 +39,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
           MIN(temperature) as temp_min, MAX(temperature) as temp_max,
           MIN(humidity) as hum_min, MAX(humidity) as hum_max,
           MIN(co2) as co2_min, MAX(co2) as co2_max,
-          MIN(battery_voltage) as bat_min, MAX(battery_voltage) as bat_max
+          MIN(battery_voltage) as bat_min, MAX(battery_voltage) as bat_max,
+          MIN(battery_percent) as bat_pct_min, MAX(battery_percent) as bat_pct_max
         FROM sensor_data
         WHERE timestamp >= ? AND timestamp <= ?
       `;
@@ -50,7 +52,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
       const startTs = nowTs - (hoursNum * 60 * 60);
 
       dataQuery = `
-        SELECT timestamp, temperature, humidity, co2, battery_voltage, rtc_drift_ms
+        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, rtc_drift_ms
         FROM sensor_data
         WHERE timestamp >= ?
         ORDER BY timestamp ASC
@@ -60,7 +62,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
           MIN(temperature) as temp_min, MAX(temperature) as temp_max,
           MIN(humidity) as hum_min, MAX(humidity) as hum_max,
           MIN(co2) as co2_min, MAX(co2) as co2_max,
-          MIN(battery_voltage) as bat_min, MAX(battery_voltage) as bat_max
+          MIN(battery_voltage) as bat_min, MAX(battery_voltage) as bat_max,
+          MIN(battery_percent) as bat_pct_min, MAX(battery_percent) as bat_pct_max
         FROM sensor_data
         WHERE timestamp >= ?
       `;
@@ -88,6 +91,10 @@ export const GET: APIRoute = async ({ url, locals }) => {
       battery_voltage: {
         min: statsResult?.bat_min as number | null,
         max: statsResult?.bat_max as number | null
+      },
+      battery_percent: {
+        min: statsResult?.bat_pct_min as number | null,
+        max: statsResult?.bat_pct_max as number | null
       },
     };
 

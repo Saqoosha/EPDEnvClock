@@ -7,7 +7,9 @@ interface SensorReading {
   humidity: number;
   co2: number;
   batt_voltage?: number;
-  batt_adc?: number;
+  batt_percent?: number;
+  batt_rate?: number;
+  batt_adc?: number;  // legacy, deprecated
   rtc_drift_ms?: number;
 }
 
@@ -47,8 +49,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     // Validate and insert all readings (ignore duplicates)
     const stmt = db.prepare(`
-      INSERT OR IGNORE INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_adc, rtc_drift_ms)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_rate, rtc_drift_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const batch = readings.map((r, i) => {
@@ -68,7 +70,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
         throw new Error(`Record ${i}: missing co2`);
       }
 
-      return stmt.bind(ts, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_adc ?? null, r.rtc_drift_ms ?? null);
+      return stmt.bind(ts, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_percent ?? null, r.batt_rate ?? null, r.rtc_drift_ms ?? null);
     });
 
     await db.batch(batch);
