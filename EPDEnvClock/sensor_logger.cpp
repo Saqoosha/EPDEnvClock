@@ -46,8 +46,9 @@ void formatJSONLine(const struct tm &timeinfo,
                     float temperature,
                     float humidity,
                     uint16_t co2,
-                    int batteryRawADC,
                     float batteryVoltage,
+                    float batteryPercent,
+                    float batteryChargeRate,
                     char *buffer,
                     size_t bufferSize)
 {
@@ -62,24 +63,24 @@ void formatJSONLine(const struct tm &timeinfo,
   {
     // Include RTC drift when NTP was synced this boot
     snprintf(buffer, bufferSize,
-             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_adc\":%d,\"batt_voltage\":%.3f}\n",
+             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_rate\":%.2f}\n",
              year, month, day,
              hour, minute, second,
              (long)unixTimestamp,
              rtcDriftMs,
              temperature, humidity, co2,
-             batteryRawADC, batteryVoltage);
+             batteryVoltage, batteryPercent, batteryChargeRate);
   }
   else
   {
     // No drift data when NTP wasn't synced this boot
     snprintf(buffer, bufferSize,
-             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_adc\":%d,\"batt_voltage\":%.3f}\n",
+             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_rate\":%.2f}\n",
              year, month, day,
              hour, minute, second,
              (long)unixTimestamp,
              temperature, humidity, co2,
-             batteryRawADC, batteryVoltage);
+             batteryVoltage, batteryPercent, batteryChargeRate);
   }
 }
 
@@ -128,8 +129,9 @@ bool SensorLogger_LogValues(
     float temperature,
     float humidity,
     uint16_t co2,
-    int batteryRawADC,
-    float batteryVoltage)
+    float batteryVoltage,
+    float batteryPercent,
+    float batteryChargeRate)
 {
   if (!initialized)
   {
@@ -149,7 +151,8 @@ bool SensorLogger_LogValues(
 
   // Format JSON line
   char jsonLine[320];
-  formatJSONLine(timeinfo, unixTimestamp, rtcDriftMs, ntpSynced, temperature, humidity, co2, batteryRawADC, batteryVoltage,
+  formatJSONLine(timeinfo, unixTimestamp, rtcDriftMs, ntpSynced, temperature, humidity, co2, 
+                 batteryVoltage, batteryPercent, batteryChargeRate,
                  jsonLine, sizeof(jsonLine));
 
   // Open file for append

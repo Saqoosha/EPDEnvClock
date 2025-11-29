@@ -1,6 +1,7 @@
 #include "display_manager.h"
 
 #include <WiFi.h>
+#include <Wire.h>
 
 #include "EPD.h"
 #include "EPD_Init.h"
@@ -11,6 +12,7 @@
 #include "deep_sleep_manager.h"
 #include "logger.h"
 #include "network_manager.h"
+#include "fuel_gauge_manager.h"
 
 namespace
 {
@@ -181,13 +183,14 @@ void drawTime(uint8_t hour, uint8_t minute, uint16_t x, uint16_t y)
   drawGlyphSequence(glyphs, count, x, y, FONT_L);
 }
 
-void drawStatus(const NetworkState &networkState, float batteryVoltage)
+void drawStatus(const NetworkState &networkState, float batteryVoltage, float batteryPercent)
 {
   // Increased buffer size to prevent overflow with long status messages
-  // Format can be: "B:3.845V | W:OK(-50) 192.168.1.100 | N:OK | U:123m | H:12345 | Msg:...")
-  // Max length: ~110 chars + 64 char message = ~174 chars, using 256 for safety
+  // Format can be: "B:85%(3.85V) | W:OK(-50) 192.168.1.100 | N:OK | U:123m | H:12345 | Msg:...")
+  // Max length: ~120 chars + 64 char message = ~184 chars, using 256 for safety
   char statusLine[256];
   char ipStr[16];
+  char batteryStr[24];
   const int yPos = 4; // Adjusted for 12px font (centered in top 20px area?) or just top aligned
   const uint16_t fontSize = 12;
 
@@ -208,15 +211,15 @@ void drawStatus(const NetworkState &networkState, float batteryVoltage)
   long rssi = WiFi.RSSI();
   uint32_t freeHeap = ESP.getFreeHeap();
 
-  // Format: "B:3.845V | WiFi:SSID(RSSI) IP:1.2.3.4 NTP:OK(diff) Heap:12345"
-  // Truncate SSID if too long? For now just show basic info
-
-  // Layout:
-  // Left: Battery Voltage | WiFi Status + SSID + RSSI + IP
-  // Right: NTP Status + Heap + Uptime
-
-  // Let's try a single line with compact info
-  // B:3.845V | W:Connected(SSID, -50dBm) 192.168.1.100 | N:OK(123ms) | U:123m | H:12345
+  // Format battery string: "85%(3.85V)" if fuel gauge available, else "3.845V"
+  if (FuelGauge_IsAvailable())
+  {
+    snprintf(batteryStr, sizeof(batteryStr), "%.0f%%(%.2fV)", batteryPercent, batteryVoltage);
+  }
+  else
+  {
+    snprintf(batteryStr, sizeof(batteryStr), "%.3fV", batteryVoltage);
+  }
 
   const char *wifiStatus = networkState.wifiConnected ? "OK" : "--";
   const char *ntpStatus = networkState.ntpSynced ? "OK" : "--";
@@ -228,33 +231,33 @@ void drawStatus(const NetworkState &networkState, float batteryVoltage)
   {
     if (hasMessage)
     {
-      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s(%ld) %s | N:%s | U:%lum | H:%u | Msg:%s",
-               batteryVoltage, wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+      snprintf(statusLine, sizeof(statusLine), "B:%s | W:%s(%ld) %s | N:%s | U:%lum | H:%u | Msg:%s",
+               batteryStr, wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
     }
     else
     {
-      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s(%ld) %s | N:%s | U:%lum | H:%u",
-               batteryVoltage, wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap);
+      snprintf(statusLine, sizeof(statusLine), "B:%s | W:%s(%ld) %s | N:%s | U:%lum | H:%u",
+               batteryStr, wifiStatus, rssi, ipStr, ntpStatus, millis() / 60000, freeHeap);
     }
   }
   else
   {
     if (hasMessage)
     {
-      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s | N:%s | U:%lum | H:%u | Msg:%s",
-               batteryVoltage, wifiStatus, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
+      snprintf(statusLine, sizeof(statusLine), "B:%s | W:%s | N:%s | U:%lum | H:%u | Msg:%s",
+               batteryStr, wifiStatus, ntpStatus, millis() / 60000, freeHeap, g_statusMessage);
     }
     else
     {
-      snprintf(statusLine, sizeof(statusLine), "B:%.3fV | W:%s | N:%s | U:%lum | H:%u",
-               batteryVoltage, wifiStatus, ntpStatus, millis() / 60000, freeHeap);
+      snprintf(statusLine, sizeof(statusLine), "B:%s | W:%s | N:%s | U:%lum | H:%u",
+               batteryStr, wifiStatus, ntpStatus, millis() / 60000, freeHeap);
     }
   }
 
   EPD_ShowString(8, yPos, statusLine, fontSize, BLACK);
 }
 
-void drawStatus(const NetworkState &networkState, float batteryVoltage); // Forward declaration
+void drawStatus(const NetworkState &networkState, float batteryVoltage, float batteryPercent); // Forward declaration
 
 bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool fullUpdate)
 {
@@ -344,7 +347,7 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
     EPD_ShowString(kDateX, kDateY, "WiFi Failed", fontSize, BLACK);
   }
 
-  drawStatus(networkState, batteryVoltage);
+  drawStatus(networkState, batteryVoltage, g_batteryPercent);
 
   // Draw sensor icons and values
   if (SensorManager_IsInitialized())
@@ -421,24 +424,20 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
 
 } // namespace
 
-// Battery voltage measurement
-// Voltage divider is connected to GPIO8
-// ESP32-S3 ADC is non-linear, so we use a linear calibration equation instead of ideal divider ratio
-// Calibration data (measured):
-//   ADC 2166 = 3.712V
-//   ADC 2237 = 3.846V
-//   ADC 2293 = 4.011V
-// Linear fit equation: Vbat = 0.002334 * adc_raw - 1.353
-// This compensates for ADC non-linearity and provides ±0.6% accuracy in 3.7-4.1V range
-constexpr int BATTERY_ADC_PIN = 8;
-constexpr float BATTERY_VOLTAGE_SLOPE = 0.002334f; // Linear calibration slope
-constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;  // Linear calibration offset
+// Battery measurement using MAX17048 fuel gauge (with ADC fallback)
+// MAX17048 provides accurate state-of-charge estimation
 
-// Global variable to store battery voltage (measured early in setup, before WiFi/sensor operations)
-// Defined outside namespace so it can be accessed from EPDEnvClock.ino
+// ADC fallback constants (voltage divider on GPIO8)
+// Linear fit equation: Vbat = 0.002334 * adc_raw - 1.353
+constexpr int BATTERY_ADC_PIN = 8;
+constexpr float BATTERY_VOLTAGE_SLOPE = 0.002334f;
+constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;
+
+// Global variables for battery state
 float g_batteryVoltage = 0.0f;
-// Global variable to store battery raw ADC value
-int g_batteryRawADC = 0;
+float g_batteryPercent = 0.0f;
+float g_batteryChargeRate = 0.0f;
+static bool s_fuelGaugeInitialized = false;
 
 void DisplayManager_Init(bool wakeFromSleep)
 {
@@ -654,7 +653,7 @@ void DisplayManager_UpdateSensorOnly(const NetworkState &networkState)
   }
 
   // Redraw status line to clear "Initializing Sensor..." message
-  drawStatus(networkState, g_batteryVoltage);
+  drawStatus(networkState, g_batteryVoltage, g_batteryPercent);
 
   const unsigned long drawDuration = micros() - startTime;
 
@@ -685,40 +684,71 @@ uint8_t *DisplayManager_GetFrameBuffer()
 
 float DisplayManager_ReadBatteryVoltage()
 {
-  // Read battery voltage from ADC
-  // Should be called early in setup() before WiFi/sensor operations
-  // For 470kΩ voltage divider: first do dummy read, then read 16 times with 50µs delay
-  // Use linear calibration equation to compensate for ESP32-S3 ADC non-linearity
-  // Vbat = 0.002334 * adc_raw - 1.353
-  //
-  // Note: After deep sleep, ADC needs to stabilize. We do a dummy read first,
-  // then read 16 times with small delays to get accurate average.
-  // This ensures we measure voltage when battery is in near-idle state (no load).
+  // Try to use MAX17048 fuel gauge first (uses Wire1 on GPIO 14/16)
+  if (!s_fuelGaugeInitialized)
+  {
+    if (FuelGauge_Init())
+    {
+      s_fuelGaugeInitialized = true;
+      LOGI(LogTag::DISPLAY_MGR, "MAX17048 fuel gauge initialized on Wire1");
+    }
+    else
+    {
+      LOGW(LogTag::DISPLAY_MGR, "MAX17048 not found, falling back to ADC");
+    }
+  }
 
-  constexpr int NUM_SAMPLES = 16; // 8-16 times recommended for 470kΩ divider
+  if (FuelGauge_IsAvailable())
+  {
+    // Read from MAX17048
+    float voltage = FuelGauge_GetVoltage();
+    float percent = FuelGauge_GetPercent();
+    float chargeRate = FuelGauge_GetChargeRate();
 
-  // Small delay after wake from deep sleep to let ADC stabilize
-  delay(10); // 10ms delay for ADC to stabilize after deep sleep
+    g_batteryVoltage = voltage;
+    g_batteryPercent = percent;
+    g_batteryChargeRate = chargeRate;
 
-  analogRead(BATTERY_ADC_PIN); // Dummy read to stabilize ADC
+    LOGI(LogTag::DISPLAY_MGR, "Battery: %.3fV, %.1f%%, Rate: %.2f%%/hr",
+         voltage, percent, chargeRate);
+
+    return voltage;
+  }
+
+  // Fallback to ADC measurement
+  constexpr int NUM_SAMPLES = 16;
+
+  delay(10);
+  analogRead(BATTERY_ADC_PIN);
   long adcSum = 0;
   for (int i = 0; i < NUM_SAMPLES; i++)
   {
     adcSum += analogRead(BATTERY_ADC_PIN);
-    delayMicroseconds(50); // 50µs delay between readings for 470kΩ divider
+    delayMicroseconds(50);
   }
   int rawAdc = adcSum / NUM_SAMPLES;
   float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
 
-  // Store raw ADC value globally for logging
-  g_batteryRawADC = rawAdc;
+  g_batteryVoltage = batteryVoltage;
+  g_batteryPercent = 0.0f; // Unknown without fuel gauge
+  g_batteryChargeRate = 0.0f; // Unknown without fuel gauge
 
-  LOGI(LogTag::DISPLAY_MGR, "Battery voltage measured: %.3fV (ADC: %d)", batteryVoltage, rawAdc);
+  LOGI(LogTag::DISPLAY_MGR, "Battery (ADC fallback): %.3fV (raw: %d)", batteryVoltage, rawAdc);
 
   return batteryVoltage;
 }
 
-int DisplayManager_GetBatteryRawADC()
+float DisplayManager_GetBatteryPercent()
 {
-  return g_batteryRawADC;
+  return g_batteryPercent;
+}
+
+float DisplayManager_GetBatteryChargeRate()
+{
+  return g_batteryChargeRate;
+}
+
+bool DisplayManager_IsFuelGaugeAvailable()
+{
+  return FuelGauge_IsAvailable();
 }

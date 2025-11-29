@@ -10,6 +10,7 @@ void SensorLogger_Init();
 // Returns true if successful, false otherwise
 // rtcDriftMs: RTC drift in milliseconds from last NTP sync (0 if not synced this boot)
 // driftValid: true if rtcDriftMs contains a valid measurement
+// batteryChargeRate: battery charge/discharge rate in %/hr (positive=charging, negative=discharging)
 bool SensorLogger_LogValues(
     const struct tm &timeinfo,
     time_t unixTimestamp,
@@ -18,8 +19,9 @@ bool SensorLogger_LogValues(
     float temperature,
     float humidity,
     uint16_t co2,
-    int batteryRawADC,
-    float batteryVoltage);
+    float batteryVoltage,
+    float batteryPercent,
+    float batteryChargeRate);
 
 // Delete log files older than specified days
 // Returns number of files deleted
