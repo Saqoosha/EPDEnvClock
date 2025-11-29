@@ -7,7 +7,7 @@ Sensor data visualization dashboard for the EPDEnvClock device.
 
 ## ESP32 Setup
 
-The ESP32 automatically uploads sensor data to the server every ~60 minutes (when NTP sync occurs).
+The ESP32 automatically uploads sensor data to the server at the top of every hour (when NTP sync occurs).
 
 ### 1. Create secrets.h
 
@@ -32,7 +32,7 @@ Edit `secrets.h`:
 ### 2. How it works
 
 - Sensor readings are logged to SD card every minute (`/sensor_logs/sensor_log_YYYYMMDD.jsonl`)
-- Every 60 boots (~60 min), when Wi-Fi/NTP sync occurs:
+- At the top of every hour, when Wi-Fi/NTP sync occurs:
   - ESP32 reads unsent data from SD card (up to 60 records)
   - Sends batch POST to `/api/sensor`
   - Updates `lastUploadedTime` in RTC memory to track progress
@@ -41,8 +41,8 @@ Edit `secrets.h`:
 ### 3. Log file format (JSONL)
 
 ```json
-{"date":"2025.11.28","time":"12:00:00","unixtimestamp":1732780800,"temp":23.5,"humidity":45.0,"co2":650,"batt_adc":2400,"batt_voltage":4.2}
-{"date":"2025.11.28","time":"12:01:00","unixtimestamp":1732780860,"temp":23.6,"humidity":44.8,"co2":655,"batt_adc":2395,"batt_voltage":4.19}
+{"date":"2025.11.28","time":"12:00:00","unixtimestamp":1732780800,"temp":23.5,"humidity":45.0,"co2":650,"batt_voltage":4.2,"batt_percent":85.5,"batt_rate":-0.5}
+{"date":"2025.11.28","time":"12:01:00","unixtimestamp":1732780860,"temp":23.6,"humidity":44.8,"co2":655,"batt_voltage":4.19,"batt_percent":85.3,"batt_rate":-0.5}
 ```
 
 ## Local Development
@@ -210,7 +210,8 @@ Single reading:
   "humidity": 45.2,
   "co2": 650,
   "batt_voltage": 4.1,
-  "batt_adc": 2380
+  "batt_percent": 85.5,
+  "batt_rate": -0.5
 }
 ```
 
@@ -218,8 +219,8 @@ Batch (recommended for ESP32):
 
 ```json
 [
-  { "timestamp": 1732700000, "temp": 23.5, "humidity": 45.2, "co2": 650 },
-  { "timestamp": 1732700060, "temp": 23.6, "humidity": 45.0, "co2": 655 }
+  { "timestamp": 1732700000, "temp": 23.5, "humidity": 45.2, "co2": 650, "batt_voltage": 4.1, "batt_percent": 85.5, "batt_rate": -0.5 },
+  { "timestamp": 1732700060, "temp": 23.6, "humidity": 45.0, "co2": 655, "batt_voltage": 4.09, "batt_percent": 85.3, "batt_rate": -0.5 }
 ]
 ```
 
@@ -230,7 +231,8 @@ Batch (recommended for ESP32):
 - `humidity`: Humidity in %
 - `co2`: CO2 concentration in ppm
 - `batt_voltage`: Battery voltage (optional)
-- `batt_adc`: Raw ADC value (optional)
+- `batt_percent`: Battery percentage from MAX17048 (optional)
+- `batt_rate`: Battery charge rate in %/hr (optional, positive=charging, negative=discharging)
 - `rtc_drift_ms`: RTC drift in milliseconds (optional, only when NTP synced)
 
 **Duplicate handling:**

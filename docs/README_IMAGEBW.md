@@ -8,8 +8,9 @@ ArduinoからImageBWキャンバス配列をWi-Fi経由でMac上のPythonサー�
 ### 1. サーバー設定の確認
 `server_config.h`でサーバーのIPアドレスとポートを設定：
 ```c
-#define SERVER_IP "192.168.3.1"  // MacのIPアドレス
-#define SERVER_PORT 8080           // サーバーポート
+#define ENABLE_IMAGEBW_EXPORT 1           // 1で有効、0で無効
+#define IMAGEBW_SERVER_IP "192.168.3.1"   // MacのIPアドレス
+#define IMAGEBW_SERVER_PORT 8080          // サーバーポート
 ```
 
 ### 2. Pythonサーバーの起動
