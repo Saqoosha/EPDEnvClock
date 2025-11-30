@@ -296,8 +296,9 @@ void setup()
       float batteryVoltage = g_batteryVoltage;
       float batteryPercent = g_batteryPercent;
       float batteryChargeRate = g_batteryChargeRate;
+      bool batteryCharging = g_batteryCharging;
 
-      if (SensorLogger_LogValues(timeinfo, unixTimestamp, rtcDriftMs, driftValid, temp, humidity, co2, batteryVoltage, batteryPercent, batteryChargeRate))
+      if (SensorLogger_LogValues(timeinfo, unixTimestamp, rtcDriftMs, driftValid, temp, humidity, co2, batteryVoltage, batteryPercent, batteryChargeRate, batteryCharging))
       {
         LOGI(LogTag::SETUP, "Sensor values logged successfully");
       }

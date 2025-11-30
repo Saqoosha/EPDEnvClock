@@ -29,3 +29,5 @@ extern float g_batteryVoltage;
 extern float g_batteryPercent;
 // Global variable to store battery charge rate (%/hr)
 extern float g_batteryChargeRate;
+// Global variable to store charging state (true = charging)
+extern bool g_batteryCharging;

@@ -10,7 +10,49 @@ namespace {
 Adafruit_MAX17048 maxlipo;
 bool fuelGaugeAvailable = false;
 bool wireInitialized = false;
+bool chrgPinInitialized = false;
+bool lastChargingState = false;
 }  // namespace
+
+// ============================================================
+// CHRG Pin Functions (4054A charging status)
+// ============================================================
+// CHRG is open-drain: LOW = charging, HIGH-Z = not charging
+// Must be read BEFORE I2C operations to avoid noise interference
+
+void Charging_Init() {
+  if (chrgPinInitialized) {
+    return;
+  }
+  // Configure as input with internal pullup
+  // CRITICAL: Never set this pin as OUTPUT (could damage 4054A)
+  pinMode(CHRG_PIN, INPUT_PULLUP);
+  chrgPinInitialized = true;
+
+  // Read initial state
+  lastChargingState = (digitalRead(CHRG_PIN) == LOW);
+  LOGI(LogTag::SENSOR, "CHRG pin initialized on GPIO %d, state: %s",
+       CHRG_PIN, lastChargingState ? "CHARGING" : "NOT CHARGING");
+}
+
+bool Charging_IsCharging() {
+  if (!chrgPinInitialized) {
+    Charging_Init();
+  }
+
+  // Simple read - debouncing not needed here since we read before I2C
+  bool charging = (digitalRead(CHRG_PIN) == LOW);
+
+  // Log state changes
+  if (charging != lastChargingState) {
+    LOGI(LogTag::SENSOR, "Charging state changed: %s -> %s",
+         lastChargingState ? "CHARGING" : "NOT CHARGING",
+         charging ? "CHARGING" : "NOT CHARGING");
+    lastChargingState = charging;
+  }
+
+  return charging;
+}
 
 bool FuelGauge_Init() {
   // MAX17048 uses separate I2C bus (Wire1) on GPIO 14/16

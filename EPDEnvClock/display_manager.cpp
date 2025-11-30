@@ -211,14 +211,16 @@ void drawStatus(const NetworkState &networkState, float batteryVoltage, float ba
   long rssi = WiFi.RSSI();
   uint32_t freeHeap = ESP.getFreeHeap();
 
-  // Format battery string: "85%(3.85V)" if fuel gauge available, else "3.845V"
+  // Format battery string: "85%(3.85V)[CHG]" if fuel gauge available, else "3.845V"
+  // Add [CHG] indicator if charging
+  const char* chrgIndicator = g_batteryCharging ? "[CHG]" : "";
   if (FuelGauge_IsAvailable())
   {
-    snprintf(batteryStr, sizeof(batteryStr), "%.0f%%(%.2fV)", batteryPercent, batteryVoltage);
+    snprintf(batteryStr, sizeof(batteryStr), "%.0f%%(%.2fV)%s", batteryPercent, batteryVoltage, chrgIndicator);
   }
   else
   {
-    snprintf(batteryStr, sizeof(batteryStr), "%.3fV", batteryVoltage);
+    snprintf(batteryStr, sizeof(batteryStr), "%.3fV%s", batteryVoltage, chrgIndicator);
   }
 
   const char *wifiStatus = networkState.wifiConnected ? "OK" : "--";
@@ -437,6 +439,7 @@ constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;
 float g_batteryVoltage = 0.0f;
 float g_batteryPercent = 0.0f;
 float g_batteryChargeRate = 0.0f;
+bool g_batteryCharging = false;
 static bool s_fuelGaugeInitialized = false;
 
 void DisplayManager_Init(bool wakeFromSleep)
@@ -684,6 +687,12 @@ uint8_t *DisplayManager_GetFrameBuffer()
 
 float DisplayManager_ReadBatteryVoltage()
 {
+  // === CRITICAL: Read CHRG pin FIRST, before any I2C operations ===
+  // I2C communication can cause noise on GPIO pins, so we read CHRG
+  // before initializing fuel gauge (which uses Wire1 I2C)
+  Charging_Init();
+  g_batteryCharging = Charging_IsCharging();
+
   // Try to use MAX17048 fuel gauge first (uses Wire1 on GPIO 14/16)
   if (!s_fuelGaugeInitialized)
   {
