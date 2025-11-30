@@ -54,6 +54,13 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=op
 - **Reported**: Voltage (V), State of Charge (%), Charge Rate (%/hr)
 - **Power**: Chip is powered by battery (must connect CELL+/CELL- to LiPo)
 
+### Charging Detection (4054A CHRG Pin)
+
+- **GPIO**: 8
+- **Mode**: INPUT_PULLUP (open-drain output from 4054A)
+- **Logic**: LOW = Charging, HIGH = Not charging (or no battery)
+- **Note**: Read BEFORE I2C operations to avoid noise interference
+
 ## Code Architecture
 
 ```
@@ -61,7 +68,7 @@ EPDEnvClock/
 ├── EPDEnvClock.ino      # Main sketch (setup/loop)
 ├── display_manager.*    # Display rendering, layout, battery reading
 ├── sensor_manager.*     # SCD41 sensor (single-shot mode with light sleep)
-├── fuel_gauge_manager.* # MAX17048 fuel gauge (battery %, voltage, charge rate)
+├── fuel_gauge_manager.* # MAX17048 fuel gauge + 4054A charging detection
 ├── network_manager.*    # Wi-Fi connection, NTP sync
 ├── deep_sleep_manager.* # Deep sleep, RTC state, SD/SPIFFS frame buffer
 ├── font_renderer.*      # Glyph drawing with kerning support

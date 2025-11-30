@@ -12,7 +12,7 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 - **環境センサー**: SCD41センサーによるCO2、温度、湿度の測定と表示
 - **省電力設計**: Deep Sleepモードにより長時間動作（約1分間隔で更新）
 - **Wi-Fi接続**: Wi-Fi経由でNTP時刻同期
-- **バッテリー監視**: MAX17048燃料ゲージによるバッテリー残量と電圧をリアルタイム表示
+- **バッテリー監視**: MAX17048燃料ゲージと4054A CHRGピンによるバッテリー残量、電圧、充電状態をリアルタイム表示
 - **ボタンウェイクアップ**: HOMEボタンでDeep Sleepから復帰して全画面更新
 
 ## ✨ 主な機能
@@ -48,7 +48,7 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 ### データロギング機能
 
 - **センサーログ**: SDカードにJSONL形式でセンサー値を自動記録
-- **記録項目**: 日付、時刻、Unixタイムスタンプ、RTCドリフト、温度、湿度、CO2、バッテリー電圧、バッテリー残量、充電率
+- **記録項目**: 日付、時刻、Unixタイムスタンプ、RTCドリフト、温度、湿度、CO2、バッテリー電圧、バッテリー残量、充電率、充電状態
 - **ファイル形式**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl`（日付ごとにファイルを分割）
 
 ### ボタン機能
@@ -95,6 +95,14 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 | CELL- | LiPoバッテリー - (GND) |
 
 **注意**: MAX17048はバッテリーから電源を得ます（VINではない）。バッテリーが接続されていないとI2Cに応答しません。
+
+#### 4054A充電IC（CHRGピン）
+
+| ピン | GPIO |
+|-----|------|
+| CHRG | 8 |
+
+**注意**: CHRGはオープンドレイン出力です。LOW = 充電中、HIGH = 非充電（内部プルアップ）。I2C通信のノイズを避けるため、I2C操作の前に読み取ります。
 
 #### SDカード（HSPIバス）
 
@@ -294,7 +302,7 @@ EPDEnvClock/
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD初期化
 │   ├── spi.h / spi.cpp          # EPD用ビットバンギングSPI
 │   ├── display_manager.*        # 表示レンダリング、レイアウト
-│   ├── fuel_gauge_manager.*     # MAX17048バッテリー燃料ゲージ
+│   ├── fuel_gauge_manager.*     # MAX17048燃料ゲージ + 4054A充電検出
 │   ├── font_renderer.*          # カーニング対応グリフ描画
 │   ├── sensor_manager.*         # SCD41センサー（Light Sleep付きSingle-Shotモード）
 │   ├── sensor_logger.*          # SDカードへのセンサーデータ記録

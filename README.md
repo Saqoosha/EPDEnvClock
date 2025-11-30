@@ -12,7 +12,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 - **Environmental Sensor**: Measures and displays CO2, temperature, and humidity using SCD41 sensor
 - **Low Power Design**: Long battery life with Deep Sleep mode (updates approximately every minute)
 - **Wi-Fi Connectivity**: NTP time synchronization via Wi-Fi
-- **Battery Monitoring**: Real-time battery percentage and voltage display using MAX17048 fuel gauge
+- **Battery Monitoring**: Real-time battery percentage, voltage, and charging state display using MAX17048 fuel gauge and 4054A CHRG pin
 - **Button Wake-up**: Wake from Deep Sleep with HOME button for full screen refresh
 
 ## ✨ Main Features
@@ -48,7 +48,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 ### Data Logging
 
 - **Sensor Log**: Automatically records sensor values to SD card in JSONL format
-- **Recorded Data**: Date, time, Unix timestamp, RTC drift, temperature, humidity, CO2, battery voltage, battery %, charge rate
+- **Recorded Data**: Date, time, Unix timestamp, RTC drift, temperature, humidity, CO2, battery voltage, battery %, charge rate, charging state
 - **File Format**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl` (files split by date)
 
 ### Button Functions
@@ -95,6 +95,14 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 | CELL- | LiPo Battery - (GND) |
 
 **Note**: MAX17048 is powered by the battery, not VIN. The chip will not respond to I2C if battery is not connected.
+
+#### 4054A Charging IC (CHRG Pin)
+
+| Pin | GPIO |
+|-----|------|
+| CHRG | 8 |
+
+**Note**: CHRG is an open-drain output. LOW = charging, HIGH = not charging (pulled up by internal pullup). Read before I2C operations to avoid noise interference.
 
 #### SD Card (HSPI Bus)
 
@@ -293,7 +301,7 @@ EPDEnvClock/
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD initialization
 │   ├── spi.h / spi.cpp          # Bit-banging SPI for EPD
 │   ├── display_manager.*        # Display rendering, layout
-│   ├── fuel_gauge_manager.*     # MAX17048 battery fuel gauge
+│   ├── fuel_gauge_manager.*     # MAX17048 fuel gauge + 4054A charging detection
 │   ├── font_renderer.*          # Glyph drawing with kerning support
 │   ├── sensor_manager.*         # SCD41 sensor (single-shot mode with light sleep)
 │   ├── sensor_logger.*          # Sensor data logging to SD card
