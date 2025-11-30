@@ -396,6 +396,7 @@
         co2: number;
         battery_voltage: number | null;
         battery_percent: number | null;
+        battery_charging: number | null;  // 1 = charging, 0 = not charging
         rtc_drift_ms: number | null;
       }
 
@@ -556,6 +557,8 @@
         const co2Values = sampled.map(d => d.co2);
         const batteryPercent = sampled.map(d => d.battery_percent);
         const batteryVoltage = sampled.map(d => d.battery_voltage);
+        // Charging overlay: 100 when charging, null otherwise (for fill area)
+        const chargingOverlay = sampled.map(d => d.battery_charging === 1 ? 100 : null);
 
         const gridColor = 'rgba(0, 0, 0, 0.06)';
         const tickColor = '#888';
@@ -715,6 +718,18 @@
           data: {
             labels: labels,
             datasets: [
+              {
+                label: 'Charging',
+                data: chargingOverlay,
+                borderColor: 'transparent',
+                backgroundColor: 'rgba(231, 76, 60, 0.2)',
+                borderWidth: 0,
+                pointRadius: 0,
+                tension: 0,
+                fill: 'origin',
+                yAxisID: 'y',
+                spanGaps: false,  // Don't connect null points
+              },
               {
                 label: 'Percent (%)',
                 data: batteryPercent,

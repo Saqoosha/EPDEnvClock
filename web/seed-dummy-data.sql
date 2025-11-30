@@ -2,6 +2,7 @@
 -- Temperature: 20-26°C with daily cycle
 -- Humidity: 40-60% inverse to temperature
 -- CO2: 400-1200 ppm with peaks during "occupied" hours
+-- Charging: simulates 2 charging sessions (morning and evening)
 
 -- Clear existing data
 DELETE FROM sensor_data;
@@ -16,7 +17,7 @@ WITH RECURSIVE
   base_time AS (
     SELECT strftime('%s', 'now', '-24 hours') AS start_ts
   )
-INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_rate)
+INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_rate, battery_charging)
 SELECT
   CAST(b.start_ts AS INTEGER) + (t.n * 60) AS timestamp,
   -- Temperature: base 23°C, +/-3°C daily cycle, +/-0.5°C noise
@@ -32,10 +33,37 @@ SELECT
         450 + ABS(RANDOM() % 80)
     END AS INTEGER
   ) AS co2,
-  -- Battery voltage: slowly decreasing from 4.2V to 3.9V
-  ROUND(4.2 - (t.n / 1440.0) * 0.3 + (RANDOM() % 100) / 2000.0, 3) AS battery_voltage,
-  -- Battery percent: slowly decreasing from 100% to 80%
-  ROUND(100.0 - (t.n / 1440.0) * 20.0 + (RANDOM() % 100) / 100.0, 1) AS battery_percent,
-  -- Battery rate: around -0.8 %/hr (negative = discharging)
-  ROUND(-0.8 + (RANDOM() % 100) / 500.0, 2) AS battery_rate
+  -- Battery voltage: base discharge, but rises during charging
+  ROUND(
+    CASE
+      -- Morning charge (7:00-9:00, minutes 420-540): voltage rises
+      WHEN t.n BETWEEN 420 AND 540 THEN 3.9 + ((t.n - 420) / 120.0) * 0.3
+      -- Evening charge (19:00-21:00, minutes 1140-1260): voltage rises
+      WHEN t.n BETWEEN 1140 AND 1260 THEN 3.7 + ((t.n - 1140) / 120.0) * 0.3
+      -- Normal discharge
+      ELSE 4.2 - (t.n / 1440.0) * 0.5
+    END + (RANDOM() % 100) / 2000.0, 3
+  ) AS battery_voltage,
+  -- Battery percent: rises during charging, falls otherwise
+  ROUND(
+    CASE
+      WHEN t.n BETWEEN 420 AND 540 THEN 60.0 + ((t.n - 420) / 120.0) * 25.0
+      WHEN t.n BETWEEN 1140 AND 1260 THEN 40.0 + ((t.n - 1140) / 120.0) * 30.0
+      ELSE 100.0 - (t.n / 1440.0) * 60.0
+    END + (RANDOM() % 100) / 100.0, 1
+  ) AS battery_percent,
+  -- Battery rate: positive when charging, negative when discharging
+  ROUND(
+    CASE
+      WHEN t.n BETWEEN 420 AND 540 THEN 12.0 + (RANDOM() % 100) / 50.0
+      WHEN t.n BETWEEN 1140 AND 1260 THEN 15.0 + (RANDOM() % 100) / 50.0
+      ELSE -0.8 + (RANDOM() % 100) / 500.0
+    END, 2
+  ) AS battery_rate,
+  -- Charging state: 1 during charge windows, 0 otherwise
+  CASE
+    WHEN t.n BETWEEN 420 AND 540 THEN 1
+    WHEN t.n BETWEEN 1140 AND 1260 THEN 1
+    ELSE 0
+  END AS battery_charging
 FROM time_series t, base_time b;

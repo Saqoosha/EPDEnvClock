@@ -29,7 +29,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
     if (fromTs && toTs) {
       // Specific time range
       dataQuery = `
-        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, rtc_drift_ms
+        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_charging, rtc_drift_ms
         FROM sensor_data
         WHERE timestamp >= ? AND timestamp <= ?
         ORDER BY timestamp ASC
@@ -52,7 +52,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
       const startTs = nowTs - (hoursNum * 60 * 60);
 
       dataQuery = `
-        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, rtc_drift_ms
+        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_charging, rtc_drift_ms
         FROM sensor_data
         WHERE timestamp >= ?
         ORDER BY timestamp ASC
