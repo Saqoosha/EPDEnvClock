@@ -814,6 +814,9 @@
           rtcDriftChart.destroy();
         }
 
+        // Calculate bar thickness based on number of data points (min 4px, max 20px)
+        const rtcBarThickness = Math.max(4, Math.min(20, Math.floor(600 / rtcDriftData.length)));
+
         rtcDriftChart = new Chart(ctx4, {
           type: 'bar',
           data: {
@@ -829,6 +832,8 @@
                 ),
                 borderWidth: 1,
                 borderRadius: 2,
+                barThickness: rtcBarThickness,
+                minBarLength: 3,
               },
             ],
           },
