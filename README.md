@@ -8,6 +8,8 @@ An ESP32-S3 based e-paper clock project with integrated SCD41 CO2/temperature/hu
 
 EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" display (792x272 pixels). It provides the following features:
 
+![EPDEnvClock Device](docs/images/device.jpg)
+
 - **Time & Date Display**: Shows time and date with large number fonts
 - **Environmental Sensor**: Measures and displays CO2, temperature, and humidity using SCD41 sensor
 - **Low Power Design**: Long battery life with Deep Sleep mode (updates approximately every minute)
@@ -58,6 +60,10 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 - All buttons are active LOW with internal pullup
 
 ## 🔧 Hardware Requirements
+
+### Hardware Overview
+
+![Wiring Diagram](docs/images/wiring.jpg)
 
 ### Components Built into CrowPanel
 
@@ -342,6 +348,8 @@ EPDEnvClock/
 ## 🌐 Web Dashboard
 
 The project includes a web dashboard for viewing sensor data, deployed on Cloudflare Pages.
+
+![Web Dashboard](docs/images/dashboard.png)
 
 ### Local Development
 

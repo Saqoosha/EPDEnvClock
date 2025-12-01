@@ -8,6 +8,8 @@ ESP32-S3ベースの電子ペーパー時計プロジェクト。SCD41 CO2/温�
 
 EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（792x272ピクセル）を使用した時計アプリケーションです。以下の機能を提供します：
 
+![EPDEnvClock デバイス](docs/images/device.jpg)
+
 - **時刻・日付表示**: 大きな数字で時刻と日付を表示
 - **環境センサー**: SCD41センサーによるCO2、温度、湿度の測定と表示
 - **省電力設計**: Deep Sleepモードにより長時間動作（約1分間隔で更新）
@@ -58,6 +60,10 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 - すべてのボタンはアクティブLOW（内部プルアップ）
 
 ## 🔧 ハードウェア要件
+
+### ハードウェア概要
+
+![配線図](docs/images/wiring.jpg)
 
 ### CrowPanelに内蔵されているコンポーネント
 
@@ -343,6 +349,8 @@ EPDEnvClock/
 ## 🌐 Webダッシュボード
 
 このプロジェクトにはセンサーデータを表示するWebダッシュボードが含まれており、Cloudflare Pagesにデプロイされています。
+
+![Webダッシュボード](docs/images/dashboard.png)
 
 ### ローカル開発
 
