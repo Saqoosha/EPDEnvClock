@@ -3,6 +3,7 @@
 -- Humidity: 40-60% inverse to temperature
 -- CO2: 400-1200 ppm with peaks during "occupied" hours
 -- Charging: simulates 2 charging sessions (morning and evening)
+-- RTC Drift: simulates clock drift (-500ms to +500ms) once per hour
 
 -- Clear existing data
 DELETE FROM sensor_data;
@@ -17,7 +18,7 @@ WITH RECURSIVE
   base_time AS (
     SELECT strftime('%s', 'now', '-24 hours') AS start_ts
   )
-INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_rate, battery_charging)
+INSERT INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_rate, battery_charging, rtc_drift_ms)
 SELECT
   CAST(b.start_ts AS INTEGER) + (t.n * 60) AS timestamp,
   -- Temperature: base 23°C, +/-3°C daily cycle, +/-0.5°C noise
@@ -65,5 +66,10 @@ SELECT
     WHEN t.n BETWEEN 420 AND 540 THEN 1
     WHEN t.n BETWEEN 1140 AND 1260 THEN 1
     ELSE 0
-  END AS battery_charging
+  END AS battery_charging,
+  -- RTC drift: only at minute 0 of each hour (every 60 minutes), range -500ms to +500ms
+  CASE
+    WHEN t.n % 60 = 0 THEN (RANDOM() % 1000) - 500
+    ELSE NULL
+  END AS rtc_drift_ms
 FROM time_series t, base_time b;

@@ -815,19 +815,20 @@
         }
 
         rtcDriftChart = new Chart(ctx4, {
-          type: 'line',
+          type: 'bar',
           data: {
             datasets: [
               {
                 label: 'RTC Drift (ms)',
                 data: rtcDriftData,
-                borderColor: '#9b59b6',
-                backgroundColor: 'rgba(155, 89, 182, 0.15)',
-                borderWidth: 2,
-                pointRadius: 4,
-                pointBackgroundColor: '#9b59b6',
-                tension: 0.3,
-                fill: true,
+                backgroundColor: rtcDriftData.map(d =>
+                  (d.y as number) >= 0 ? 'rgba(155, 89, 182, 0.7)' : 'rgba(231, 76, 60, 0.7)'
+                ),
+                borderColor: rtcDriftData.map(d =>
+                  (d.y as number) >= 0 ? '#9b59b6' : '#e74c3c'
+                ),
+                borderWidth: 1,
+                borderRadius: 2,
               },
             ],
           },
