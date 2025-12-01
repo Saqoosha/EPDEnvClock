@@ -91,19 +91,23 @@ uint8_t buildIntegerGlyphs(int value, uint8_t *glyphs)
 }
 
 // Build date glyph sequence: 2024.11.25 -> [2,0,2,4, PERIOD, 1,1, PERIOD, 2,5]
+// No zero padding for month/day: 2025.12.1 or 2026.1.1
 uint8_t buildDateGlyphs(uint16_t year, uint8_t month, uint8_t day, uint8_t *glyphs)
 {
-  glyphs[0] = (year / 1000) % 10;
-  glyphs[1] = (year / 100) % 10;
-  glyphs[2] = (year / 10) % 10;
-  glyphs[3] = year % 10;
-  glyphs[4] = GLYPH_PERIOD;
-  glyphs[5] = month / 10;
-  glyphs[6] = month % 10;
-  glyphs[7] = GLYPH_PERIOD;
-  glyphs[8] = day / 10;
-  glyphs[9] = day % 10;
-  return 10;
+  uint8_t count = 0;
+  glyphs[count++] = (year / 1000) % 10;
+  glyphs[count++] = (year / 100) % 10;
+  glyphs[count++] = (year / 10) % 10;
+  glyphs[count++] = year % 10;
+  glyphs[count++] = GLYPH_PERIOD;
+  if (month >= 10)
+    glyphs[count++] = month / 10;
+  glyphs[count++] = month % 10;
+  glyphs[count++] = GLYPH_PERIOD;
+  if (day >= 10)
+    glyphs[count++] = day / 10;
+  glyphs[count++] = day % 10;
+  return count;
 }
 
 // Build time glyph sequence: 12:34 -> [1,2, COLON, 3,4] or 9:34 -> [9, COLON, 3,4]
