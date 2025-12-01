@@ -388,6 +388,7 @@
 
     <script>
       import Chart from 'chart.js/auto';
+      import 'chartjs-adapter-date-fns';
 
       interface SensorData {
         timestamp: number;
@@ -526,12 +527,18 @@
         `;
       }
 
-      function formatTime(timestamp: number, hours: number): string {
-        const date = new Date(timestamp * 1000);
-        if (hours <= 24) {
-          return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+      function getTimeScaleConfig(hours: number) {
+        // Determine unit and step based on time range
+        if (hours <= 6) {
+          return { unit: 'hour' as const, stepSize: 1 };
+        } else if (hours <= 12) {
+          return { unit: 'hour' as const, stepSize: 2 };
+        } else if (hours <= 24) {
+          return { unit: 'hour' as const, stepSize: 3 };
+        } else if (hours <= 72) {
+          return { unit: 'hour' as const, stepSize: 6 };
         } else {
-          return date.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+          return { unit: 'day' as const, stepSize: 1 };
         }
       }
 
@@ -551,17 +558,38 @@
         const sampled = downsample(data, 200);
         console.log('Creating charts with', sampled.length, 'points (from', data.length, ')');
 
-        const labels = sampled.map(d => formatTime(d.timestamp, hours));
-        const temps = sampled.map(d => d.temperature);
-        const humidity = sampled.map(d => d.humidity);
-        const co2Values = sampled.map(d => d.co2);
-        const batteryPercent = sampled.map(d => d.battery_percent);
-        const batteryVoltage = sampled.map(d => d.battery_voltage);
+        // Convert to {x, y} format for time scale
+        const temps = sampled.map(d => ({ x: d.timestamp * 1000, y: d.temperature }));
+        const humidityData = sampled.map(d => ({ x: d.timestamp * 1000, y: d.humidity }));
+        const co2Values = sampled.map(d => ({ x: d.timestamp * 1000, y: d.co2 }));
+        const batteryPercent = sampled.map(d => ({ x: d.timestamp * 1000, y: d.battery_percent }));
+        const batteryVoltage = sampled.map(d => ({ x: d.timestamp * 1000, y: d.battery_voltage }));
         // Charging overlay: 100 when charging, null otherwise (for fill area)
-        const chargingOverlay = sampled.map(d => d.battery_charging === 1 ? 100 : null);
+        const chargingOverlay = sampled.map(d => ({ x: d.timestamp * 1000, y: d.battery_charging === 1 ? 100 : null }));
 
+        const timeConfig = getTimeScaleConfig(hours);
         const gridColor = 'rgba(0, 0, 0, 0.06)';
         const tickColor = '#888';
+
+        // Common x-axis config for time scale
+        // Note: Do NOT use time.round - it rounds data points, not just tick labels
+        const xAxisConfig = {
+          type: 'time' as const,
+          time: {
+            unit: timeConfig.unit,
+            stepSize: timeConfig.stepSize,
+            displayFormats: {
+              hour: 'HH:mm',
+              day: 'MM/dd',
+            },
+          },
+          grid: { color: gridColor },
+          ticks: {
+            color: tickColor,
+            font: { size: 10 },
+            maxRotation: 0,
+          },
+        };
 
         // Temperature & Humidity Chart
         const ctx1 = document.getElementById('chart-temp-humidity') as HTMLCanvasElement;
@@ -572,7 +600,6 @@
         tempHumidityChart = new Chart(ctx1, {
           type: 'line',
           data: {
-            labels: labels,
             datasets: [
               {
                 label: 'Temperature (°C)',
@@ -587,7 +614,7 @@
               },
               {
                 label: 'Humidity (%)',
-                data: humidity,
+                data: humidityData,
                 borderColor: '#3498db',
                 backgroundColor: 'rgba(52, 152, 219, 0.1)',
                 borderWidth: 2,
@@ -618,16 +645,7 @@
               },
             },
             scales: {
-              x: {
-                grid: { color: gridColor },
-                ticks: {
-                  color: tickColor,
-                  font: { size: 10 },
-                  maxRotation: 0,
-                  autoSkip: true,
-                  maxTicksLimit: 8,
-                },
-              },
+              x: xAxisConfig,
               y: {
                 position: 'left',
                 title: { display: true, text: '°C', color: '#e74c3c', font: { size: 11 } },
@@ -653,7 +671,6 @@
         co2Chart = new Chart(ctx2, {
           type: 'line',
           data: {
-            labels: labels,
             datasets: [
               {
                 label: 'CO₂ (ppm)',
@@ -687,16 +704,7 @@
               },
             },
             scales: {
-              x: {
-                grid: { color: gridColor },
-                ticks: {
-                  color: tickColor,
-                  font: { size: 10 },
-                  maxRotation: 0,
-                  autoSkip: true,
-                  maxTicksLimit: 8,
-                },
-              },
+              x: xAxisConfig,
               y: {
                 suggestedMin: 400,
                 title: { display: true, text: 'ppm', color: '#f39c12', font: { size: 11 } },
@@ -716,7 +724,6 @@
         batteryChart = new Chart(ctx3, {
           type: 'line',
           data: {
-            labels: labels,
             datasets: [
               {
                 label: 'Charging',
@@ -774,16 +781,7 @@
               },
             },
             scales: {
-              x: {
-                grid: { color: gridColor },
-                ticks: {
-                  color: tickColor,
-                  font: { size: 10 },
-                  maxRotation: 0,
-                  autoSkip: true,
-                  maxTicksLimit: 8,
-                },
-              },
+              x: xAxisConfig,
               y: {
                 type: 'linear',
                 position: 'left',
@@ -809,10 +807,7 @@
         // RTC Drift Chart (only non-null values, ~1 per hour)
         const rtcDriftData = data
           .filter(d => d.rtc_drift_ms !== null)
-          .map(d => ({
-            label: formatTime(d.timestamp, hours),
-            value: d.rtc_drift_ms
-          }));
+          .map(d => ({ x: d.timestamp * 1000, y: d.rtc_drift_ms }));
 
         const ctx4 = document.getElementById('chart-rtc-drift') as HTMLCanvasElement;
         if (rtcDriftChart) {
@@ -822,11 +817,10 @@
         rtcDriftChart = new Chart(ctx4, {
           type: 'line',
           data: {
-            labels: rtcDriftData.map(d => d.label),
             datasets: [
               {
                 label: 'RTC Drift (ms)',
-                data: rtcDriftData.map(d => d.value),
+                data: rtcDriftData,
                 borderColor: '#9b59b6',
                 backgroundColor: 'rgba(155, 89, 182, 0.15)',
                 borderWidth: 2,
@@ -857,16 +851,7 @@
               },
             },
             scales: {
-              x: {
-                grid: { color: gridColor },
-                ticks: {
-                  color: tickColor,
-                  font: { size: 10 },
-                  maxRotation: 0,
-                  autoSkip: true,
-                  maxTicksLimit: 8,
-                },
-              },
+              x: xAxisConfig,
               y: {
                 title: { display: true, text: 'ms', color: '#9b59b6', font: { size: 11 } },
                 grid: { color: gridColor },
