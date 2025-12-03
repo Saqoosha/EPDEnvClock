@@ -51,7 +51,10 @@ def load_jsonl(file_path: Path) -> list[dict]:
                     "humidity": data["humidity"],
                     "co2": data["co2"],
                     "batt_voltage": data.get("batt_voltage"),
-                    "batt_adc": data.get("batt_adc"),
+                    "batt_percent": data.get("batt_percent"),
+                    "batt_rate": data.get("batt_rate"),
+                    "charging": data.get("charging"),
+                    "batt_adc": data.get("batt_adc"),  # legacy
                 }
                 if "rtc_drift_ms" in data:
                     reading["rtc_drift_ms"] = data["rtc_drift_ms"]
