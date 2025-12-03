@@ -414,6 +414,9 @@ void loop()
   // power-cycled single-shot (~2.6mA) for intervals < 380 seconds
   // Also, ASC (Automatic Self-Calibration) only works in idle mode
 
+  // Flush any buffered ERROR/WARN logs to SD card before sleep
+  Logger_FlushToSD();
+
   // Hold I2C pins high during deep sleep to prevent sensor reset
   DeepSleepManager_HoldI2CPins();
 

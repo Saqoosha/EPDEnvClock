@@ -57,6 +57,11 @@ void Logger_SetNtpSynced(bool synced);
 // Log functions
 void Logger_Log(LogLevel level, const char *tag, const char *format, ...);
 
+// Flush buffered ERROR/WARN logs to SD card
+// Call this before deep sleep to persist error logs
+// Returns number of log entries written, or -1 on error
+int Logger_FlushToSD();
+
 // Convenience macros
 #define LOG_DEBUG(tag, ...) Logger_Log(LogLevel::DEBUG, tag, __VA_ARGS__)
 #define LOG_INFO(tag, ...) Logger_Log(LogLevel::INFO, tag, __VA_ARGS__)
