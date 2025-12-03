@@ -312,41 +312,56 @@ void setup()
       {
         RTCState &rtcState = DeepSleepManager_GetRTCState();
         String payload;
-        // Reserve memory to prevent reallocations (approx 100 bytes per record * 60 records = 6000 bytes)
+        // Reserve memory to prevent reallocations (approx 200 bytes per record * 120 records = 24000 bytes)
         // ESP32 has enough RAM for this
-        payload.reserve(6144);
+        payload.reserve(24576);
 
         time_t now;
         time(&now);
 
-        // First boot: get recent 60 readings and set lastUploadedTime to now
+        // First boot: get recent 120 readings and set lastUploadedTime to now
         bool isFirstUpload = (rtcState.lastUploadedTime == 0);
         time_t queryTime = rtcState.lastUploadedTime;
 
         if (isFirstUpload)
         {
-          // On first boot, only get last 60 minutes of data (approx 60 readings)
-          queryTime = now - 3600;
+          // On first boot, only get last 2 hours of data (approx 120 readings)
+          queryTime = now - 7200;
           LOGI(LogTag::SETUP, "First upload - getting recent readings only");
         }
 
         time_t latestTimestamp = 0;
-        int count = SensorLogger_GetUnsentReadings(queryTime, payload, latestTimestamp, 60);
+        // Get up to 120 readings (2 hours worth) to handle upload failures gracefully
+        int count = SensorLogger_GetUnsentReadings(queryTime, payload, latestTimestamp, 120);
 
         if (count > 0)
         {
           LOGI(LogTag::SETUP, "Found %d unsent readings", count);
-          if (NetworkManager_SendBatchData(payload))
+
+          // Retry up to 3 times on failure
+          bool uploadSuccess = false;
+          for (int attempt = 1; attempt <= 3 && !uploadSuccess; attempt++)
           {
-            LOGI(LogTag::SETUP, "Batch data sent successfully");
-            // On first upload, set to current time to skip old backlog
-            // On normal upload, set to the latest uploaded timestamp
-            rtcState.lastUploadedTime = isFirstUpload ? now : latestTimestamp;
-            LOGI(LogTag::SETUP, "Updated last uploaded time to %ld", (long)rtcState.lastUploadedTime);
+            if (attempt > 1)
+            {
+              LOGI(LogTag::SETUP, "Retry attempt %d/3...", attempt);
+              delay(1000); // Wait 1 second before retry
+            }
+
+            if (NetworkManager_SendBatchData(payload))
+            {
+              uploadSuccess = true;
+              LOGI(LogTag::SETUP, "Batch data sent successfully");
+              // On first upload, set to current time to skip old backlog
+              // On normal upload, set to the latest uploaded timestamp
+              rtcState.lastUploadedTime = isFirstUpload ? now : latestTimestamp;
+              LOGI(LogTag::SETUP, "Updated last uploaded time to %ld", (long)rtcState.lastUploadedTime);
+            }
           }
-          else
+
+          if (!uploadSuccess)
           {
-            LOGW(LogTag::SETUP, "Failed to send batch data");
+            LOGW(LogTag::SETUP, "Failed to send batch data after 3 attempts");
           }
         }
         else

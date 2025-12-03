@@ -279,7 +279,7 @@ int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, tim
   localtime_r(&now, &timeinfo);
 
   // Use a circular buffer to keep only the LATEST maxReadings entries
-  // This ensures we send recent data and forget old backlog
+  // Default is 120 readings (2 hours) to handle temporary upload failures gracefully
   String *entries = new String[maxReadings];
   time_t *timestamps = new time_t[maxReadings];
   int bufferCount = 0;

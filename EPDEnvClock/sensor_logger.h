@@ -33,6 +33,6 @@ int SensorLogger_DeleteOldFiles(int maxAgeDays = 30);
 // lastUploadedTime: timestamp of the last successfully uploaded data point
 // payload: String to append the JSON array of readings to
 // latestTimestamp: Output parameter to store the timestamp of the last reading added
-// maxReadings: maximum number of readings to retrieve
+// maxReadings: maximum number of readings to retrieve (default 120 = 2 hours)
 // Returns: number of readings added to payload
-int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, time_t &latestTimestamp, int maxReadings = 60);
+int SensorLogger_GetUnsentReadings(time_t lastUploadedTime, String &payload, time_t &latestTimestamp, int maxReadings = 120);
