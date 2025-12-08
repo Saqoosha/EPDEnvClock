@@ -170,9 +170,6 @@ void setup()
   {
     LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
 
-    // Save RTC time before NTP sync to calculate drift
-    DeepSleepManager_SaveRtcTimeBeforeSync();
-
     DisplayManager_DrawSetupStatus("Connecting WiFi...");
     if (NetworkManager_ConnectWiFi(networkState, DisplayManager_DrawSetupStatus))
     {

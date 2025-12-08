@@ -83,6 +83,10 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
 
   const unsigned long startTime = millis();
 
+  // Save RTC time immediately before NTP sync to measure accurate drift
+  // (not including WiFi connection time)
+  DeepSleepManager_SaveRtcTimeBeforeSync();
+
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   LOGD(LogTag::NETWORK, "Waiting for NTP time sync");
