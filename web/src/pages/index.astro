@@ -538,15 +538,17 @@
         const minTime = now - (hours * 60 * 60 * 1000);
 
         if (hours <= 6) {
-          return { unit: 'hour' as const, stepSize: 1, min: minTime, max: now };
+          return { unit: 'hour' as const, stepSize: 1, min: minTime, max: now, format: 'HH:mm' };
         } else if (hours <= 12) {
-          return { unit: 'hour' as const, stepSize: 2, min: minTime, max: now };
+          return { unit: 'hour' as const, stepSize: 2, min: minTime, max: now, format: 'HH:mm' };
         } else if (hours <= 24) {
-          return { unit: 'hour' as const, stepSize: 3, min: minTime, max: now };
+          return { unit: 'hour' as const, stepSize: 3, min: minTime, max: now, format: 'HH:mm' };
         } else if (hours <= 72) {
-          return { unit: 'hour' as const, stepSize: 6, min: minTime, max: now };
+          // 3 days: show daily at noon
+          return { unit: 'day' as const, stepSize: 1, min: minTime, max: now, format: 'MM/dd (EEE)' };
         } else {
-          return { unit: 'day' as const, stepSize: 1, min: minTime, max: now };
+          // 7 days: show daily
+          return { unit: 'day' as const, stepSize: 1, min: minTime, max: now, format: 'MM/dd (EEE)' };
         }
       }
 
@@ -590,8 +592,8 @@
             unit: timeConfig.unit,
             stepSize: timeConfig.stepSize,
             displayFormats: {
-              hour: 'HH:mm',
-              day: 'MM/dd',
+              hour: timeConfig.format,
+              day: timeConfig.format,
             },
           },
           grid: { color: gridColor },
