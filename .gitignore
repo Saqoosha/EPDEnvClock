@@ -10,6 +10,10 @@ secrets.h
 # Build artifacts
 *.build/
 
+# Project-specific Arduino environment (ESP32 2.0.17)
+# Note: arduino-cli.yaml is committed (project config), but .arduino15/ is not (build artifacts)
+.arduino15/
+
 # Python cache
 __pycache__/
 *.pyc

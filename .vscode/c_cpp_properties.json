@@ -2,15 +2,15 @@
     "configurations": [
         {
             "name": "ESP32",
-            "compilerPath": "${env:HOME}/Library/Arduino15/packages/esp32/tools/xtensa-esp32s3-elf-gcc/esp-2021r2-patch5-8.4.0/bin/xtensa-esp32s3-elf-gcc",
+            "compilerPath": "${workspaceFolder}/.arduino15/packages/esp32/tools/xtensa-esp32s3-elf-gcc/esp-2021r2-patch5-8.4.0/bin/xtensa-esp32s3-elf-gcc",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "gcc-arm",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${env:HOME}/Library/Arduino15/packages/esp32/tools/xtensa-esp32s3-elf-gcc/*/xtensa-esp32s3-elf/include/**",
-                "${env:HOME}/Library/Arduino15/packages/esp32/hardware/esp32/2.0.7/**",
-                "${env:HOME}/Library/Arduino15/packages/esp32/hardware/esp32/2.0.7/libraries/**/src",
+                "${workspaceFolder}/.arduino15/packages/esp32/tools/xtensa-esp32s3-elf-gcc/*/xtensa-esp32s3-elf/include/**",
+                "${workspaceFolder}/.arduino15/packages/esp32/hardware/esp32/2.0.17/**",
+                "${workspaceFolder}/.arduino15/packages/esp32/hardware/esp32/2.0.17/libraries/**/src",
                 "${env:HOME}/Documents/Arduino/libraries/**/src"
             ],
             "defines": [
@@ -25,8 +25,8 @@
             "browse": {
                 "path": [
                     "${workspaceFolder}/**",
-                    "${env:HOME}/Library/Arduino15/packages/esp32/tools/xtensa-esp32s3-elf-gcc/*/xtensa-esp32s3-elf/include/**",
-                    "${env:HOME}/Library/Arduino15/packages/esp32/hardware/esp32/2.0.7/**"
+                    "${workspaceFolder}/.arduino15/packages/esp32/tools/xtensa-esp32s3-elf-gcc/*/xtensa-esp32s3-elf/include/**",
+                    "${workspaceFolder}/.arduino15/packages/esp32/hardware/esp32/2.0.17/**"
                 ],
                 "limitSymbolsToIncludedHeaders": true
             }

@@ -168,12 +168,30 @@ brew install arduino-cli
 
 #### ESP32ボードサポートのインストール
 
+このプロジェクトはESP32 Arduino Core **2.0.17**が必要です（3.x系は非対応）。他のプロジェクトと競合しないよう、プロジェクト専用のArduino環境を使用します。
+
+**初回セットアップ:**
+
 ```bash
-arduino-cli core update-index
-arduino-cli core install esp32:esp32@2.0.12
+cd /path/to/EPDEnvClock
+
+# プロジェクト専用のArduino設定ファイルを作成
+cat > arduino-cli.yaml << 'EOF'
+board_manager:
+  additional_urls:
+    - https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+directories:
+  data: /path/to/EPDEnvClock/.arduino15
+  downloads: /path/to/EPDEnvClock/.arduino15/staging
+  user: ~/Documents/Arduino
+EOF
+
+# プロジェクト専用ディレクトリにESP32コア2.0.17をインストール
+arduino-cli --config-file arduino-cli.yaml core update-index
+arduino-cli --config-file arduino-cli.yaml core install esp32:esp32@2.0.17
 ```
 
-**注意**: ESP32コアのバージョンは`2.0.12`（v2.x系の最新）を使用してください。v3.x系はSPIなどのAPIに破壊的変更があり、Adafruitライブラリ（BusIO、MAX1704Xなど）と互換性がありません。
+**注意**: `/path/to/EPDEnvClock`を実際のプロジェクトパスに置き換えてください。v3.x系はSPIなどのAPIに破壊的変更があり、Adafruitライブラリ（BusIO、MAX1704Xなど）と互換性がありません。
 
 #### ライブラリのインストール
 
@@ -190,7 +208,7 @@ arduino-cli lib install "Adafruit MAX1704X"
 | コンポーネント | バージョン | 備考 |
 |---------------|-----------|------|
 | arduino-cli | 最新版推奨 | `brew install arduino-cli` (macOS) |
-| ESP32 Core | 2.0.12 | `esp32:esp32@2.0.12`（v3.xはAdafruit非互換）|
+| ESP32 Core | 2.0.17 | `esp32:esp32@2.0.17`（v3.xはAdafruit非互換）|
 | Sensirion I2C SCD4x | 0.4.0 | CO2/温度/湿度センサーライブラリ |
 | Sensirion Core | 0.7.2 | 依存ライブラリ（自動インストール） |
 | Adafruit MAX1704X | 1.0.3 | バッテリー燃料ゲージライブラリ |
@@ -234,13 +252,14 @@ arduino-cli core list
 
 ```bash
 cd /path/to/EPDEnvClock
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
+arduino-cli --config-file arduino-cli.yaml compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
 ```
 
 **注意**: `/path/to/EPDEnvClock`を実際のプロジェクトディレクトリのパスに置き換えてください。ポート名（`/dev/cu.wchusbserial110`）も環境に応じて変更してください。
 
 **重要**:
 
+- **`--config-file arduino-cli.yaml`を必ず指定してください**（ESP32 2.0.17を使用するため。システムには3.xがインストールされている場合があります）
 - 常に`compile --upload`を一緒に使用してください（uploadだけでは再コンパイルが保証されません）
 - `arduino-cli board list`でポートを確認してください - ポート名は変わることがあります
 
