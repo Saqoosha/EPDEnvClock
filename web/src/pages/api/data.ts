@@ -8,6 +8,21 @@ interface Stats {
   battery_percent: { min: number | null; max: number | null };
 }
 
+// CORS headers for cross-origin requests (allows local dev with production API)
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Handle preflight OPTIONS request
+export const OPTIONS: APIRoute = async () => {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+};
+
 // GET /api/data - Fetch sensor data for charts
 // Query params:
 //   hours: number of hours to fetch (default: 24)
@@ -108,6 +123,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=60', // Cache for 1 minute
+        ...corsHeaders,
       },
     });
 
@@ -118,7 +134,10 @@ export const GET: APIRoute = async ({ url, locals }) => {
       details: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders,
+      },
     });
   }
 };

@@ -442,9 +442,13 @@
         }
       }
 
+      // In dev mode, you can use production API by adding ?prod to the URL
+      const useProductionApi = window.location.search.includes('prod');
+      const apiBase = useProductionApi ? 'https://epd-sensor-dashboard.pages.dev' : '';
+
       async function fetchData(hours: number): Promise<ApiResponse | null> {
         try {
-          const response = await fetch(`/api/data?hours=${hours}`);
+          const response = await fetch(`${apiBase}/api/data?hours=${hours}`);
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }

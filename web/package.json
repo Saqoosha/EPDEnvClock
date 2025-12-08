@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
+    "dev:prod": "USE_PROD_API=1 astro dev",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"
