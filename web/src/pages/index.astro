@@ -529,16 +529,20 @@
 
       function getTimeScaleConfig(hours: number) {
         // Determine unit and step based on time range
+        // Also return min/max to always show the full selected time range
+        const now = Date.now();
+        const minTime = now - (hours * 60 * 60 * 1000);
+
         if (hours <= 6) {
-          return { unit: 'hour' as const, stepSize: 1 };
+          return { unit: 'hour' as const, stepSize: 1, min: minTime, max: now };
         } else if (hours <= 12) {
-          return { unit: 'hour' as const, stepSize: 2 };
+          return { unit: 'hour' as const, stepSize: 2, min: minTime, max: now };
         } else if (hours <= 24) {
-          return { unit: 'hour' as const, stepSize: 3 };
+          return { unit: 'hour' as const, stepSize: 3, min: minTime, max: now };
         } else if (hours <= 72) {
-          return { unit: 'hour' as const, stepSize: 6 };
+          return { unit: 'hour' as const, stepSize: 6, min: minTime, max: now };
         } else {
-          return { unit: 'day' as const, stepSize: 1 };
+          return { unit: 'day' as const, stepSize: 1, min: minTime, max: now };
         }
       }
 
@@ -573,8 +577,11 @@
 
         // Common x-axis config for time scale
         // Note: Do NOT use time.round - it rounds data points, not just tick labels
+        // Use min/max to always show the full selected time range
         const xAxisConfig = {
           type: 'time' as const,
+          min: timeConfig.min,
+          max: timeConfig.max,
           time: {
             unit: timeConfig.unit,
             stepSize: timeConfig.stepSize,
