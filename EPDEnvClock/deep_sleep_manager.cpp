@@ -34,6 +34,7 @@ SPIClass SD_SPI = SPIClass(HSPI);
 // We use SD card for image storage (or SPIFFS as fallback)
 // SD card has much better write endurance than SPIFFS Flash memory
 constexpr char kFrameBufferFile[] = "/frame.bin";
+constexpr char kLastUploadedTimeFile[] = "/last_uploaded.txt";
 
 bool sdCardAvailable = false;
 bool spiffsMounted = false;
@@ -160,6 +161,18 @@ void DeepSleepManager_Init()
   }
 
   initialized = true;
+
+  // Restore lastUploadedTime from SD card if not in RTC memory
+  // This ensures we don't lose upload history across power cycles
+  if (rtcState.lastUploadedTime == 0)
+  {
+    time_t storedTime = DeepSleepManager_LoadLastUploadedTime();
+    if (storedTime > 0)
+    {
+      rtcState.lastUploadedTime = storedTime;
+      LOGI(LogTag::DEEPSLEEP, "Restored lastUploadedTime from storage: %ld", (long)storedTime);
+    }
+  }
 
   LOGI(LogTag::DEEPSLEEP, "Boot count: %u", rtcState.bootCount);
   LOGI(LogTag::DEEPSLEEP, "Last displayed minute: %u", rtcState.lastDisplayedMinute);
@@ -581,4 +594,96 @@ int DeepSleepManager_GetWakeupGPIO()
 
   // For EXT0, the wakeup pin is fixed to the one we configured
   return 2; // HOME_KEY
+}
+
+void DeepSleepManager_SaveLastUploadedTime(time_t timestamp)
+{
+  File file;
+  const char *storageType;
+
+  if (sdCardAvailable)
+  {
+    file = SD.open(kLastUploadedTimeFile, FILE_WRITE);
+    storageType = "SD card";
+  }
+  else if (spiffsMounted)
+  {
+    file = SPIFFS.open(kLastUploadedTimeFile, FILE_WRITE);
+    storageType = "SPIFFS";
+  }
+  else
+  {
+    LOGW(LogTag::DEEPSLEEP, "Cannot save lastUploadedTime: no storage available");
+    return;
+  }
+
+  if (!file)
+  {
+    LOGW(LogTag::DEEPSLEEP, "Failed to open lastUploadedTime file for writing on %s", storageType);
+    return;
+  }
+
+  file.println(timestamp);
+  file.close();
+
+  LOGD(LogTag::DEEPSLEEP, "Saved lastUploadedTime %ld to %s", (long)timestamp, storageType);
+}
+
+time_t DeepSleepManager_LoadLastUploadedTime()
+{
+  File file;
+  const char *storageType;
+  bool fileExists = false;
+
+  if (sdCardAvailable)
+  {
+    fileExists = SD.exists(kLastUploadedTimeFile);
+    storageType = "SD card";
+  }
+  else if (spiffsMounted)
+  {
+    fileExists = SPIFFS.exists(kLastUploadedTimeFile);
+    storageType = "SPIFFS";
+  }
+  else
+  {
+    return 0;
+  }
+
+  if (!fileExists)
+  {
+    LOGD(LogTag::DEEPSLEEP, "lastUploadedTime file not found on %s", storageType);
+    return 0;
+  }
+
+  if (sdCardAvailable)
+  {
+    file = SD.open(kLastUploadedTimeFile, FILE_READ);
+  }
+  else if (spiffsMounted)
+  {
+    file = SPIFFS.open(kLastUploadedTimeFile, FILE_READ);
+  }
+  else
+  {
+    return 0;
+  }
+
+  if (!file)
+  {
+    LOGW(LogTag::DEEPSLEEP, "Failed to open lastUploadedTime file for reading on %s", storageType);
+    return 0;
+  }
+
+  String line = file.readStringUntil('\n');
+  file.close();
+
+  time_t timestamp = (time_t)line.toInt();
+
+  if (timestamp > 0)
+  {
+    LOGI(LogTag::DEEPSLEEP, "Loaded lastUploadedTime %ld from %s", (long)timestamp, storageType);
+  }
+
+  return timestamp;
 }

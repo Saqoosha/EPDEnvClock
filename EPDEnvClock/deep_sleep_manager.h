@@ -79,3 +79,11 @@ bool DeepSleepManager_IsWakeFromGPIO();
 
 // Get wakeup GPIO pin number (returns -1 if not GPIO wakeup)
 int DeepSleepManager_GetWakeupGPIO();
+
+// Save lastUploadedTime to SD card (persists across power cycles)
+// Call this after successful data upload
+void DeepSleepManager_SaveLastUploadedTime(time_t timestamp);
+
+// Load lastUploadedTime from SD card
+// Returns 0 if file doesn't exist or read fails
+time_t DeepSleepManager_LoadLastUploadedTime();

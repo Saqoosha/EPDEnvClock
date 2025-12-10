@@ -373,6 +373,7 @@ void setup()
               // On first upload, set to current time to skip old backlog
               // On normal upload, set to the latest uploaded timestamp
               rtcState.lastUploadedTime = isFirstUpload ? now : latestTimestamp;
+              DeepSleepManager_SaveLastUploadedTime(rtcState.lastUploadedTime);
               LOGI(LogTag::SETUP, "Updated last uploaded time to %ld", (long)rtcState.lastUploadedTime);
             }
           }
@@ -388,6 +389,7 @@ void setup()
           {
             // No recent data, but still update lastUploadedTime to avoid re-checking old logs
             rtcState.lastUploadedTime = now;
+            DeepSleepManager_SaveLastUploadedTime(rtcState.lastUploadedTime);
             LOGI(LogTag::SETUP, "No recent data, initialized last uploaded time to %ld", (long)now);
           }
           else
