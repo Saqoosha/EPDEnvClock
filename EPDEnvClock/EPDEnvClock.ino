@@ -16,6 +16,7 @@ namespace
 {
   constexpr size_t kFrameBufferSize = 27200;
   constexpr unsigned long kNtpSyncInterval = 3600000; // 1 hour
+  constexpr float kWifiMinBatteryVoltage = 3.4f;      // Avoid WiFi below this voltage
 
   // Button pin definitions (from 5.79_key example)
   constexpr int HOME_KEY = 2; // Home button
@@ -170,44 +171,63 @@ void setup()
   {
     LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
 
-    DisplayManager_DrawSetupStatus("Connecting WiFi...");
-    if (NetworkManager_ConnectWiFi(networkState, DisplayManager_DrawSetupStatus))
+    if (g_batteryVoltage < kWifiMinBatteryVoltage)
     {
-      if (NetworkManager_SyncNtp(networkState, DisplayManager_DrawSetupStatus))
+      LOGW("Setup", "Skipping WiFi/NTP sync: low battery (%.3fV < %.1fV)", g_batteryVoltage, kWifiMinBatteryVoltage);
+      DisplayManager_DrawSetupStatus("Low batt - skip WiFi");
+      networkState.wifiConnected = false;
+      networkState.ntpSynced = false;
+      Logger_SetNtpSynced(false);
+      if (NetworkManager_SetupTimeFromRTC())
       {
-        DeepSleepManager_MarkNtpSynced(); // Mark NTP as synced and calculate drift
-        Logger_SetNtpSynced(true);        // Update logger with NTP sync status
-        ntpSyncedThisBoot = true;         // Mark that NTP synced THIS boot
-        LOGI("Setup", "WiFi/NTP sync completed");
+        LOGI("Setup", "Time restored from RTC after skipping WiFi");
       }
       else
       {
-        networkState.ntpSynced = false;
-        Logger_SetNtpSynced(false);
-        LOGW("Setup", "NTP sync failed");
-        // Setup timezone and restore time from RTC when NTP sync fails
+        LOGW("Setup", "Failed to restore time from RTC (WiFi skipped)");
+      }
+    }
+    else
+    {
+      DisplayManager_DrawSetupStatus("Connecting WiFi...");
+      if (NetworkManager_ConnectWiFi(networkState, DisplayManager_DrawSetupStatus))
+      {
+        if (NetworkManager_SyncNtp(networkState, DisplayManager_DrawSetupStatus))
+        {
+          DeepSleepManager_MarkNtpSynced(); // Mark NTP as synced and calculate drift
+          Logger_SetNtpSynced(true);        // Update logger with NTP sync status
+          ntpSyncedThisBoot = true;         // Mark that NTP synced THIS boot
+          LOGI("Setup", "WiFi/NTP sync completed");
+        }
+        else
+        {
+          networkState.ntpSynced = false;
+          Logger_SetNtpSynced(false);
+          LOGW("Setup", "NTP sync failed");
+          // Setup timezone and restore time from RTC when NTP sync fails
+          if (NetworkManager_SetupTimeFromRTC())
+          {
+            LOGI("Setup", "Time restored from RTC after NTP failure");
+          }
+          else
+          {
+            LOGW("Setup", "Failed to restore time from RTC");
+          }
+        }
+      }
+      else
+      {
+        networkState.wifiConnected = false;
+        LOGW("Setup", "WiFi connection failed");
+        // Setup timezone and restore time from RTC when WiFi/NTP fails
         if (NetworkManager_SetupTimeFromRTC())
         {
-          LOGI("Setup", "Time restored from RTC after NTP failure");
+          LOGI("Setup", "Time restored from RTC after WiFi failure");
         }
         else
         {
           LOGW("Setup", "Failed to restore time from RTC");
         }
-      }
-    }
-    else
-    {
-      networkState.wifiConnected = false;
-      LOGW("Setup", "WiFi connection failed");
-      // Setup timezone and restore time from RTC when WiFi/NTP fails
-      if (NetworkManager_SetupTimeFromRTC())
-      {
-        LOGI("Setup", "Time restored from RTC after WiFi failure");
-      }
-      else
-      {
-        LOGW("Setup", "Failed to restore time from RTC");
       }
     }
   }
