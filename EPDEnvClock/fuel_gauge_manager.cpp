@@ -102,6 +102,24 @@ float FuelGauge_GetPercent() {
   return percent;
 }
 
+float FuelGauge_GetLinearPercent(float voltage) {
+  // Linear interpolation: 3.4V = 0%, 4.2V = 100%
+  // Based on actual discharge testing (Dec 2025):
+  // - Device crashes at ~3.4V with WiFi due to brownout
+  // - More accurate than MAX17048's ModelGauge below 3.8V
+  // - 0% means "charge now" with small safety margin
+  constexpr float kEmptyVoltage = 3.4f;
+  constexpr float kFullVoltage = 4.2f;
+
+  float percent = (voltage - kEmptyVoltage) / (kFullVoltage - kEmptyVoltage) * 100.0f;
+
+  // Clamp to 0-100 range
+  if (percent < 0.0f) percent = 0.0f;
+  if (percent > 100.0f) percent = 100.0f;
+
+  return percent;
+}
+
 float FuelGauge_GetChargeRate() {
   if (!fuelGaugeAvailable) {
     return 0.0f;

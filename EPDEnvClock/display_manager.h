@@ -25,8 +25,11 @@ float DisplayManager_GetBatteryChargeRate();
 bool DisplayManager_IsFuelGaugeAvailable();
 // Global variable to store battery voltage
 extern float g_batteryVoltage;
-// Global variable to store battery state of charge (percent)
+// Global variable to store battery state of charge - linear model (3.0V=0%, 4.2V=100%)
+// Used for display - more accurate than MAX17048 below 3.8V
 extern float g_batteryPercent;
+// Global variable to store MAX17048 reported percent (for reference/logging)
+extern float g_batteryMax17048Percent;
 // Global variable to store battery charge rate (%/hr)
 extern float g_batteryChargeRate;
 // Global variable to store charging state (true = charging)

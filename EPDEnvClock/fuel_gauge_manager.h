@@ -16,8 +16,12 @@ bool FuelGauge_Init();
 // Read battery voltage in volts
 float FuelGauge_GetVoltage();
 
-// Read battery state of charge in percent (0-100)
+// Read battery state of charge in percent (0-100) from MAX17048
 float FuelGauge_GetPercent();
+
+// Calculate linear battery percent based on voltage (3.0V=0%, 4.2V=100%)
+// More accurate than MAX17048 below 3.8V based on actual discharge testing
+float FuelGauge_GetLinearPercent(float voltage);
 
 // Read battery charge rate in percent per hour
 // Positive = charging, Negative = discharging

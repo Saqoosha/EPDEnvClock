@@ -291,11 +291,12 @@ void setup()
       float humidity = SensorManager_GetHumidity();
       uint16_t co2 = SensorManager_GetCO2();
       float batteryVoltage = g_batteryVoltage;
-      float batteryPercent = g_batteryPercent;
+      float batteryPercent = g_batteryPercent;                 // Linear percent for display
+      float batteryMax17048Percent = g_batteryMax17048Percent; // MAX17048 for reference
       float batteryChargeRate = g_batteryChargeRate;
       bool batteryCharging = g_batteryCharging;
 
-      if (SensorLogger_LogValues(timeinfo, unixTimestamp, rtcDriftMs, driftValid, temp, humidity, co2, batteryVoltage, batteryPercent, batteryChargeRate, batteryCharging))
+      if (SensorLogger_LogValues(timeinfo, unixTimestamp, rtcDriftMs, driftValid, temp, humidity, co2, batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate, batteryCharging))
       {
         LOGI(LogTag::SETUP, "Sensor values logged successfully");
       }

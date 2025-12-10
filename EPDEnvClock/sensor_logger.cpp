@@ -40,6 +40,8 @@ void generateLogFilename(const struct tm &timeinfo, char *filename, size_t maxLe
 
 // Format JSON line
 // If NTP synced this boot, includes rtc_drift_ms field
+// batt_percent: linear percent (3.4V=0%, 4.2V=100%)
+// batt_max17048_percent: MAX17048 reported percent (for reference)
 void formatJSONLine(const struct tm &timeinfo,
                     time_t unixTimestamp,
                     int32_t rtcDriftMs,
@@ -49,6 +51,7 @@ void formatJSONLine(const struct tm &timeinfo,
                     uint16_t co2,
                     float batteryVoltage,
                     float batteryPercent,
+                    float batteryMax17048Percent,
                     float batteryChargeRate,
                     bool batteryCharging,
                     char *buffer,
@@ -65,25 +68,25 @@ void formatJSONLine(const struct tm &timeinfo,
   {
     // Include RTC drift when NTP was synced this boot
     snprintf(buffer, bufferSize,
-             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_rate\":%.2f,\"charging\":%s}\n",
+             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_max17048_percent\":%.1f,\"batt_rate\":%.2f,\"charging\":%s}\n",
              year, month, day,
              hour, minute, second,
              (long)unixTimestamp,
              rtcDriftMs,
              temperature, humidity, co2,
-             batteryVoltage, batteryPercent, batteryChargeRate,
+             batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate,
              batteryCharging ? "true" : "false");
   }
   else
   {
     // No drift data when NTP wasn't synced this boot
     snprintf(buffer, bufferSize,
-             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_rate\":%.2f,\"charging\":%s}\n",
+             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_max17048_percent\":%.1f,\"batt_rate\":%.2f,\"charging\":%s}\n",
              year, month, day,
              hour, minute, second,
              (long)unixTimestamp,
              temperature, humidity, co2,
-             batteryVoltage, batteryPercent, batteryChargeRate,
+             batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate,
              batteryCharging ? "true" : "false");
   }
 }
@@ -135,6 +138,7 @@ bool SensorLogger_LogValues(
     uint16_t co2,
     float batteryVoltage,
     float batteryPercent,
+    float batteryMax17048Percent,
     float batteryChargeRate,
     bool batteryCharging)
 {
@@ -154,10 +158,10 @@ bool SensorLogger_LogValues(
   char filename[kMaxFilenameLength];
   generateLogFilename(timeinfo, filename, sizeof(filename));
 
-  // Format JSON line
-  char jsonLine[320];
+  // Format JSON line (increased buffer for new field)
+  char jsonLine[384];
   formatJSONLine(timeinfo, unixTimestamp, rtcDriftMs, ntpSynced, temperature, humidity, co2,
-                 batteryVoltage, batteryPercent, batteryChargeRate, batteryCharging,
+                 batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate, batteryCharging,
                  jsonLine, sizeof(jsonLine));
 
   // Open file for append

@@ -441,7 +441,8 @@ constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;
 
 // Global variables for battery state
 float g_batteryVoltage = 0.0f;
-float g_batteryPercent = 0.0f;
+float g_batteryPercent = 0.0f;         // Linear percent (3.0V=0%, 4.2V=100%)
+float g_batteryMax17048Percent = 0.0f; // MAX17048 reported percent (for reference)
 float g_batteryChargeRate = 0.0f;
 bool g_batteryCharging = false;
 static bool s_fuelGaugeInitialized = false;
@@ -715,15 +716,17 @@ float DisplayManager_ReadBatteryVoltage()
   {
     // Read from MAX17048
     float voltage = FuelGauge_GetVoltage();
-    float percent = FuelGauge_GetPercent();
+    float max17048Percent = FuelGauge_GetPercent();
+    float linearPercent = FuelGauge_GetLinearPercent(voltage);
     float chargeRate = FuelGauge_GetChargeRate();
 
     g_batteryVoltage = voltage;
-    g_batteryPercent = percent;
+    g_batteryPercent = linearPercent;           // Use linear for display
+    g_batteryMax17048Percent = max17048Percent; // Keep MAX17048 for reference
     g_batteryChargeRate = chargeRate;
 
-    LOGI(LogTag::DISPLAY_MGR, "Battery: %.3fV, %.1f%%, Rate: %.2f%%/hr",
-         voltage, percent, chargeRate);
+    LOGI(LogTag::DISPLAY_MGR, "Battery: %.3fV, %.1f%% (linear), %.1f%% (MAX17048), Rate: %.2f%%/hr",
+         voltage, linearPercent, max17048Percent, chargeRate);
 
     return voltage;
   }
@@ -743,10 +746,12 @@ float DisplayManager_ReadBatteryVoltage()
   float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
 
   g_batteryVoltage = batteryVoltage;
-  g_batteryPercent = 0.0f; // Unknown without fuel gauge
+  g_batteryPercent = FuelGauge_GetLinearPercent(batteryVoltage); // Use linear even for ADC
+  g_batteryMax17048Percent = 0.0f;                               // No MAX17048 available
   g_batteryChargeRate = 0.0f; // Unknown without fuel gauge
 
-  LOGI(LogTag::DISPLAY_MGR, "Battery (ADC fallback): %.3fV (raw: %d)", batteryVoltage, rawAdc);
+  LOGI(LogTag::DISPLAY_MGR, "Battery (ADC fallback): %.3fV, %.1f%% (linear), raw: %d",
+       batteryVoltage, g_batteryPercent, rawAdc);
 
   return batteryVoltage;
 }

@@ -10,6 +10,8 @@ void SensorLogger_Init();
 // Returns true if successful, false otherwise
 // rtcDriftMs: RTC drift in milliseconds from last NTP sync (0 if not synced this boot)
 // driftValid: true if rtcDriftMs contains a valid measurement
+// batteryPercent: linear battery percent (3.4V=0%, 4.2V=100%) - used for display
+// batteryMax17048Percent: MAX17048 reported percent - for reference/analysis
 // batteryChargeRate: battery charge/discharge rate in %/hr (positive=charging, negative=discharging)
 // batteryCharging: true if battery is currently charging (from 4054A CHRG pin)
 bool SensorLogger_LogValues(
@@ -22,6 +24,7 @@ bool SensorLogger_LogValues(
     uint16_t co2,
     float batteryVoltage,
     float batteryPercent,
+    float batteryMax17048Percent,
     float batteryChargeRate,
     bool batteryCharging);
 
