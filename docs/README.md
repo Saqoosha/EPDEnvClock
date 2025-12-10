@@ -9,6 +9,10 @@ This directory contains various documentation for the EPDEnvClock project.
 - **[ImageBW Wi-Fi Export](./README_IMAGEBW.md)** - How to use the feature that sends ImageBW data to Mac via Wi-Fi
 - **[SCD41 Sensor Integration](./README_SCD41.md)** - Connection and configuration guide for the SCD41 CO2/temperature/humidity sensor
 
+### Analysis Reports
+
+- **[Battery Discharge Report](./BATTERY_REPORT.md)** - 10-day battery discharge analysis with MAX17048 accuracy evaluation
+
 ### Code Reviews
 
 - **[Sensor Management Code Review](./reviews/SENSOR_MANAGEMENT_REVIEW.md)** - Implementation status and improvement suggestions for SCD41 sensor management

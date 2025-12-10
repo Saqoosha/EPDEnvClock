@@ -23,3 +23,6 @@ __pycache__/
 
 # Output files
 output/
+
+# Device logs (copied from SD card)
+logs/

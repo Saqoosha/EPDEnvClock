@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battery Discharge Analysis - Dec 1-10, 2025</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      color: #333;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 1.8em;
+      color: #2c3e50;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 15px;
+      text-align: center;
+      border: 1px solid #e0e0e0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .stat-value {
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #3498db;
+    }
+    .stat-label {
+      font-size: 0.85em;
+      color: #666;
+      margin-top: 5px;
+    }
+    .chart-container {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #e0e0e0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .chart-title {
+      font-size: 1.1em;
+      margin-bottom: 15px;
+      color: #2c3e50;
+      font-weight: 600;
+    }
+    canvas { max-height: 300px; }
+    .legend-note {
+      text-align: center;
+      color: #666;
+      font-size: 0.8em;
+      margin-top: 20px;
+    }
+    .event-marker {
+      color: #e74c3c;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔋 Battery Discharge Analysis</h1>
+  <p class="subtitle">December 1-10, 2025 • EPDEnvClock</p>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-value">4.125V</div>
+      <div class="stat-label">Start Voltage</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">3.375V</div>
+      <div class="stat-label">End Voltage</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">9.3</div>
+      <div class="stat-label">Days Runtime</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">3.3</div>
+      <div class="stat-label">Avg mV/h</div>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <div class="chart-title">📉 Voltage Over Time</div>
+    <canvas id="voltageChart"></canvas>
+  </div>
+
+  <div class="chart-container">
+    <div class="chart-title">📊 MAX17048% vs Linear% Comparison</div>
+    <canvas id="percentChart"></canvas>
+  </div>
+
+  <div class="chart-container">
+    <div class="chart-title">⚡ Discharge Rate (mV/h)</div>
+    <canvas id="rateChart"></canvas>
+  </div>
+
+  <div class="chart-container">
+    <div class="chart-title">🎯 Voltage vs Discharge Rate</div>
+    <canvas id="scatterChart"></canvas>
+  </div>
+
+  <p class="legend-note">
+    <span class="event-marker">▼</span> Crash events at 3.626V (12/6) and 3.375V (12/10)
+  </p>
+
+  <script>
+    const rawData = [
+      {"time":"12/01 00:00","voltage":4.125,"max17048":93,"linear":93.8,"rate":0},
+      {"time":"12/01 01:00","voltage":4.121,"max17048":92.5,"linear":93.4,"rate":4},
+      {"time":"12/01 02:00","voltage":4.115,"max17048":91.8,"linear":92.9,"rate":6},
+      {"time":"12/01 03:00","voltage":4.11,"max17048":91.1,"linear":92.5,"rate":5},
+      {"time":"12/01 04:00","voltage":4.105,"max17048":90.4,"linear":92.1,"rate":5},
+      {"time":"12/01 05:00","voltage":4.099,"max17048":89.7,"linear":91.6,"rate":6},
+      {"time":"12/01 06:00","voltage":4.094,"max17048":89.1,"linear":91.2,"rate":5},
+      {"time":"12/01 07:00","voltage":4.089,"max17048":88.4,"linear":90.8,"rate":5},
+      {"time":"12/01 08:00","voltage":4.083,"max17048":87.8,"linear":90.3,"rate":6},
+      {"time":"12/01 09:00","voltage":4.078,"max17048":87.2,"linear":89.8,"rate":5},
+      {"time":"12/01 10:00","voltage":4.072,"max17048":86.5,"linear":89.3,"rate":6},
+      {"time":"12/01 11:00","voltage":4.067,"max17048":85.9,"linear":88.9,"rate":5},
+      {"time":"12/01 12:00","voltage":4.062,"max17048":85.3,"linear":88.5,"rate":5},
+      {"time":"12/01 13:00","voltage":4.057,"max17048":84.7,"linear":88.1,"rate":5},
+      {"time":"12/01 14:00","voltage":4.052,"max17048":84.2,"linear":87.7,"rate":5},
+      {"time":"12/01 15:00","voltage":4.047,"max17048":83.6,"linear":87.2,"rate":5},
+      {"time":"12/01 16:00","voltage":4.042,"max17048":83,"linear":86.8,"rate":5},
+      {"time":"12/01 17:00","voltage":4.038,"max17048":82.3,"linear":86.5,"rate":4},
+      {"time":"12/01 18:00","voltage":4.033,"max17048":81.7,"linear":86.1,"rate":5},
+      {"time":"12/01 19:00","voltage":4.029,"max17048":81.1,"linear":85.8,"rate":4},
+      {"time":"12/01 20:00","voltage":4.024,"max17048":80.5,"linear":85.3,"rate":5},
+      {"time":"12/01 21:00","voltage":4.019,"max17048":79.9,"linear":84.9,"rate":5},
+      {"time":"12/01 22:00","voltage":4.015,"max17048":79.4,"linear":84.6,"rate":4},
+      {"time":"12/01 23:00","voltage":4.012,"max17048":79.1,"linear":84.3,"rate":3},
+      {"time":"12/02 00:00","voltage":4,"max17048":77.5,"linear":83.3,"rate":12},
+      {"time":"12/02 01:00","voltage":3.996,"max17048":76.9,"linear":83,"rate":4},
+      {"time":"12/02 02:00","voltage":3.993,"max17048":76.4,"linear":82.7,"rate":3},
+      {"time":"12/02 03:00","voltage":3.988,"max17048":75.8,"linear":82.3,"rate":5},
+      {"time":"12/02 04:00","voltage":3.984,"max17048":75.4,"linear":82,"rate":4},
+      {"time":"12/02 05:00","voltage":3.98,"max17048":74.8,"linear":81.7,"rate":4},
+      {"time":"12/02 06:00","voltage":3.976,"max17048":74.2,"linear":81.3,"rate":4},
+      {"time":"12/02 07:00","voltage":3.972,"max17048":73.7,"linear":81,"rate":4},
+      {"time":"12/02 08:00","voltage":3.967,"max17048":73.1,"linear":80.6,"rate":5},
+      {"time":"12/02 09:00","voltage":3.963,"max17048":72.6,"linear":80.3,"rate":4},
+      {"time":"12/02 10:00","voltage":3.959,"max17048":72.1,"linear":79.9,"rate":4},
+      {"time":"12/02 11:00","voltage":3.955,"max17048":71.6,"linear":79.6,"rate":4},
+      {"time":"12/02 12:00","voltage":3.951,"max17048":71,"linear":79.3,"rate":4},
+      {"time":"12/02 13:00","voltage":3.947,"max17048":70.5,"linear":78.9,"rate":4},
+      {"time":"12/02 14:00","voltage":3.943,"max17048":69.9,"linear":78.6,"rate":4},
+      {"time":"12/02 15:00","voltage":3.939,"max17048":69.4,"linear":78.3,"rate":4},
+      {"time":"12/02 16:00","voltage":3.934,"max17048":68.9,"linear":77.8,"rate":5},
+      {"time":"12/02 17:00","voltage":3.93,"max17048":68.3,"linear":77.5,"rate":4},
+      {"time":"12/02 18:00","voltage":3.927,"max17048":67.9,"linear":77.3,"rate":3},
+      {"time":"12/02 19:00","voltage":3.922,"max17048":67.4,"linear":76.8,"rate":5},
+      {"time":"12/02 20:00","voltage":3.918,"max17048":66.9,"linear":76.5,"rate":4},
+      {"time":"12/02 21:00","voltage":3.914,"max17048":66.4,"linear":76.2,"rate":4},
+      {"time":"12/02 22:00","voltage":3.91,"max17048":65.9,"linear":75.8,"rate":4},
+      {"time":"12/02 23:00","voltage":3.906,"max17048":65.4,"linear":75.5,"rate":4},
+      {"time":"12/03 00:00","voltage":3.901,"max17048":64.9,"linear":75.1,"rate":5},
+      {"time":"12/03 01:00","voltage":3.897,"max17048":64.4,"linear":74.8,"rate":4},
+      {"time":"12/03 02:00","voltage":3.893,"max17048":63.9,"linear":74.4,"rate":4},
+      {"time":"12/03 03:00","voltage":3.889,"max17048":63.4,"linear":74.1,"rate":4},
+      {"time":"12/03 04:00","voltage":3.885,"max17048":62.9,"linear":73.8,"rate":4},
+      {"time":"12/03 05:00","voltage":3.88,"max17048":62.5,"linear":73.3,"rate":5},
+      {"time":"12/03 06:00","voltage":3.877,"max17048":62.1,"linear":73.1,"rate":3},
+      {"time":"12/03 07:00","voltage":3.873,"max17048":61.6,"linear":72.8,"rate":4},
+      {"time":"12/03 08:00","voltage":3.869,"max17048":61.2,"linear":72.4,"rate":4},
+      {"time":"12/03 09:00","voltage":3.864,"max17048":60.8,"linear":72,"rate":5},
+      {"time":"12/03 10:00","voltage":3.86,"max17048":60.3,"linear":71.7,"rate":4},
+      {"time":"12/03 11:00","voltage":3.856,"max17048":57.8,"linear":71.3,"rate":4},
+      {"time":"12/03 12:00","voltage":3.852,"max17048":57.4,"linear":71,"rate":4},
+      {"time":"12/03 13:00","voltage":3.848,"max17048":55.9,"linear":70.7,"rate":4},
+      {"time":"12/03 14:00","voltage":3.844,"max17048":55.6,"linear":70.3,"rate":4},
+      {"time":"12/03 15:00","voltage":3.84,"max17048":54.1,"linear":70,"rate":4},
+      {"time":"12/03 16:00","voltage":3.835,"max17048":52.8,"linear":69.6,"rate":5},
+      {"time":"12/03 17:00","voltage":3.831,"max17048":51.5,"linear":69.3,"rate":4},
+      {"time":"12/03 18:00","voltage":3.826,"max17048":50.1,"linear":68.8,"rate":5},
+      {"time":"12/03 19:00","voltage":3.822,"max17048":49.4,"linear":68.5,"rate":4},
+      {"time":"12/03 20:00","voltage":3.817,"max17048":47.3,"linear":68.1,"rate":5},
+      {"time":"12/03 21:00","voltage":3.813,"max17048":46.1,"linear":67.8,"rate":4},
+      {"time":"12/03 22:00","voltage":3.807,"max17048":43.9,"linear":67.3,"rate":6},
+      {"time":"12/03 23:00","voltage":3.801,"max17048":41.9,"linear":66.8,"rate":6},
+      {"time":"12/04 00:00","voltage":3.794,"max17048":40.4,"linear":66.2,"rate":7},
+      {"time":"12/04 01:00","voltage":3.791,"max17048":38.9,"linear":65.9,"rate":3},
+      {"time":"12/04 02:00","voltage":3.786,"max17048":37.4,"linear":65.5,"rate":5},
+      {"time":"12/04 03:00","voltage":3.782,"max17048":36.4,"linear":65.2,"rate":4},
+      {"time":"12/04 04:00","voltage":3.778,"max17048":35.4,"linear":64.8,"rate":4},
+      {"time":"12/04 05:00","voltage":3.773,"max17048":34.2,"linear":64.4,"rate":5},
+      {"time":"12/04 06:00","voltage":3.769,"max17048":32.5,"linear":64.1,"rate":4},
+      {"time":"12/04 07:00","voltage":3.766,"max17048":31.4,"linear":63.8,"rate":3},
+      {"time":"12/04 08:00","voltage":3.762,"max17048":30.1,"linear":63.5,"rate":4},
+      {"time":"12/04 09:00","voltage":3.758,"max17048":29.2,"linear":63.2,"rate":4},
+      {"time":"12/04 10:00","voltage":3.755,"max17048":28.1,"linear":62.9,"rate":3},
+      {"time":"12/04 11:00","voltage":3.751,"max17048":26.8,"linear":62.6,"rate":4},
+      {"time":"12/04 12:00","voltage":3.747,"max17048":25.9,"linear":62.3,"rate":4},
+      {"time":"12/04 13:00","voltage":3.744,"max17048":24.2,"linear":62,"rate":3},
+      {"time":"12/04 14:00","voltage":3.741,"max17048":23,"linear":61.8,"rate":3},
+      {"time":"12/04 15:00","voltage":3.738,"max17048":21.9,"linear":61.5,"rate":3},
+      {"time":"12/04 16:00","voltage":3.734,"max17048":20.6,"linear":61.2,"rate":4},
+      {"time":"12/04 17:00","voltage":3.731,"max17048":19.9,"linear":60.9,"rate":3},
+      {"time":"12/04 18:00","voltage":3.727,"max17048":18.9,"linear":60.6,"rate":4},
+      {"time":"12/04 19:00","voltage":3.726,"max17048":18.5,"linear":60.5,"rate":1},
+      {"time":"12/04 20:00","voltage":3.722,"max17048":17.6,"linear":60.2,"rate":4},
+      {"time":"12/04 21:00","voltage":3.719,"max17048":17.1,"linear":59.9,"rate":3},
+      {"time":"12/04 22:00","voltage":3.716,"max17048":16.4,"linear":59.7,"rate":3},
+      {"time":"12/04 23:00","voltage":3.712,"max17048":15.6,"linear":59.3,"rate":4},
+      {"time":"12/05 00:00","voltage":3.709,"max17048":15,"linear":59.1,"rate":3},
+      {"time":"12/05 01:00","voltage":3.707,"max17048":14.4,"linear":58.9,"rate":2},
+      {"time":"12/05 02:00","voltage":3.704,"max17048":13.9,"linear":58.7,"rate":3},
+      {"time":"12/05 03:00","voltage":3.7,"max17048":13.5,"linear":58.3,"rate":4},
+      {"time":"12/05 04:00","voltage":3.697,"max17048":12.8,"linear":58.1,"rate":3},
+      {"time":"12/05 05:00","voltage":3.695,"max17048":12.3,"linear":57.9,"rate":2},
+      {"time":"12/05 06:00","voltage":3.692,"max17048":11.5,"linear":57.7,"rate":3},
+      {"time":"12/05 07:00","voltage":3.69,"max17048":11.1,"linear":57.5,"rate":2},
+      {"time":"12/05 08:00","voltage":3.687,"max17048":10.5,"linear":57.3,"rate":3},
+      {"time":"12/05 09:00","voltage":3.684,"max17048":9.8,"linear":57,"rate":3},
+      {"time":"12/05 10:00","voltage":3.681,"max17048":9.1,"linear":56.8,"rate":3},
+      {"time":"12/05 11:00","voltage":3.678,"max17048":8.6,"linear":56.5,"rate":3},
+      {"time":"12/05 12:00","voltage":3.675,"max17048":8.4,"linear":56.3,"rate":3},
+      {"time":"12/05 13:00","voltage":3.672,"max17048":8.1,"linear":56,"rate":3},
+      {"time":"12/05 14:00","voltage":3.669,"max17048":7.8,"linear":55.8,"rate":3},
+      {"time":"12/05 15:00","voltage":3.666,"max17048":7.4,"linear":55.5,"rate":3},
+      {"time":"12/05 16:00","voltage":3.663,"max17048":7.1,"linear":55.3,"rate":3},
+      {"time":"12/05 17:00","voltage":3.66,"max17048":6.8,"linear":55,"rate":3},
+      {"time":"12/05 18:00","voltage":3.658,"max17048":6.5,"linear":54.8,"rate":2},
+      {"time":"12/05 19:00","voltage":3.655,"max17048":6.3,"linear":54.6,"rate":3},
+      {"time":"12/05 20:00","voltage":3.651,"max17048":6,"linear":54.3,"rate":4},
+      {"time":"12/05 21:00","voltage":3.648,"max17048":5.8,"linear":54,"rate":3},
+      {"time":"12/05 22:00","voltage":3.647,"max17048":5.6,"linear":53.9,"rate":1},
+      {"time":"12/05 23:00","voltage":3.643,"max17048":5.5,"linear":53.6,"rate":4},
+      {"time":"12/06 00:00","voltage":3.641,"max17048":5.4,"linear":53.4,"rate":2},
+      {"time":"12/06 01:00","voltage":3.639,"max17048":5.1,"linear":53.3,"rate":2},
+      {"time":"12/06 02:00","voltage":3.637,"max17048":4.9,"linear":53.1,"rate":2},
+      {"time":"12/06 03:00","voltage":3.634,"max17048":4.7,"linear":52.8,"rate":3},
+      {"time":"12/06 04:00","voltage":3.634,"max17048":4.6,"linear":52.8,"rate":0},
+      {"time":"12/06 05:00","voltage":3.631,"max17048":4.5,"linear":52.6,"rate":3},
+      {"time":"12/06 06:00","voltage":3.629,"max17048":4.4,"linear":52.4,"rate":2},
+      {"time":"12/06 07:00","voltage":3.627,"max17048":4.3,"linear":52.3,"rate":2},
+      {"time":"12/06 11:00","voltage":3.594,"max17048":2.3,"linear":49.5,"rate":33},
+      {"time":"12/06 12:00","voltage":3.597,"max17048":2.5,"linear":49.8,"rate":-3},
+      {"time":"12/06 13:00","voltage":3.6,"max17048":2.6,"linear":50,"rate":-3},
+      {"time":"12/06 14:00","voltage":3.599,"max17048":2.5,"linear":49.9,"rate":1},
+      {"time":"12/06 15:00","voltage":3.598,"max17048":2.4,"linear":49.8,"rate":1},
+      {"time":"12/06 16:00","voltage":3.596,"max17048":2.4,"linear":49.7,"rate":2},
+      {"time":"12/06 17:00","voltage":3.596,"max17048":2.4,"linear":49.7,"rate":0},
+      {"time":"12/06 18:00","voltage":3.595,"max17048":2.4,"linear":49.6,"rate":1},
+      {"time":"12/06 19:00","voltage":3.594,"max17048":2.4,"linear":49.5,"rate":1},
+      {"time":"12/06 20:00","voltage":3.592,"max17048":2.3,"linear":49.3,"rate":2},
+      {"time":"12/06 21:00","voltage":3.59,"max17048":2.3,"linear":49.2,"rate":2},
+      {"time":"12/06 22:00","voltage":3.589,"max17048":2.3,"linear":49.1,"rate":1},
+      {"time":"12/06 23:00","voltage":3.589,"max17048":2.3,"linear":49.1,"rate":0},
+      {"time":"12/07 00:00","voltage":3.588,"max17048":2.2,"linear":49,"rate":1},
+      {"time":"12/07 01:00","voltage":3.588,"max17048":2.3,"linear":49,"rate":0},
+      {"time":"12/07 02:00","voltage":3.585,"max17048":2.2,"linear":48.8,"rate":3},
+      {"time":"12/07 03:00","voltage":3.583,"max17048":2.2,"linear":48.6,"rate":2},
+      {"time":"12/07 04:00","voltage":3.581,"max17048":2.2,"linear":48.4,"rate":2},
+      {"time":"12/07 05:00","voltage":3.578,"max17048":2.2,"linear":48.2,"rate":3},
+      {"time":"12/07 06:00","voltage":3.579,"max17048":2.2,"linear":48.3,"rate":-1},
+      {"time":"12/07 07:00","voltage":3.58,"max17048":2.2,"linear":48.3,"rate":-1},
+      {"time":"12/07 08:00","voltage":3.578,"max17048":2.1,"linear":48.2,"rate":2},
+      {"time":"12/07 09:00","voltage":3.578,"max17048":2.1,"linear":48.2,"rate":0},
+      {"time":"12/07 10:00","voltage":3.576,"max17048":2.1,"linear":48,"rate":2},
+      {"time":"12/07 11:00","voltage":3.574,"max17048":2.1,"linear":47.8,"rate":2},
+      {"time":"12/07 12:00","voltage":3.573,"max17048":2.1,"linear":47.8,"rate":1},
+      {"time":"12/07 13:00","voltage":3.571,"max17048":2.1,"linear":47.6,"rate":2},
+      {"time":"12/07 14:00","voltage":3.57,"max17048":2,"linear":47.5,"rate":1},
+      {"time":"12/07 15:00","voltage":3.569,"max17048":2,"linear":47.4,"rate":1},
+      {"time":"12/07 16:00","voltage":3.567,"max17048":2,"linear":47.3,"rate":2},
+      {"time":"12/07 17:00","voltage":3.565,"max17048":2,"linear":47.1,"rate":2},
+      {"time":"12/07 18:00","voltage":3.567,"max17048":2,"linear":47.3,"rate":-2},
+      {"time":"12/07 19:00","voltage":3.564,"max17048":1.9,"linear":47,"rate":3},
+      {"time":"12/07 20:00","voltage":3.561,"max17048":1.9,"linear":46.8,"rate":3},
+      {"time":"12/07 21:00","voltage":3.56,"max17048":1.9,"linear":46.7,"rate":1},
+      {"time":"12/07 22:00","voltage":3.556,"max17048":1.9,"linear":46.3,"rate":4},
+      {"time":"12/07 23:00","voltage":3.557,"max17048":1.9,"linear":46.4,"rate":-1},
+      {"time":"12/08 00:00","voltage":3.555,"max17048":1.8,"linear":46.3,"rate":2},
+      {"time":"12/08 01:00","voltage":3.554,"max17048":1.8,"linear":46.2,"rate":1},
+      {"time":"12/08 02:00","voltage":3.552,"max17048":1.8,"linear":46,"rate":2},
+      {"time":"12/08 03:00","voltage":3.551,"max17048":1.8,"linear":45.9,"rate":1},
+      {"time":"12/08 04:00","voltage":3.549,"max17048":1.8,"linear":45.8,"rate":2},
+      {"time":"12/08 05:00","voltage":3.547,"max17048":1.7,"linear":45.6,"rate":2},
+      {"time":"12/08 06:00","voltage":3.545,"max17048":1.7,"linear":45.4,"rate":2},
+      {"time":"12/08 07:00","voltage":3.543,"max17048":1.7,"linear":45.3,"rate":2},
+      {"time":"12/08 08:00","voltage":3.541,"max17048":1.7,"linear":45.1,"rate":2},
+      {"time":"12/08 09:00","voltage":3.538,"max17048":1.6,"linear":44.8,"rate":3},
+      {"time":"12/08 10:00","voltage":3.535,"max17048":1.6,"linear":44.6,"rate":3},
+      {"time":"12/08 11:00","voltage":3.533,"max17048":1.6,"linear":44.4,"rate":2},
+      {"time":"12/08 12:00","voltage":3.529,"max17048":1.5,"linear":44.1,"rate":4},
+      {"time":"12/08 13:00","voltage":3.527,"max17048":1.5,"linear":43.9,"rate":2},
+      {"time":"12/08 14:00","voltage":3.525,"max17048":1.5,"linear":43.8,"rate":2},
+      {"time":"12/08 15:00","voltage":3.523,"max17048":1.4,"linear":43.6,"rate":2},
+      {"time":"12/08 16:00","voltage":3.521,"max17048":1.4,"linear":43.4,"rate":2},
+      {"time":"12/08 17:00","voltage":3.521,"max17048":1.4,"linear":43.4,"rate":0},
+      {"time":"12/08 18:00","voltage":3.514,"max17048":1.3,"linear":42.8,"rate":7},
+      {"time":"12/08 19:00","voltage":3.511,"max17048":1.3,"linear":42.6,"rate":3},
+      {"time":"12/08 20:00","voltage":3.512,"max17048":1.3,"linear":42.7,"rate":-1},
+      {"time":"12/08 21:00","voltage":3.506,"max17048":1.2,"linear":42.2,"rate":6},
+      {"time":"12/08 22:00","voltage":3.504,"max17048":1.2,"linear":42,"rate":2},
+      {"time":"12/08 23:00","voltage":3.501,"max17048":1.2,"linear":41.8,"rate":3},
+      {"time":"12/09 00:00","voltage":3.499,"max17048":1.1,"linear":41.6,"rate":2},
+      {"time":"12/09 01:00","voltage":3.495,"max17048":1,"linear":41.3,"rate":4},
+      {"time":"12/09 02:00","voltage":3.494,"max17048":1,"linear":41.2,"rate":1},
+      {"time":"12/09 03:00","voltage":3.489,"max17048":0.9,"linear":40.8,"rate":5},
+      {"time":"12/09 04:00","voltage":3.485,"max17048":0.9,"linear":40.4,"rate":4},
+      {"time":"12/09 05:00","voltage":3.484,"max17048":0.9,"linear":40.3,"rate":1},
+      {"time":"12/09 06:00","voltage":3.482,"max17048":0.9,"linear":40.2,"rate":2},
+      {"time":"12/09 07:00","voltage":3.482,"max17048":0.9,"linear":40.2,"rate":0},
+      {"time":"12/09 08:00","voltage":3.472,"max17048":0.8,"linear":39.3,"rate":10},
+      {"time":"12/09 09:00","voltage":3.471,"max17048":0.8,"linear":39.3,"rate":1},
+      {"time":"12/09 10:00","voltage":3.468,"max17048":0.8,"linear":39,"rate":3},
+      {"time":"12/09 11:00","voltage":3.465,"max17048":0.8,"linear":38.8,"rate":3},
+      {"time":"12/09 12:00","voltage":3.461,"max17048":0.7,"linear":38.4,"rate":4},
+      {"time":"12/09 13:00","voltage":3.456,"max17048":0.6,"linear":38,"rate":5},
+      {"time":"12/09 14:00","voltage":3.451,"max17048":0.5,"linear":37.6,"rate":5},
+      {"time":"12/09 15:00","voltage":3.449,"max17048":0.5,"linear":37.4,"rate":2},
+      {"time":"12/09 16:00","voltage":3.442,"max17048":0.4,"linear":36.8,"rate":7},
+      {"time":"12/09 17:00","voltage":3.439,"max17048":0.4,"linear":36.6,"rate":3},
+      {"time":"12/09 18:00","voltage":3.437,"max17048":0.3,"linear":36.4,"rate":2},
+      {"time":"12/09 19:00","voltage":3.432,"max17048":0.3,"linear":36,"rate":5},
+      {"time":"12/09 20:00","voltage":3.431,"max17048":0.2,"linear":35.9,"rate":1},
+      {"time":"12/09 21:00","voltage":3.425,"max17048":0.2,"linear":35.4,"rate":6},
+      {"time":"12/09 22:00","voltage":3.421,"max17048":0.2,"linear":35.1,"rate":4},
+      {"time":"12/09 23:00","voltage":3.418,"max17048":0.1,"linear":34.8,"rate":3},
+      {"time":"12/10 00:00","voltage":3.415,"max17048":0.1,"linear":34.6,"rate":3},
+      {"time":"12/10 01:00","voltage":3.412,"max17048":0.1,"linear":34.3,"rate":3},
+      {"time":"12/10 02:00","voltage":3.407,"max17048":0.1,"linear":33.9,"rate":5},
+      {"time":"12/10 03:00","voltage":3.405,"max17048":0.1,"linear":33.8,"rate":2},
+      {"time":"12/10 04:00","voltage":3.401,"max17048":0.1,"linear":33.4,"rate":4},
+      {"time":"12/10 05:00","voltage":3.397,"max17048":0.1,"linear":33.1,"rate":4},
+      {"time":"12/10 06:00","voltage":3.393,"max17048":0.1,"linear":32.8,"rate":4},
+      {"time":"12/10 07:00","voltage":3.388,"max17048":0.1,"linear":32.3,"rate":5},
+      {"time":"12/10 08:00","voltage":3.375,"max17048":0.1,"linear":31.3,"rate":13}
+    ];
+
+    const labels = rawData.map(d => d.time);
+    const voltageData = rawData.map(d => d.voltage);
+    const max17048Data = rawData.map(d => d.max17048);
+    const linearData = rawData.map(d => d.linear);
+    const rateData = rawData.map(d => Math.max(0, Math.min(d.rate, 15)));
+
+    const chartDefaults = {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { labels: { color: '#333', font: { size: 11 } } }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#666', maxRotation: 45, font: { size: 9 } },
+          grid: { color: 'rgba(0,0,0,0.08)' }
+        },
+        y: {
+          ticks: { color: '#666' },
+          grid: { color: 'rgba(0,0,0,0.08)' }
+        }
+      }
+    };
+
+    // Voltage Chart
+    new Chart(document.getElementById('voltageChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Voltage (V)',
+          data: voltageData,
+          borderColor: '#3498db',
+          backgroundColor: 'rgba(52,152,219,0.15)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          ...chartDefaults.scales,
+          y: { ...chartDefaults.scales.y, min: 3.3, max: 4.2 }
+        },
+        plugins: {
+          ...chartDefaults.plugins,
+          annotation: {
+            annotations: {
+              crash1: { type: 'line', yMin: 3.626, yMax: 3.626, borderColor: 'rgba(255,107,107,0.5)', borderDash: [5,5] },
+              crash2: { type: 'line', yMin: 3.375, yMax: 3.375, borderColor: 'rgba(255,107,107,0.5)', borderDash: [5,5] }
+            }
+          }
+        }
+      }
+    });
+
+    // Percent Comparison Chart
+    new Chart(document.getElementById('percentChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'MAX17048 %',
+            data: max17048Data,
+            borderColor: '#e74c3c',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2
+          },
+          {
+            label: 'Linear %',
+            data: linearData,
+            borderColor: '#27ae60',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          ...chartDefaults.scales,
+          y: { ...chartDefaults.scales.y, min: 0, max: 100 }
+        }
+      }
+    });
+
+    // Discharge Rate Chart
+    new Chart(document.getElementById('rateChart'), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'mV/h',
+          data: rateData,
+          backgroundColor: rateData.map(r => r > 5 ? 'rgba(231,76,60,0.7)' : 'rgba(52,152,219,0.7)'),
+          borderRadius: 2
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          ...chartDefaults.scales,
+          y: { ...chartDefaults.scales.y, min: 0, max: 15 }
+        }
+      }
+    });
+
+    // Scatter Chart - Voltage vs Rate
+    const scatterData = rawData.filter(d => d.rate > 0 && d.rate < 15).map(d => ({x: d.voltage, y: d.rate}));
+    new Chart(document.getElementById('scatterChart'), {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: 'Discharge Rate',
+          data: scatterData,
+          backgroundColor: 'rgba(52,152,219,0.7)',
+          pointRadius: 5
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          x: {
+            ...chartDefaults.scales.x,
+            title: { display: true, text: 'Voltage (V)', color: '#888' },
+            min: 3.3, max: 4.2, reverse: true
+          },
+          y: {
+            ...chartDefaults.scales.y,
+            title: { display: true, text: 'mV/h', color: '#888' },
+            min: 0, max: 10
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

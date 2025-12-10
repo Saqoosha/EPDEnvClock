@@ -302,14 +302,14 @@ arduino-cli board list
 
 1. **サーバーの起動**（Python 3が必要）:
 
-```bash
-cd /path/to/EPDEnvClock
-python3 scripts/imagebw_server.py --port 8080
-```
+   ```bash
+   cd /path/to/EPDEnvClock
+   python3 scripts/imagebw_server.py --port 8080
+   ```
 
-2. **Arduino側の設定**: `server_config.h`でサーバーのIPアドレスを設定
+1. **Arduino側の設定**: `server_config.h`でサーバーのIPアドレスを設定
 
-3. **自動送信**: 表示が更新されるたびに自動的にImageBWデータが送信されます
+1. **自動送信**: 表示が更新されるたびに自動的にImageBWデータが送信されます
 
 受信したデータは`output/`ディレクトリにPNGファイルとして保存されます。
 
@@ -319,7 +319,7 @@ python3 scripts/imagebw_server.py --port 8080
 
 ## 📁 プロジェクト構造
 
-```
+```text
 EPDEnvClock/
 ├── EPDEnvClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
 │   ├── EPDEnvClock.ino          # メインスケッチ（setup/loop）
@@ -403,10 +403,13 @@ bunx wrangler pages deploy dist --branch=main
 | ESP32-S3 Light Sleep (センサー測定待機中) | 約2〜3mA |
 | ESP32-S3 Active (Wi-Fi含む) | 約80〜150mA |
 
-### バッテリー持続時間（1480mAhバッテリーの場合）
+### バッテリー持続時間（1500mAhバッテリー実測値）
 
-- **平均消費電流**: 約2.5mA（Wi-Fi同期は1時間に1回）
-- **持続時間**: 1480mAh ÷ 2.5mA ≈ **592時間（約25日）**
+- **平均消費電流**: 約4.5mA（Wi-Fi同期は1時間に1回）
+- **実測稼働時間**: 約224時間（約9.3日）で3.375Vまで放電
+- **実効容量**: 約1000-1100mAh（1500mAh表記、実際は約1200-1400mAh）
+
+詳細は **[バッテリー放電レポート](./docs/BATTERY_REPORT.md)** を参照。
 
 ### Deep Sleepサイクル
 

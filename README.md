@@ -258,6 +258,7 @@ arduino-cli --config-file arduino-cli.yaml compile --fqbn esp32:esp32:esp32s3:Pa
 **Note**: Replace `/path/to/EPDEnvClock` with your actual project directory path. The port name (`/dev/cu.wchusbserial110`) may vary depending on your environment.
 
 **Important**:
+
 - **Must use `--config-file arduino-cli.yaml`** to use ESP32 2.0.17 (system may have 3.x installed)
 - Always use `compile --upload` together (upload alone doesn't guarantee recompile)
 - Check port with `arduino-cli board list` - port name varies
@@ -301,14 +302,14 @@ To send display data to a server via Wi-Fi:
 
 1. **Start Server** (Python 3 required):
 
-```bash
-cd /path/to/EPDEnvClock
-python3 scripts/imagebw_server.py --port 8080
-```
+   ```bash
+   cd /path/to/EPDEnvClock
+   python3 scripts/imagebw_server.py --port 8080
+   ```
 
-2. **Arduino Configuration**: Set server IP address in `server_config.h`
+1. **Arduino Configuration**: Set server IP address in `server_config.h`
 
-3. **Auto Send**: ImageBW data is automatically sent whenever the display updates
+1. **Auto Send**: ImageBW data is automatically sent whenever the display updates
 
 Received data is saved as PNG files in the `output/` directory.
 
@@ -318,7 +319,7 @@ See [docs/README_IMAGEBW.md](./docs/README_IMAGEBW.md) for details.
 
 ## 📁 Project Structure
 
-```
+```text
 EPDEnvClock/
 ├── EPDEnvClock/                  # Arduino/Firmware code (sketch directory)
 │   ├── EPDEnvClock.ino          # Main sketch (setup/loop)
@@ -378,7 +379,7 @@ bun install
 bun run dev
 ```
 
-Access at http://localhost:4321/
+Access at <http://localhost:4321/>
 
 ### Deployment
 
@@ -402,10 +403,13 @@ bunx wrangler pages deploy dist --branch=main
 | ESP32-S3 Light Sleep (sensor measurement wait) | ~2-3mA |
 | ESP32-S3 Active (including Wi-Fi) | ~80-150mA |
 
-### Battery Life (with 1480mAh battery)
+### Battery Life (measured with 1500mAh battery)
 
-- **Average Current Consumption**: ~2.5mA (Wi-Fi sync once per hour)
-- **Battery Life**: 1480mAh ÷ 2.5mA ≈ **592 hours (~25 days)**
+- **Average Current Consumption**: ~4.5mA (Wi-Fi sync once per hour)
+- **Actual Runtime**: ~224 hours (~9.3 days) to 3.375V
+- **Usable Capacity**: ~1000-1100mAh (battery labeled 1500mAh, actual ~1200-1400mAh)
+
+See **[Battery Discharge Report](./docs/BATTERY_REPORT.md)** for detailed analysis.
 
 ### Deep Sleep Cycle
 
