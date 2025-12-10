@@ -7,7 +7,8 @@ interface SensorReading {
   humidity: number;
   co2: number;
   batt_voltage?: number;
-  batt_percent?: number;
+  batt_percent?: number;            // Linear percent (3.4V=0%, 4.2V=100%)
+  batt_max17048_percent?: number;   // MAX17048 reported percent (for reference)
   batt_rate?: number;
   charging?: boolean;      // Charging state from 4054A CHRG pin
   batt_adc?: number;  // legacy, deprecated
@@ -50,8 +51,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     // Validate and insert all readings (ignore duplicates)
     const stmt = db.prepare(`
-      INSERT OR IGNORE INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_rate, battery_charging, rtc_drift_ms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO sensor_data (timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_max17048_percent, battery_rate, battery_charging, rtc_drift_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const batch = readings.map((r, i) => {
@@ -74,7 +75,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       // Convert boolean charging to integer (1/0) for SQLite
       const chargingInt = r.charging === true ? 1 : (r.charging === false ? 0 : null);
 
-      return stmt.bind(ts, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_percent ?? null, r.batt_rate ?? null, chargingInt, r.rtc_drift_ms ?? null);
+      return stmt.bind(ts, r.temp, r.humidity, r.co2, r.batt_voltage ?? null, r.batt_percent ?? null, r.batt_max17048_percent ?? null, r.batt_rate ?? null, chargingInt, r.rtc_drift_ms ?? null);
     });
 
     await db.batch(batch);

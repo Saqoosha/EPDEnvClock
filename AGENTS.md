@@ -80,6 +80,21 @@ arduino-cli --config-file arduino-cli.yaml compile --fqbn esp32:esp32:esp32s3:Pa
 - **Reported**: Voltage (V), State of Charge (%), Charge Rate (%/hr)
 - **Power**: Chip is powered by battery (must connect CELL+/CELL- to LiPo)
 
+### Battery Percentage Calculation
+
+Two percentage values are tracked:
+
+1. **Linear Percent** (`g_batteryPercent`) - Used for display
+   - Formula: `(voltage - 3.4V) / (4.2V - 3.4V) * 100%`
+   - 3.4V = 0%, 4.2V = 100%
+   - More accurate than MAX17048 below 3.8V (based on Dec 2025 discharge testing)
+   - Device crashes at ~3.4V with WiFi due to brownout
+
+2. **MAX17048 Percent** (`g_batteryMax17048Percent`) - For reference/logging
+   - ModelGauge algorithm from MAX17048
+   - Increasingly pessimistic below 3.8V
+   - Logged as `batt_max17048_percent` in sensor logs
+
 ### Charging Detection (4054A CHRG Pin)
 
 - **GPIO**: 8

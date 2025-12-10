@@ -231,7 +231,8 @@ Batch (recommended for ESP32):
 - `humidity`: Humidity in %
 - `co2`: CO2 concentration in ppm
 - `batt_voltage`: Battery voltage (optional)
-- `batt_percent`: Battery percentage from MAX17048 (optional)
+- `batt_percent`: Battery percentage - linear model (3.4V=0%, 4.2V=100%) (optional)
+- `batt_max17048_percent`: Battery percentage - MAX17048 reported (optional, for reference)
 - `batt_rate`: Battery charge rate in %/hr (optional, positive=charging, negative=discharging)
 - `rtc_drift_ms`: RTC drift in milliseconds (optional, only when NTP synced)
 
