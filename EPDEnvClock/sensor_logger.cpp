@@ -64,29 +64,47 @@ void formatJSONLine(const struct tm &timeinfo,
   int minute = timeinfo.tm_min;
   int second = timeinfo.tm_sec;
 
+  // Format battery fields - use null for invalid values (-1.0)
+  char battVoltageStr[16];
+  char battPercentStr[16];
+  char battMax17048Str[16];
+  char battRateStr[16];
+  
+  if (batteryVoltage < 0.0f) {
+    snprintf(battVoltageStr, sizeof(battVoltageStr), "null");
+    snprintf(battPercentStr, sizeof(battPercentStr), "null");
+    snprintf(battMax17048Str, sizeof(battMax17048Str), "null");
+    snprintf(battRateStr, sizeof(battRateStr), "null");
+  } else {
+    snprintf(battVoltageStr, sizeof(battVoltageStr), "%.3f", batteryVoltage);
+    snprintf(battPercentStr, sizeof(battPercentStr), "%.1f", batteryPercent);
+    snprintf(battMax17048Str, sizeof(battMax17048Str), "%.1f", batteryMax17048Percent);
+    snprintf(battRateStr, sizeof(battRateStr), "%.2f", batteryChargeRate);
+  }
+
   if (ntpSynced)
   {
     // Include RTC drift when NTP was synced this boot
     snprintf(buffer, bufferSize,
-             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_max17048_percent\":%.1f,\"batt_rate\":%.2f,\"charging\":%s}\n",
+             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%s,\"batt_percent\":%s,\"batt_max17048_percent\":%s,\"batt_rate\":%s,\"charging\":%s}\n",
              year, month, day,
              hour, minute, second,
              (long)unixTimestamp,
              rtcDriftMs,
              temperature, humidity, co2,
-             batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate,
+             battVoltageStr, battPercentStr, battMax17048Str, battRateStr,
              batteryCharging ? "true" : "false");
   }
   else
   {
     // No drift data when NTP wasn't synced this boot
     snprintf(buffer, bufferSize,
-             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%.3f,\"batt_percent\":%.1f,\"batt_max17048_percent\":%.1f,\"batt_rate\":%.2f,\"charging\":%s}\n",
+             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%s,\"batt_percent\":%s,\"batt_max17048_percent\":%s,\"batt_rate\":%s,\"charging\":%s}\n",
              year, month, day,
              hour, minute, second,
              (long)unixTimestamp,
              temperature, humidity, co2,
-             batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate,
+             battVoltageStr, battPercentStr, battMax17048Str, battRateStr,
              batteryCharging ? "true" : "false");
   }
 }

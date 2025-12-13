@@ -14,13 +14,15 @@ constexpr uint8_t CHRG_PIN = 8;
 bool FuelGauge_Init();
 
 // Read battery voltage in volts
+// Returns -1.0f if unavailable or reading outside valid range (2.0-4.4V)
 float FuelGauge_GetVoltage();
 
 // Read battery state of charge in percent (0-100) from MAX17048
 float FuelGauge_GetPercent();
 
-// Calculate linear battery percent based on voltage (3.0V=0%, 4.2V=100%)
+// Calculate linear battery percent based on voltage (3.4V=0%, 4.2V=100%)
 // More accurate than MAX17048 below 3.8V based on actual discharge testing
+// 3.4V chosen because device crashes with WiFi below this voltage
 float FuelGauge_GetLinearPercent(float voltage);
 
 // Read battery charge rate in percent per hour

@@ -215,16 +215,18 @@ void drawStatus(const NetworkState &networkState, float batteryVoltage, float ba
   long rssi = WiFi.RSSI();
   uint32_t freeHeap = ESP.getFreeHeap();
 
-  // Format battery string: "85%(3.85V)[CHG]" if fuel gauge available, else "3.845V"
+  // Format battery string: "85%(3.85V)[CHG]" if fuel gauge available and valid
+  // Show "ERR" if battery reading is invalid (-1.0f)
   // Add [CHG] indicator if charging
   const char* chrgIndicator = g_batteryCharging ? "[CHG]" : "";
-  if (FuelGauge_IsAvailable())
+  if (batteryVoltage < 0.0f || batteryPercent < 0.0f)
   {
-    snprintf(batteryStr, sizeof(batteryStr), "%.0f%%(%.2fV)%s", batteryPercent, batteryVoltage, chrgIndicator);
+    // Invalid reading - show error
+    snprintf(batteryStr, sizeof(batteryStr), "ERR%s", chrgIndicator);
   }
   else
   {
-    snprintf(batteryStr, sizeof(batteryStr), "%.3fV%s", batteryVoltage, chrgIndicator);
+    snprintf(batteryStr, sizeof(batteryStr), "%.0f%%(%.2fV)%s", batteryPercent, batteryVoltage, chrgIndicator);
   }
 
   const char *wifiStatus = networkState.wifiConnected ? "OK" : "--";
@@ -433,13 +435,9 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
 // Battery measurement using MAX17048 fuel gauge (with ADC fallback)
 // MAX17048 provides accurate state-of-charge estimation
 
-// ADC fallback constants (voltage divider on GPIO8)
-// Linear fit equation: Vbat = 0.002334 * adc_raw - 1.353
-constexpr int BATTERY_ADC_PIN = 8;
-constexpr float BATTERY_VOLTAGE_SLOPE = 0.002334f;
-constexpr float BATTERY_VOLTAGE_OFFSET = -1.353f;
-
 // Global variables for battery state
+// Note: ADC fallback was removed - no ADC battery port connected
+// All battery readings come from MAX17048 fuel gauge only
 float g_batteryVoltage = 0.0f;
 float g_batteryPercent = 0.0f;         // Linear percent (3.0V=0%, 4.2V=100%)
 float g_batteryMax17048Percent = 0.0f; // MAX17048 reported percent (for reference)
@@ -712,48 +710,44 @@ float DisplayManager_ReadBatteryVoltage()
     }
   }
 
-  if (FuelGauge_IsAvailable())
+  if (!FuelGauge_IsAvailable())
   {
-    // Read from MAX17048
-    float voltage = FuelGauge_GetVoltage();
-    float max17048Percent = FuelGauge_GetPercent();
-    float linearPercent = FuelGauge_GetLinearPercent(voltage);
-    float chargeRate = FuelGauge_GetChargeRate();
-
-    g_batteryVoltage = voltage;
-    g_batteryPercent = linearPercent;           // Use linear for display
-    g_batteryMax17048Percent = max17048Percent; // Keep MAX17048 for reference
-    g_batteryChargeRate = chargeRate;
-
-    LOGI(LogTag::DISPLAY_MGR, "Battery: %.3fV, %.1f%% (linear), %.1f%% (MAX17048), Rate: %.2f%%/hr",
-         voltage, linearPercent, max17048Percent, chargeRate);
-
-    return voltage;
+    // MAX17048 not available - set error values
+    LOGW(LogTag::DISPLAY_MGR, "MAX17048 not available, battery readings invalid");
+    g_batteryVoltage = -1.0f;
+    g_batteryPercent = -1.0f;
+    g_batteryMax17048Percent = -1.0f;
+    g_batteryChargeRate = 0.0f;
+    return -1.0f;
   }
 
-  // Fallback to ADC measurement
-  constexpr int NUM_SAMPLES = 16;
+  // Read from MAX17048
+  float voltage = FuelGauge_GetVoltage();
 
-  delay(10);
-  analogRead(BATTERY_ADC_PIN);
-  long adcSum = 0;
-  for (int i = 0; i < NUM_SAMPLES; i++)
+  // Check if voltage reading is valid (FuelGauge_GetVoltage returns -1.0 on error)
+  if (voltage < 0.0f)
   {
-    adcSum += analogRead(BATTERY_ADC_PIN);
-    delayMicroseconds(50);
+    LOGW(LogTag::DISPLAY_MGR, "MAX17048 returned invalid voltage, readings ignored");
+    g_batteryVoltage = -1.0f;
+    g_batteryPercent = -1.0f;
+    g_batteryMax17048Percent = -1.0f;
+    g_batteryChargeRate = 0.0f;
+    return -1.0f;
   }
-  int rawAdc = adcSum / NUM_SAMPLES;
-  float batteryVoltage = BATTERY_VOLTAGE_SLOPE * rawAdc + BATTERY_VOLTAGE_OFFSET;
 
-  g_batteryVoltage = batteryVoltage;
-  g_batteryPercent = FuelGauge_GetLinearPercent(batteryVoltage); // Use linear even for ADC
-  g_batteryMax17048Percent = 0.0f;                               // No MAX17048 available
-  g_batteryChargeRate = 0.0f; // Unknown without fuel gauge
+  float max17048Percent = FuelGauge_GetPercent();
+  float linearPercent = FuelGauge_GetLinearPercent(voltage);
+  float chargeRate = FuelGauge_GetChargeRate();
 
-  LOGI(LogTag::DISPLAY_MGR, "Battery (ADC fallback): %.3fV, %.1f%% (linear), raw: %d",
-       batteryVoltage, g_batteryPercent, rawAdc);
+  g_batteryVoltage = voltage;
+  g_batteryPercent = linearPercent;           // Use linear for display
+  g_batteryMax17048Percent = max17048Percent; // Keep MAX17048 for reference
+  g_batteryChargeRate = chargeRate;
 
-  return batteryVoltage;
+  LOGI(LogTag::DISPLAY_MGR, "Battery: %.3fV, %.1f%% (linear), %.1f%% (MAX17048), Rate: %.2f%%/hr",
+       voltage, linearPercent, max17048Percent, chargeRate);
+
+  return voltage;
 }
 
 float DisplayManager_GetBatteryPercent()
