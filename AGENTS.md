@@ -193,3 +193,43 @@ bunx wrangler pages deploy dist --branch=main
 - `--branch=main` is required to deploy to production domain
 - Without it, deploys to preview URL only
 - Local dev server: `bun run dev` → <http://localhost:4321/>
+
+## Data Analysis Script
+
+Analyze sensor data from D1 database:
+
+```bash
+python3 scripts/analyze_data.py [hours]
+```
+
+**Authentication Required:**
+
+The script uses `wrangler d1 execute` to query the D1 database. Authentication is required:
+
+1. **Option 1: Cloudflare API Token** (recommended for scripts)
+   ```bash
+   export CF_API_TOKEN='your-cloudflare-api-token'
+   ```
+   Get token from: https://dash.cloudflare.com/profile/api-tokens
+   - Required permissions: Account → D1 → Read
+   - **Note**: Token is NOT stored in `.env` (use environment variable or `wrangler login`)
+
+2. **Option 2: Wrangler Login** (for interactive use)
+   ```bash
+   cd web
+   bunx wrangler login
+   ```
+   Credentials are stored in `~/.wrangler/config/default.toml`
+
+**Note**: `.env` file contains `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for Cloudflare Access (API authentication), but D1 access requires `CF_API_TOKEN` or `wrangler login`.
+
+**Database Info:**
+- Database name: `epd-sensor-db`
+- Database ID: `fc27137d-cc9d-48cd-bfc0-5c270356dc98`
+- Config: `web/wrangler.toml`
+
+The script analyzes:
+- RTC drift values (after WiFi connection time fix)
+- Battery voltage trends and WiFi skip patterns
+- Sensor readings (temperature, humidity, CO2)
+- WiFi/NTP sync frequency vs battery voltage

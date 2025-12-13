@@ -113,6 +113,10 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
     LOGI(LogTag::NETWORK, "Current time: %d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
     LOGD(LogTag::NETWORK, "NTP sync time: %lu ms", syncTime);
 
+    // Save NTP sync duration to compensate for RTC drift calculation
+    // The RTC continues running during NTP sync wait time, so we need to account for it
+    DeepSleepManager_SaveNtpSyncDuration(syncTime);
+
     char statusMsg[48];
     snprintf(statusMsg, sizeof(statusMsg), "NTP OK! (%lums)", syncTime);
     updateStatus(statusCallback, statusMsg);

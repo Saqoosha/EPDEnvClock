@@ -45,6 +45,10 @@ bool DeepSleepManager_ShouldSyncWiFiNtp();
 // Save RTC time before NTP sync (call this before attempting NTP sync)
 void DeepSleepManager_SaveRtcTimeBeforeSync();
 
+// Save NTP sync duration (call after NTP sync completes, before MarkNtpSynced)
+// This compensates for RTC drift calculation - RTC continues running during NTP sync wait
+void DeepSleepManager_SaveNtpSyncDuration(unsigned long durationMs);
+
 // Mark NTP as synced and calculate RTC drift (call after successful NTP sync)
 void DeepSleepManager_MarkNtpSynced();
 

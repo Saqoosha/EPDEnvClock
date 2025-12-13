@@ -40,6 +40,7 @@ bool sdCardAvailable = false;
 bool spiffsMounted = false;
 bool initialized = false;
 struct timeval rtcTimeBeforeNtpSync = {0, 0}; // Stores RTC time before NTP sync attempt (with microseconds)
+unsigned long ntpSyncDurationMs = 0;          // Duration of NTP sync wait time (ms) - RTC continues running during this time
 
 void restoreTimeFromRTC()
 {
@@ -300,6 +301,12 @@ void DeepSleepManager_SaveRtcTimeBeforeSync()
        (long)rtcTimeBeforeNtpSync.tv_sec, (long)rtcTimeBeforeNtpSync.tv_usec);
 }
 
+void DeepSleepManager_SaveNtpSyncDuration(unsigned long durationMs)
+{
+  ntpSyncDurationMs = durationMs;
+  LOGD(LogTag::DEEPSLEEP, "NTP sync duration: %lu ms", durationMs);
+}
+
 void DeepSleepManager_MarkNtpSynced()
 {
   rtcState.lastNtpSyncBootCount = rtcState.bootCount;
@@ -317,9 +324,18 @@ void DeepSleepManager_MarkNtpSynced()
   {
     int64_t rtcMs = (int64_t)rtcTimeBeforeNtpSync.tv_sec * 1000 + rtcTimeBeforeNtpSync.tv_usec / 1000;
     int64_t ntpMs = (int64_t)ntpTime.tv_sec * 1000 + ntpTime.tv_usec / 1000;
-    rtcState.lastRtcDriftMs = (int32_t)(ntpMs - rtcMs);
+
+    // Calculate raw drift (NTP time - RTC time at sync start)
+    int64_t rawDriftMs = ntpMs - rtcMs;
+
+    // Subtract NTP sync wait time - RTC continues running during this time,
+    // so the wait time is not actual RTC drift
+    int64_t actualDriftMs = rawDriftMs - ntpSyncDurationMs;
+
+    rtcState.lastRtcDriftMs = (int32_t)actualDriftMs;
     rtcState.lastRtcDriftValid = true;
-    LOGI(LogTag::DEEPSLEEP, "NTP synced at boot %u, RTC drift: %d ms", rtcState.bootCount, rtcState.lastRtcDriftMs);
+    LOGI(LogTag::DEEPSLEEP, "NTP synced at boot %u, RTC drift: %d ms (raw: %lld ms, sync wait: %lu ms)",
+         rtcState.bootCount, rtcState.lastRtcDriftMs, rawDriftMs, ntpSyncDurationMs);
   }
   else
   {
@@ -327,6 +343,9 @@ void DeepSleepManager_MarkNtpSynced()
     rtcState.lastRtcDriftValid = false;
     LOGI(LogTag::DEEPSLEEP, "NTP synced at boot %u (first sync or invalid RTC, drift skipped)", rtcState.bootCount);
   }
+
+  // Reset sync duration for next sync
+  ntpSyncDurationMs = 0;
 }
 
 bool DeepSleepManager_IsLastRtcDriftValid()
