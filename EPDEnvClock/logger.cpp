@@ -216,12 +216,24 @@ void Logger_Log(LogLevel level, const char *tag, const char *format, ...)
   if (level >= LogLevel::WARN)
   {
     char logLine[kMaxLogLineLength];
-    char timestampBuffer[32];
+    char timestampBuffer[64];
 
     // Format timestamp for SD log (no colors)
-    if (g_config.ntpSynced)
+    // Try to get actual date/time first (works if RTC time was restored from deep sleep)
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo))
     {
-      formatDateTime(timestampBuffer, sizeof(timestampBuffer));
+      char bootTimeBuffer[16];
+      formatBootTime(bootTimeBuffer, sizeof(bootTimeBuffer));
+      // Include both datetime and boot time for correlation
+      snprintf(timestampBuffer, sizeof(timestampBuffer), "%04d-%02d-%02d %02d:%02d:%02d (%s)",
+               timeinfo.tm_year + 1900,
+               timeinfo.tm_mon + 1,
+               timeinfo.tm_mday,
+               timeinfo.tm_hour,
+               timeinfo.tm_min,
+               timeinfo.tm_sec,
+               bootTimeBuffer);
     }
     else
     {
