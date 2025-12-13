@@ -69,7 +69,7 @@ void formatJSONLine(const struct tm &timeinfo,
   char battPercentStr[16];
   char battMax17048Str[16];
   char battRateStr[16];
-  
+
   if (batteryVoltage < 0.0f) {
     snprintf(battVoltageStr, sizeof(battVoltageStr), "null");
     snprintf(battPercentStr, sizeof(battPercentStr), "null");

@@ -174,7 +174,7 @@ void setup()
     // Skip WiFi if battery voltage is low OR invalid (-1.0 means sensor error)
     if (g_batteryVoltage < 0.0f || g_batteryVoltage < kWifiMinBatteryVoltage)
     {
-      LOGW("Setup", "Skipping WiFi/NTP sync: %s (%.3fV)", 
+      LOGW("Setup", "Skipping WiFi/NTP sync: %s (%.3fV)",
            g_batteryVoltage < 0.0f ? "battery sensor error" : "low battery", g_batteryVoltage);
       DisplayManager_DrawSetupStatus("Low batt - skip WiFi");
       networkState.wifiConnected = false;

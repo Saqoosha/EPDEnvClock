@@ -89,18 +89,18 @@ float FuelGauge_GetVoltage() {
     return -1.0f;  // Error: not available
   }
   float voltage = maxlipo.cellVoltage();
-  
+
   // Validate voltage range (2.0V - 4.4V)
   // Values outside this range indicate sensor error or malfunction
   constexpr float kMinValidVoltage = 2.0f;
   constexpr float kMaxValidVoltage = 4.4f;
-  
+
   if (voltage < kMinValidVoltage || voltage > kMaxValidVoltage) {
     LOGW(LogTag::SENSOR, "MAX17048 voltage out of range: %.3fV (valid: %.1f-%.1fV)",
          voltage, kMinValidVoltage, kMaxValidVoltage);
     return -1.0f;  // Error: invalid reading
   }
-  
+
   return voltage;
 }
 
