@@ -706,7 +706,7 @@ float DisplayManager_ReadBatteryVoltage()
     }
     else
     {
-      LOGW(LogTag::DISPLAY_MGR, "MAX17048 not found, falling back to ADC");
+      LOGW(LogTag::DISPLAY_MGR, "MAX17048 not found");
     }
   }
 
