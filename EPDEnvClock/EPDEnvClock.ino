@@ -172,7 +172,8 @@ void setup()
     LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
 
     // Skip WiFi if battery voltage is low OR invalid (-1.0 means sensor error)
-    if (g_batteryVoltage < 0.0f || g_batteryVoltage < kWifiMinBatteryVoltage)
+    // Exception: allow WiFi when charging even if voltage is low
+    if ((g_batteryVoltage < 0.0f || g_batteryVoltage < kWifiMinBatteryVoltage) && !g_batteryCharging)
     {
       LOGW("Setup", "Skipping WiFi/NTP sync: %s (%.3fV)",
            g_batteryVoltage < 0.0f ? "battery sensor error" : "low battery", g_batteryVoltage);
