@@ -248,20 +248,37 @@ arduino-cli core list
 
 ## 📦 ビルド・アップロード
 
-### 推奨方法（コンパイル + アップロード）
+### 推奨方法（arduwrap）
+
+`arduwrap`はarduino-cliのラッパーで、コンパイル・アップロード中のシリアルポートを自動管理します。バックグラウンドでシリアルモニタを起動し、アップロード中は一時停止して、デバイスリセット後に自動再接続します。
 
 ```bash
-cd /path/to/EPDEnvClock
-arduino-cli --config-file arduino-cli.yaml compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
+# コンパイルとアップロード（別ターミナルでarduwrap serveを実行中に）
+scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
 ```
 
-**注意**: `/path/to/EPDEnvClock`を実際のプロジェクトディレクトリのパスに置き換えてください。ポート名（`/dev/cu.wchusbserial110`）も環境に応じて変更してください。
+**機能**:
 
-**重要**:
+- プロジェクト固有の設定ファイル（`arduino-cli.yaml`）を自動使用
+- `--upload`フラグは自動追加
+- ポートはサーバーが管理（`-p`指定不要）
+- アップロード中はシリアルモニタが一時停止、完了後に自動再接続
 
-- **`--config-file arduino-cli.yaml`を必ず指定してください**（ESP32 2.0.17を使用するため。システムには3.xがインストールされている場合があります）
-- 常に`compile --upload`を一緒に使用してください（uploadだけでは再コンパイルが保証されません）
-- `arduino-cli board list`でポートを確認してください - ポート名は変わることがあります
+**追加コマンド**:
+
+```bash
+# バッファされたシリアルログを取得（直近64KB）
+scripts/arduwrap log
+
+# 正規表現でフィルタリング
+scripts/arduwrap log --filter "ERROR|WARN"
+
+# 直近N行を取得
+scripts/arduwrap log -n 50
+
+# サーバー停止
+scripts/arduwrap stop
+```
 
 **設定パラメータ**:
 
@@ -340,6 +357,8 @@ EPDEnvClock/
 │   ├── server_config.h          # サーバー設定
 │   └── bitmaps/                 # 数字フォント、アイコン、単位、カーニングテーブル
 ├── scripts/                     # Pythonスクリプト
+│   ├── arduwrap                 # Arduino CLIラッパー（シェルスクリプト）
+│   ├── arduwrap.py              # Arduino CLIラッパー実装
 │   ├── create_number_bitmaps.py # TTFフォントから数字ビットマップを生成
 │   ├── convert_numbers.py       # PNG数字をCヘッダーに変換
 │   ├── convert_icon.py          # PNGアイコンをCヘッダーに変換

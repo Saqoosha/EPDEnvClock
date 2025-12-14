@@ -248,20 +248,37 @@ Set server IP address and port in `EPDEnvClock/server_config.h`:
 
 ## 📦 Build & Upload
 
-### Recommended Method (Compile + Upload)
+### Recommended Method (arduwrap)
+
+`arduwrap` is an arduino-cli wrapper that manages serial port during compile/upload. It runs a background server that monitors the serial port, automatically pauses monitoring during upload, and reconnects after the device resets.
 
 ```bash
-cd /path/to/EPDEnvClock
-arduino-cli --config-file arduino-cli.yaml compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
+# Compile and upload (while arduwrap serve is running in another terminal)
+scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
 ```
 
-**Note**: Replace `/path/to/EPDEnvClock` with your actual project directory path. The port name (`/dev/cu.wchusbserial110`) may vary depending on your environment.
+**Features**:
 
-**Important**:
+- Uses project-specific config (`arduino-cli.yaml`) automatically
+- `--upload` flag is added automatically
+- Port is managed by the running server (no `-p` needed)
+- Serial monitoring pauses during upload, then reconnects automatically
 
-- **Must use `--config-file arduino-cli.yaml`** to use ESP32 2.0.17 (system may have 3.x installed)
-- Always use `compile --upload` together (upload alone doesn't guarantee recompile)
-- Check port with `arduino-cli board list` - port name varies
+**Additional commands**:
+
+```bash
+# Get buffered serial log (last 64KB)
+scripts/arduwrap log
+
+# Get filtered log with regex
+scripts/arduwrap log --filter "ERROR|WARN"
+
+# Get last N lines
+scripts/arduwrap log -n 50
+
+# Stop the server
+scripts/arduwrap stop
+```
 
 **Configuration Parameters**:
 
@@ -340,6 +357,8 @@ EPDEnvClock/
 │   ├── server_config.h          # Server configuration
 │   └── bitmaps/                 # Number fonts, icons, units, kerning table
 ├── scripts/                     # Python scripts
+│   ├── arduwrap                 # Arduino CLI wrapper (shell script)
+│   ├── arduwrap.py              # Arduino CLI wrapper implementation
 │   ├── create_number_bitmaps.py # Number bitmap generation from TTF font
 │   ├── convert_numbers.py       # Convert PNG numbers to C header
 │   ├── convert_icon.py          # Convert PNG icons to C header
