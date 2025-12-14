@@ -31,17 +31,25 @@ arduino-cli --config-file arduino-cli.yaml core install esp32:esp32@2.0.17
 
 ### Compile & Upload
 
+Use `arduwrap` wrapper for compile and upload (requires `arduwrap serve` running in another terminal):
+
 ```bash
-cd /path/to/EPDEnvClock
-arduino-cli --config-file arduino-cli.yaml compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi --upload -p /dev/cu.wchusbserial110 EPDEnvClock
+scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
 ```
 
-- Always use `compile --upload` together (upload alone doesn't guarantee recompile)
-- Check port with `arduino-cli board list` - port name varies
-- **Must use `--config-file arduino-cli.yaml`** to use ESP32 2.0.17 (system may have 3.x)
-- Required libraries (install in user library dir, shared with system):
-  - `arduino-cli lib install "Sensirion I2C SCD4x"`
-  - `arduino-cli lib install "Adafruit MAX1704X"`
+- Uses project-specific config from `arduino-cli.yaml` automatically
+- `--upload` flag is added automatically
+- Port is managed by the running server (no `-p` needed)
+- Serial monitoring is paused during upload, then reconnects automatically
+
+### Required Libraries
+
+Install in user library dir (shared with system):
+
+```bash
+arduino-cli lib install "Sensirion I2C SCD4x"
+arduino-cli lib install "Adafruit MAX1704X"
+```
 
 ## Critical Hardware Details
 
@@ -107,6 +115,7 @@ Two percentage values are tracked:
 ```
 EPDEnvClock/
 ├── EPDEnvClock.ino      # Main sketch (setup/loop)
+├── parallel_tasks.*     # Dual-core parallel WiFi/NTP + sensor reading
 ├── display_manager.*    # Display rendering, layout, battery reading
 ├── sensor_manager.*     # SCD41 sensor (single-shot mode with light sleep)
 ├── fuel_gauge_manager.* # MAX17048 fuel gauge + 4054A charging detection
@@ -124,10 +133,18 @@ EPDEnvClock/
 ### Power Management
 
 - Deep sleep ~52-54 seconds, wake at minute boundary
-- Light sleep during 5-second sensor measurement
 - Wi-Fi/NTP sync at the top of every hour
 - SD card power off during deep sleep (GPIO 42 LOW)
 - I2C pins held HIGH during sleep to keep sensor in idle mode
+
+### Dual-Core Parallel Processing
+
+WiFi/NTP sync and sensor reading run in parallel using FreeRTOS tasks:
+
+- **Core 0**: WiFi/NTP task (WiFi stack runs on Core 0)
+- **Core 1**: Sensor task (I2C sensor reading)
+
+This reduces startup time by ~2 seconds and enables single screen update (instead of two-phase update).
 
 ### Display Update Flow
 
@@ -164,6 +181,30 @@ EPDEnvClock/
 4. **EPD uses bit-banging SPI** (pins 11,12,45,46,47,48), SD uses hardware HSPI
 5. **Button pins are active LOW** with internal pullup
 6. **SD card needs power enable** (GPIO 42 HIGH) before use
+
+## arduwrap Commands
+
+The `scripts/arduwrap` wrapper provides convenient compile and serial log access:
+
+```bash
+# Compile and upload (requires serve running in another terminal)
+scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
+
+# Get serial log (last 64KB buffered)
+scripts/arduwrap log
+
+# Get filtered log (regex pattern)
+scripts/arduwrap log --filter "ERROR|WARN"
+
+# Get last N lines
+scripts/arduwrap log -n 50
+
+# Clear log buffer
+scripts/arduwrap log --clear
+
+# Stop the server
+scripts/arduwrap stop
+```
 
 ## ImageBW Export Server (Optional)
 

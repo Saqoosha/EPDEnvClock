@@ -11,6 +11,7 @@
 #include "deep_sleep_manager.h"
 #include "logger.h"
 #include "sensor_logger.h"
+#include "parallel_tasks.h"
 
 namespace
 {
@@ -51,25 +52,7 @@ void onStatusUpdate(const char *message)
   DisplayManager_SetStatus(message);
 }
 
-void handleSensorInitializationResult(bool wakeFromSleep)
-{
-  DisplayManager_DrawSetupStatus("Initializing Sensor...");
-  if (SensorManager_Begin(wakeFromSleep))
-  {
-    sensorInitialized = true;
-    DisplayManager_SetStatus("Sensor OK");
-    LOGI(LogTag::SENSOR, "SCD41 sensor is ready!");
-    return;
-  }
-
-  DisplayManager_SetStatus("Sensor FAILED!");
-  LOGW(LogTag::SENSOR, "SCD41 sensor initialization failed!");
-  LOGW(LogTag::SENSOR, "Please check connections:");
-  LOGW(LogTag::SENSOR, "  SDA -> GPIO %d", SENSOR_I2C_SDA_PIN);
-  LOGW(LogTag::SENSOR, "  SCL -> GPIO %d", SENSOR_I2C_SCL_PIN);
-  LOGW(LogTag::SENSOR, "  VDD -> 3.3V");
-  LOGW(LogTag::SENSOR, "  GND -> GND");
-}
+// Note: Sensor initialization now happens in parallel_tasks.cpp
 
 void updateDisplay(bool forceUpdate)
 {
@@ -165,9 +148,15 @@ void setup()
   // This determines if we do full init or minimal wake-up
   DisplayManager_Init(wakeFromSleep);
 
-  // Connect WiFi and sync NTP FIRST if needed (need time before displaying clock)
-  // WiFi is only needed for NTP sync, not for time queries (RTC keeps time)
-  if (DeepSleepManager_ShouldSyncWiFiNtp())
+  // === Parallel WiFi/NTP + Sensor Reading ===
+  // Run WiFi/NTP sync and sensor reading in parallel using dual cores
+  // This reduces startup time from ~18s to ~13s and enables single screen update
+
+  // Determine if WiFi sync is needed
+  bool needWifiSync = DeepSleepManager_ShouldSyncWiFiNtp();
+  bool skipWifiDueToLowBattery = false;
+
+  if (needWifiSync)
   {
     LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
 
@@ -177,10 +166,10 @@ void setup()
     {
       LOGW("Setup", "Skipping WiFi/NTP sync: %s (%.3fV)",
            g_batteryVoltage < 0.0f ? "battery sensor error" : "low battery", g_batteryVoltage);
-      DisplayManager_DrawSetupStatus("Low batt - skip WiFi");
-      networkState.wifiConnected = false;
-      networkState.ntpSynced = false;
-      Logger_SetNtpSynced(false);
+      skipWifiDueToLowBattery = true;
+      needWifiSync = false;
+
+      // Setup timezone and restore time from RTC
       if (NetworkManager_SetupTimeFromRTC())
       {
         LOGI("Setup", "Time restored from RTC after skipping WiFi");
@@ -190,114 +179,78 @@ void setup()
         LOGW("Setup", "Failed to restore time from RTC (WiFi skipped)");
       }
     }
-    else
-    {
-      DisplayManager_DrawSetupStatus("Connecting WiFi...");
-      if (NetworkManager_ConnectWiFi(networkState, DisplayManager_DrawSetupStatus))
-      {
-        if (NetworkManager_SyncNtp(networkState, DisplayManager_DrawSetupStatus))
-        {
-          DeepSleepManager_MarkNtpSynced(); // Mark NTP as synced and calculate drift
-          Logger_SetNtpSynced(true);        // Update logger with NTP sync status
-          ntpSyncedThisBoot = true;         // Mark that NTP synced THIS boot
-          LOGI("Setup", "WiFi/NTP sync completed");
-        }
-        else
-        {
-          networkState.ntpSynced = false;
-          Logger_SetNtpSynced(false);
-          LOGW("Setup", "NTP sync failed");
-          // Setup timezone and restore time from RTC when NTP sync fails
-          if (NetworkManager_SetupTimeFromRTC())
-          {
-            LOGI("Setup", "Time restored from RTC after NTP failure");
-          }
-          else
-          {
-            LOGW("Setup", "Failed to restore time from RTC");
-          }
-        }
-      }
-      else
-      {
-        networkState.wifiConnected = false;
-        LOGW("Setup", "WiFi connection failed");
-        // Setup timezone and restore time from RTC when WiFi/NTP fails
-        if (NetworkManager_SetupTimeFromRTC())
-        {
-          LOGI("Setup", "Time restored from RTC after WiFi failure");
-        }
-        else
-        {
-          LOGW("Setup", "Failed to restore time from RTC");
-        }
-      }
-    }
   }
   else
   {
     // WiFi/NTP sync not needed (less than 1 hour since last sync)
-    // Skip WiFi connection - RTC keeps time from previous NTP sync
     LOGI("Setup", "Skipping WiFi/NTP sync (less than 1 hour since last sync)");
     RTCState &rtcState = DeepSleepManager_GetRTCState();
     LOGI("Setup", "Last sync was %d boots ago", rtcState.bootCount - rtcState.lastNtpSyncBootCount);
-
-    // No WiFi connection needed - RTC maintains time from previous sync
-    networkState.wifiConnected = false;
-    networkState.ntpSynced = true; // Assume still synced (RTC keeps time)
-    Logger_SetNtpSynced(true);     // Assume NTP is still synced (RTC keeps time)
-    LOGI("Setup", "Using RTC time (no WiFi connection)");
   }
 
-  // === Two-phase display update ===
-  // Phase 1: Show time IMMEDIATELY (before sensor init - user sees clock right away)
-  DisplayManager_SetStatus("Running");
-  if (DisplayManager_UpdateTimeOnly(networkState, true))
+  // Show status before starting parallel tasks
+  if (needWifiSync)
   {
-    LOGI(LogTag::SETUP, "Phase 1: Time displayed");
+    DisplayManager_DrawSetupStatus("WiFi + Sensor...");
+  }
+  else
+  {
+    DisplayManager_DrawSetupStatus("Reading Sensor...");
   }
 
-  // Now initialize sensor (after time is displayed)
-  handleSensorInitializationResult(wakeFromSleep);
-  sensorInitialized = SensorManager_IsInitialized();
+  // Start parallel tasks: WiFi/NTP on Core 0, Sensor on Core 1
+  unsigned long parallelStartTime = millis();
+  ParallelTasks_StartWiFiAndSensor(wakeFromSleep, needWifiSync);
+
+  // Wait for both tasks to complete (20 second timeout)
+  bool parallelSuccess = ParallelTasks_WaitForCompletion(20000);
+  unsigned long parallelDuration = millis() - parallelStartTime;
+
+  // Get results from parallel tasks
+  ParallelTaskResults &results = ParallelTasks_GetResults();
+  networkState = ParallelTasks_GetNetworkState();
+  sensorInitialized = results.sensorInitialized;
+
+  LOGI("Setup", "Parallel tasks completed in %lu ms (WiFi:%d, NTP:%d, Sensor:%d)",
+       parallelDuration,
+       results.wifiConnected ? 1 : 0,
+       results.ntpSynced ? 1 : 0,
+       results.sensorReady ? 1 : 0);
+
+  // Track if NTP synced this boot for drift calculation
+  if (results.ntpSynced && needWifiSync)
+  {
+    ntpSyncedThisBoot = true;
+  }
+
+  // Handle case where WiFi was skipped due to low battery
+  if (skipWifiDueToLowBattery)
+  {
+    networkState.wifiConnected = false;
+    networkState.ntpSynced = false;
+    Logger_SetNtpSynced(false);
+  }
 
   // Initialize sensor logger (after SD card is initialized by DeepSleepManager_Init)
   SensorLogger_Init();
 
-  // Phase 2: Read sensor (takes ~5 seconds with light sleep), then update display with sensor values
-  if (sensorInitialized)
+  // === Single Display Update ===
+  // Now that both WiFi/NTP and sensor data are ready, update display once
+  DisplayManager_SetStatus("Running");
+  if (DisplayManager_UpdateDisplay(networkState, true))
   {
-    LOGD("Sensor", "Reading sensor data (wakeFromSleep=%s)...", wakeFromSleep ? "true" : "false");
-    unsigned long readStartTime = millis();
-
-    // Single-shot mode takes ~5 seconds (light sleep during measurement)
-    unsigned long timeoutMs = 6000;
-
-    if (SensorManager_ReadBlocking(timeoutMs, networkState.wifiConnected))
-    {
-      unsigned long readDuration = millis() - readStartTime;
-      LOGI("Sensor", "Sensor data read successfully in %lums", readDuration);
-    }
-    else
-    {
-      unsigned long readDuration = millis() - readStartTime;
-      LOGW("Sensor", "Failed to read sensor data after %lums (timeout was %lums)", readDuration, timeoutMs);
-    }
-
-    // Phase 2: Add sensor values to display
-    DisplayManager_UpdateSensorOnly(networkState);
-    LOGI(LogTag::SETUP, "Phase 2: Sensor values displayed");
+    LOGI(LogTag::SETUP, "Display updated (single refresh)");
     exportFrameBuffer();
   }
   else
   {
-    // No sensor - just finalize the time-only display
+    // No update needed or failed
     EPD_DeepSleep();
-    LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep (no sensor)");
+    LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep");
   }
 
   // Log sensor values to JSONL file
-  if (sensorInitialized && SensorManager_IsInitialized())
+  if (results.sensorReady && SensorManager_IsInitialized())
   {
     struct tm timeinfo;
     if (getLocalTime(&timeinfo))

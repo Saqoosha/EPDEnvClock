@@ -11,9 +11,6 @@ void DisplayManager_DrawSetupStatus(const char *message);
 void DisplayManager_SetStatus(const char *message);
 bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate = false);
 void DisplayManager_FullUpdate(const NetworkState &networkState);
-// Two-phase update: first show time quickly, then add sensor values after reading
-bool DisplayManager_UpdateTimeOnly(const NetworkState &networkState, bool forceUpdate = false);
-void DisplayManager_UpdateSensorOnly(const NetworkState &networkState);
 uint8_t *DisplayManager_GetFrameBuffer();
 // Battery measurement - reads from MAX17048 fuel gauge only
 // Returns -1.0f if MAX17048 unavailable or reading invalid (outside 2.0-4.4V range)
