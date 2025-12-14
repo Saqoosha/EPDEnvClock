@@ -273,7 +273,7 @@ void setup()
     // Single-shot mode takes ~5 seconds (light sleep during measurement)
     unsigned long timeoutMs = 6000;
 
-    if (SensorManager_ReadBlocking(timeoutMs))
+    if (SensorManager_ReadBlocking(timeoutMs, networkState.wifiConnected))
     {
       unsigned long readDuration = millis() - readStartTime;
       LOGI("Sensor", "Sensor data read successfully in %lums", readDuration);
@@ -329,6 +329,7 @@ void setup()
       }
 
       // Send batch data to server if WiFi is connected
+      // Note: WiFi stays connected because we use delay() instead of light_sleep() when WiFi is active
       if (networkState.wifiConnected)
       {
         RTCState &rtcState = DeepSleepManager_GetRTCState();

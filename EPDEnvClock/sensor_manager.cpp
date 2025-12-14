@@ -127,7 +127,7 @@ void SensorManager_Read()
   lastCO2 = co2;
 }
 
-bool SensorManager_ReadBlocking(unsigned long timeoutMs)
+bool SensorManager_ReadBlocking(unsigned long timeoutMs, bool keepWifiAlive)
 {
   if (!sensorInitialized)
   {
@@ -160,11 +160,21 @@ bool SensorManager_ReadBlocking(unsigned long timeoutMs)
 
   if (result == 0)
   {
-    LOGI(LogTag::SENSOR, "Measurement started, light sleeping for 5s...");
-    Serial.flush();
-    esp_sleep_enable_timer_wakeup(5000000); // 5 seconds
-    esp_light_sleep_start();
-    LOGD(LogTag::SENSOR, "Woke up from light sleep");
+    if (keepWifiAlive)
+    {
+      // Use delay() to keep WiFi connected (saves ~0.11mAh by avoiding reconnection)
+      LOGI(LogTag::SENSOR, "Measurement started, waiting 5s (WiFi mode)...");
+      delay(5000);
+    }
+    else
+    {
+      // Use light sleep for maximum power savings (~0.8mA vs ~20mA)
+      LOGI(LogTag::SENSOR, "Measurement started, light sleeping for 5s...");
+      Serial.flush();
+      esp_sleep_enable_timer_wakeup(5000000); // 5 seconds
+      esp_light_sleep_start();
+    }
+    LOGD(LogTag::SENSOR, "Sensor measurement wait complete");
   }
 
   if (result != 0)

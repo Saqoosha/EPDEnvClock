@@ -7,7 +7,7 @@ constexpr uint8_t SENSOR_I2C_SCL_PIN = 20;
 
 bool SensorManager_Begin(bool wakeFromSleep);
 void SensorManager_Read();
-bool SensorManager_ReadBlocking(unsigned long timeoutMs = 10000);
+bool SensorManager_ReadBlocking(unsigned long timeoutMs = 10000, bool keepWifiAlive = false);
 bool SensorManager_IsInitialized();
 float SensorManager_GetTemperature();
 float SensorManager_GetHumidity();
