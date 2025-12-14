@@ -36,7 +36,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 ### Power Management
 
 - **Deep Sleep**: Enters Deep Sleep at approximately 1-minute intervals to minimize current consumption
-- **Light Sleep**: Uses Light Sleep during 5-second sensor measurement wait to reduce power consumption
+- **Dual-Core Parallel Processing**: WiFi/NTP sync and sensor reading run simultaneously on separate cores
 - **EPD Deep Sleep**: Display enters Deep Sleep mode to reduce power consumption
 - **Frame Buffer Persistence**: Saves frame buffer to SD card or SPIFFS fallback, restores on wake
 - **SD Card Power Control**: Powers off SD card during Deep Sleep to reduce current consumption
@@ -340,6 +340,7 @@ See [docs/README_IMAGEBW.md](./docs/README_IMAGEBW.md) for details.
 EPDEnvClock/
 ├── EPDEnvClock/                  # Arduino/Firmware code (sketch directory)
 │   ├── EPDEnvClock.ino          # Main sketch (setup/loop)
+│   ├── parallel_tasks.*         # Dual-core parallel WiFi/NTP + sensor reading
 │   ├── EPD.h / EPD.cpp          # Low-level EPD driver
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD initialization
 │   ├── spi.h / spi.cpp          # Bit-banging SPI for EPD
@@ -433,17 +434,18 @@ See **[Battery Discharge Report](./docs/BATTERY_REPORT.md)** for detailed analys
 ### Deep Sleep Cycle
 
 - **Update Interval**: ~1 minute (updates at minute boundary)
-- **Active Time**: ~6-8 seconds (5s sensor measurement + display update + initialization)
+- **Active Time**: ~6-8 seconds (parallel WiFi/NTP + sensor measurement + display update)
 - **Deep Sleep Time**: ~52-54 seconds
 - **Wi-Fi Connection**: At the top of every hour for NTP sync
 
 ### Power Optimization
 
-1. **Light Sleep During Sensor Measurement**: Uses Light Sleep during 5-second Single-Shot measurement wait
-2. **Minimized Wi-Fi Connection**: NTP sync once per hour, uses RTC time otherwise
-3. **SD Card Power Control**: Powers off SD card during Deep Sleep (GPIO 42 LOW)
-4. **EPD Deep Sleep**: Transitions display to Deep Sleep mode
-5. **I2C Pins Held HIGH**: Keeps sensor in idle mode during deep sleep
+1. **Dual-Core Parallel Processing**: WiFi/NTP (Core 0) and sensor reading (Core 1) run simultaneously, reducing active time by ~2-3 seconds
+2. **Single Screen Update**: Both time and sensor data are ready before display update, eliminating intermediate refresh
+3. **Minimized Wi-Fi Connection**: NTP sync once per hour, uses RTC time otherwise
+4. **SD Card Power Control**: Powers off SD card during Deep Sleep (GPIO 42 LOW)
+5. **EPD Deep Sleep**: Transitions display to Deep Sleep mode
+6. **I2C Pins Held HIGH**: Keeps sensor in idle mode during deep sleep
 
 ## 🎨 Font Generation
 

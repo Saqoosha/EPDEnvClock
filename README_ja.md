@@ -36,7 +36,7 @@ EPDEnvClockは、CrowPanel ESP32-S3 E-Paper 5.79インチディスプレイ（79
 ### 省電力機能
 
 - **Deep Sleep**: 約1分間隔でDeep Sleepに入り、消費電流を最小化
-- **Light Sleep**: センサー測定待機中（約5秒）はLight Sleepで消費電力を削減
+- **デュアルコア並列処理**: WiFi/NTP同期とセンサー読み取りを別々のコアで同時実行
 - **EPD Deep Sleep**: ディスプレイもDeep Sleepモードに入り、電力消費を削減
 - **フレームバッファ保存**: SDカードまたはSPIFFSにフレームバッファを保存し、起動時に復元
 - **SDカード電源制御**: Deep Sleep中はSDカードの電源をオフにして消費電流を削減
@@ -340,6 +340,7 @@ arduino-cli board list
 EPDEnvClock/
 ├── EPDEnvClock/                  # Arduino/Firmwareコード（スケッチディレクトリ）
 │   ├── EPDEnvClock.ino          # メインスケッチ（setup/loop）
+│   ├── parallel_tasks.*         # デュアルコア並列WiFi/NTP + センサー読み取り
 │   ├── EPD.h / EPD.cpp          # 低レベルEPDドライバ
 │   ├── EPD_Init.h / EPD_Init.cpp  # EPD初期化
 │   ├── spi.h / spi.cpp          # EPD用ビットバンギングSPI
@@ -433,17 +434,18 @@ bunx wrangler pages deploy dist --branch=main
 ### Deep Sleepサイクル
 
 - **更新間隔**: 約1分（毎分0秒に更新）
-- **動作時間**: 約6-8秒（センサー測定5秒 + 表示更新 + 初期化）
+- **動作時間**: 約6-8秒（並列WiFi/NTP + センサー測定 + 表示更新）
 - **Deep Sleep時間**: 約52-54秒
 - **Wi-Fi接続**: 毎時0分にNTP同期
 
 ### 省電力最適化
 
-1. **センサー測定中のLight Sleep**: Single-Shot測定の5秒待機中にLight Sleepを使用
-2. **Wi-Fi接続の最小化**: NTP同期は1時間ごと、それ以外はRTC時刻を使用
-3. **SDカード電源制御**: Deep Sleep中はSDカード電源をオフ（GPIO 42 LOW）
-4. **EPD Deep Sleep**: ディスプレイをDeep Sleepモードに移行
-5. **I2Cピンをハイに保持**: Deep Sleep中にセンサーをアイドルモードに保持
+1. **デュアルコア並列処理**: WiFi/NTP（コア0）とセンサー読み取り（コア1）を同時実行し、動作時間を約2-3秒短縮
+2. **1回の画面更新**: 時刻とセンサーデータの両方が揃ってから表示更新し、中間的な更新を排除
+3. **Wi-Fi接続の最小化**: NTP同期は1時間ごと、それ以外はRTC時刻を使用
+4. **SDカード電源制御**: Deep Sleep中はSDカード電源をオフ（GPIO 42 LOW）
+5. **EPD Deep Sleep**: ディスプレイをDeep Sleepモードに移行
+6. **I2Cピンをハイに保持**: Deep Sleep中にセンサーをアイドルモードに保持
 
 ## 🎨 フォント生成
 
