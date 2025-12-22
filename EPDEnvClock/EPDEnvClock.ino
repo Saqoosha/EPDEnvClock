@@ -1,5 +1,6 @@
 #include <SPI.h>
 #include <time.h>
+#include <sys/time.h>
 #include <WiFi.h>
 
 #include "display_manager.h"
@@ -188,7 +189,7 @@ void setup()
     LOGI("Setup", "Last sync was %d boots ago", rtcState.bootCount - rtcState.lastNtpSyncBootCount);
   }
 
-  // Show status before starting parallel tasks
+  // Show status before starting tasks
   if (needWifiSync)
   {
     DisplayManager_DrawSetupStatus("WiFi + Sensor...");
@@ -198,29 +199,90 @@ void setup()
     DisplayManager_DrawSetupStatus("Reading Sensor...");
   }
 
-  // Start parallel tasks: WiFi/NTP on Core 0, Sensor on Core 1
-  unsigned long parallelStartTime = millis();
-  ParallelTasks_StartWiFiAndSensor(wakeFromSleep, needWifiSync);
+  unsigned long taskStartTime = millis();
+  bool sensorReady = false;
 
-  // Wait for both tasks to complete (20 second timeout)
-  bool parallelSuccess = ParallelTasks_WaitForCompletion(20000);
-  unsigned long parallelDuration = millis() - parallelStartTime;
-
-  // Get results from parallel tasks
-  ParallelTaskResults &results = ParallelTasks_GetResults();
-  networkState = ParallelTasks_GetNetworkState();
-  sensorInitialized = results.sensorInitialized;
-
-  LOGI("Setup", "Parallel tasks completed in %lu ms (WiFi:%d, NTP:%d, Sensor:%d)",
-       parallelDuration,
-       results.wifiConnected ? 1 : 0,
-       results.ntpSynced ? 1 : 0,
-       results.sensorReady ? 1 : 0);
-
-  // Track if NTP synced this boot for drift calculation
-  if (results.ntpSynced && needWifiSync)
+  if (needWifiSync)
   {
-    ntpSyncedThisBoot = true;
+    // === WiFi sync needed: Use parallel processing (dual-core) ===
+    // Run WiFi/NTP sync and sensor reading in parallel
+    // This reduces startup time from ~18s to ~13s
+    LOGI("Setup", "Starting parallel tasks (WiFi + Sensor)");
+    ParallelTasks_StartWiFiAndSensor(wakeFromSleep, true);
+
+    // Wait for both tasks to complete (20 second timeout)
+    bool parallelSuccess = ParallelTasks_WaitForCompletion(20000);
+
+    // Get results from parallel tasks
+    ParallelTaskResults &results = ParallelTasks_GetResults();
+    networkState = ParallelTasks_GetNetworkState();
+    sensorInitialized = results.sensorInitialized;
+    sensorReady = results.sensorReady;
+
+    unsigned long taskDuration = millis() - taskStartTime;
+    LOGI("Setup", "Parallel tasks completed in %lu ms (WiFi:%d, NTP:%d, Sensor:%d)",
+         taskDuration,
+         results.wifiConnected ? 1 : 0,
+         results.ntpSynced ? 1 : 0,
+         results.sensorReady ? 1 : 0);
+
+    // Track if NTP synced this boot for drift calculation
+    if (results.ntpSynced)
+    {
+      ntpSyncedThisBoot = true;
+    }
+  }
+  else
+  {
+    // === WiFi sync NOT needed: Use single-core with light_sleep ===
+    // This saves power by using light_sleep during sensor measurement wait
+    // (~0.8mA vs ~20mA with delay())
+    LOGI("Setup", "Starting sensor-only task (with light_sleep)");
+
+    // Setup timezone and restore time from RTC
+    if (NetworkManager_SetupTimeFromRTC())
+    {
+      LOGI("Setup", "Time restored from RTC");
+    }
+    else
+    {
+      LOGW("Setup", "Failed to restore time from RTC");
+    }
+
+    // No WiFi connection - RTC maintains time
+    networkState.wifiConnected = false;
+    networkState.ntpSynced = true; // Assume still synced (RTC keeps time)
+    Logger_SetNtpSynced(true);
+
+    // Initialize and read sensor (single-core, uses light_sleep)
+    if (SensorManager_Begin(wakeFromSleep))
+    {
+      sensorInitialized = true;
+      LOGI(LogTag::SENSOR, "Sensor initialized");
+
+      // Read sensor with light_sleep (keepWifiAlive=false)
+      if (SensorManager_ReadBlocking(6000, false))
+      {
+        sensorReady = true;
+        LOGI(LogTag::SENSOR, "Sensor reading completed: T=%.1f, H=%.1f, CO2=%d",
+             SensorManager_GetTemperature(),
+             SensorManager_GetHumidity(),
+             SensorManager_GetCO2());
+      }
+      else
+      {
+        LOGW(LogTag::SENSOR, "Sensor reading failed");
+      }
+    }
+    else
+    {
+      sensorInitialized = false;
+      LOGW(LogTag::SENSOR, "Sensor initialization failed");
+    }
+
+    unsigned long taskDuration = millis() - taskStartTime;
+    LOGI("Setup", "Sensor-only task completed in %lu ms (Sensor:%d)",
+         taskDuration, sensorReady ? 1 : 0);
   }
 
   // Handle case where WiFi was skipped due to low battery
@@ -233,6 +295,54 @@ void setup()
 
   // Initialize sensor logger (after SD card is initialized by DeepSleepManager_Init)
   SensorLogger_Init();
+
+  // === Safety: Wait if minute hasn't changed yet (only after processing) ===
+  // This check happens AFTER parallel tasks complete, so processing time has elapsed.
+  // If we still haven't reached the next minute, wait briefly.
+  // Also capture the time at draw moment for adaptive timing adjustment (ms precision).
+  float delayAtDrawTime = 0.0f; // Seconds past minute boundary (with ms precision)
+  float waitedSeconds = 0.0f;   // How long we waited for minute to change
+  if (wakeFromSleep)
+  {
+    RTCState &rtcState = DeepSleepManager_GetRTCState();
+    struct tm timeinfo;
+    struct timeval tv;
+    if (getLocalTime(&timeinfo))
+    {
+      uint8_t currentMinute = timeinfo.tm_min;
+      if (currentMinute == rtcState.lastDisplayedMinute)
+      {
+        // Calculate exact milliseconds until next minute boundary
+        gettimeofday(&tv, NULL);
+        uint16_t currentMs = tv.tv_usec / 1000;
+        uint16_t msUntilNextMinute = (60 - timeinfo.tm_sec) * 1000 - currentMs;
+        waitedSeconds = msUntilNextMinute / 1000.0f; // Record wait time for adjustment
+        LOGI(LogTag::SETUP, "Still same minute (%d), waiting %d ms for next minute...",
+             currentMinute, msUntilNextMinute);
+        delay(msUntilNextMinute);
+        // Refresh time after waiting
+        if (getLocalTime(&timeinfo))
+        {
+          currentMinute = timeinfo.tm_min;
+        }
+        LOGI(LogTag::SETUP, "Minute changed to %d", currentMinute);
+      }
+      // Capture time with millisecond precision (right before display update)
+      gettimeofday(&tv, NULL);
+      delayAtDrawTime = (float)timeinfo.tm_sec + (float)(tv.tv_usec / 1000) / 1000.0f;
+    }
+  }
+  else
+  {
+    // Cold boot - also capture time
+    struct tm timeinfo;
+    struct timeval tv;
+    if (getLocalTime(&timeinfo))
+    {
+      gettimeofday(&tv, NULL);
+      delayAtDrawTime = (float)timeinfo.tm_sec + (float)(tv.tv_usec / 1000) / 1000.0f;
+    }
+  }
 
   // === Single Display Update ===
   // Now that both WiFi/NTP and sensor data are ready, update display once
@@ -249,8 +359,60 @@ void setup()
     LOGI(LogTag::DISPLAY_MGR, "EPD entered deep sleep");
   }
 
+  // === Adaptive Processing Time Adjustment ===
+  // Use delayAtDrawTime captured before display update for accurate measurement (ms precision)
+  // Only adjust when WiFi is NOT connected (NTP sync causes variable timing)
+  if (!networkState.wifiConnected)
+  {
+    RTCState &rtcState = DeepSleepManager_GetRTCState();
+    float estimated = rtcState.estimatedProcessingTime;
+
+    // Goal: draw as close to minute boundary as possible (delayAtDrawTime = 0)
+    // Use smoothing formula: next = current + error * 0.5
+    // - If we waited for minute change -> woke too early -> decrease est proportionally
+    // - If delayAtDrawTime > 0 -> still late -> increase est proportionally
+    if (waitedSeconds > 0.1f) // We had to wait more than 100ms
+    {
+      // We woke too early - decrease estimated time proportionally
+      float adjustment = waitedSeconds * 0.5f;
+      float newEstimated = estimated - adjustment;
+      LOGI(LogTag::SETUP, "Processing time adjusted: %.2f -> %.2f sec (waited %.2f sec)",
+           estimated, newEstimated, waitedSeconds);
+      rtcState.estimatedProcessingTime = newEstimated;
+    }
+    else if (delayAtDrawTime > 0.1f) // More than 100ms late
+    {
+      // Smoothing: move halfway towards target
+      // target = estimated + delayAtDrawTime (what we actually needed)
+      // new = estimated + (target - estimated) * 0.5 = estimated + delayAtDrawTime * 0.5
+      float adjustment = delayAtDrawTime * 0.5f;
+      float newEstimated = estimated + adjustment;
+      LOGI(LogTag::SETUP, "Processing time adjusted: %.2f -> %.2f sec (delay: %.2f sec)",
+           estimated, newEstimated, delayAtDrawTime);
+      rtcState.estimatedProcessingTime = newEstimated;
+    }
+    else
+    {
+      LOGD(LogTag::SETUP, "Processing time optimal: %.2f sec (delay: %.3f sec)", estimated, delayAtDrawTime);
+    }
+
+    // Clamp to reasonable range: 1 to 20 seconds
+    if (rtcState.estimatedProcessingTime < 1.0f)
+    {
+      rtcState.estimatedProcessingTime = 1.0f;
+    }
+    else if (rtcState.estimatedProcessingTime > 20.0f)
+    {
+      rtcState.estimatedProcessingTime = 20.0f;
+    }
+  }
+  else
+  {
+    LOGD(LogTag::SETUP, "Skipping processing time adjustment (WiFi connected)");
+  }
+
   // Log sensor values to JSONL file
-  if (results.sensorReady && SensorManager_IsInitialized())
+  if (sensorReady && SensorManager_IsInitialized())
   {
     struct tm timeinfo;
     if (getLocalTime(&timeinfo))

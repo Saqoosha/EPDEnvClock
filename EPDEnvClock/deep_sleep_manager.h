@@ -18,6 +18,7 @@ struct RTCState
   time_t savedTime = 0;              // Saved epoch time before sleep
   uint64_t sleepDurationUs = 0;      // Intended sleep duration
   time_t lastUploadedTime = 0;       // Timestamp of the last successfully uploaded data point
+  float estimatedProcessingTime = 5.0f; // Estimated boot-to-display time in seconds (adaptive, ms precision)
 };
 
 // Initialize deep sleep manager

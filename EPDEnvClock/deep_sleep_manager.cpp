@@ -114,6 +114,7 @@ void DeepSleepManager_Init()
     rtcState.imageSize = 0;
     rtcState.savedTime = 0;
     rtcState.sleepDurationUs = 0;
+    rtcState.estimatedProcessingTime = 5.0f; // Default 5 seconds
   }
   else
   {
@@ -203,19 +204,30 @@ uint64_t DeepSleepManager_CalculateSleepDuration()
   const uint8_t currentMinute = timeinfo.tm_min;
   const uint8_t currentSecond = timeinfo.tm_sec;
 
-  // Calculate seconds until next minute boundary
-  uint32_t secondsUntilNextMinute = 60 - currentSecond;
+  // Get current time with millisecond precision
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  float currentMs = (float)(tv.tv_usec / 1000); // Milliseconds part
 
-  // We want to wake up AFTER the minute changes, not before
-  // Example: at 23:56:05, sleep for 55 seconds, wake at 23:57:00
-  //          Then display shows 23:57 (correct!)
-  constexpr uint32_t kWakeupAfterBoundary = 0;
-  uint32_t sleepSeconds = secondsUntilNextMinute + kWakeupAfterBoundary;
+  // Calculate milliseconds until next minute boundary
+  float msUntilNextMinute = (60.0f - currentSecond) * 1000.0f - currentMs;
 
-  LOGD(LogTag::DEEPSLEEP, "Current time: %d:%02d:%02d, Sleeping for %u seconds",
-       timeinfo.tm_hour, currentMinute, currentSecond, sleepSeconds);
+  // Wake up early to account for processing time (boot to display update)
+  // This is adaptively adjusted based on actual measured delay
+  float processingTimeMs = rtcState.estimatedProcessingTime * 1000.0f;
 
-  return sleepSeconds * 1000000ULL; // Convert to microseconds
+  // Calculate sleep time in milliseconds, ensuring we don't go negative
+  float sleepMs = msUntilNextMinute - processingTimeMs;
+  if (sleepMs < 1000.0f)
+  {
+    // Very close to minute boundary, sleep minimal time
+    sleepMs = 1000.0f;
+  }
+
+  LOGD(LogTag::DEEPSLEEP, "Current time: %d:%02d:%02d.%03d, Sleeping for %.1f sec (est. processing: %.2f sec)",
+       timeinfo.tm_hour, currentMinute, currentSecond, (int)currentMs, sleepMs / 1000.0f, rtcState.estimatedProcessingTime);
+
+  return (uint64_t)(sleepMs * 1000.0f); // Convert milliseconds to microseconds
 }
 
 void DeepSleepManager_EnterDeepSleep()
