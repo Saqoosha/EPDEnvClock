@@ -160,6 +160,35 @@ This reduces startup time by ~2 seconds and enables single screen update (instea
 - Time saved to RTC memory before sleep, restored on wake
 - NTP sync at the top of every hour (when `tm_min == 0`)
 
+#### Time Restoration After Deep Sleep
+
+ESP32's system clock is lost during deep sleep. On wake, time is restored from RTC memory:
+
+```
+wakeup_time = saved_time + sleep_duration + boot_overhead
+```
+
+**Critical**: All calculations use microsecond precision (int64_t) to avoid truncation drift:
+- `savedTime` (seconds) + `savedTimeUs` (microseconds) stored separately
+- Integer division truncation caused ~1 second loss per cycle → ~1 minute/hour drift (fixed Dec 2025)
+
+#### Adaptive Sleep Duration
+
+Goal: Wake up and update display exactly at minute boundary (XX:XX:00).
+
+**Sleep calculation:**
+```cpp
+sleepMs = (ms until next minute) - estimatedProcessingTime
+```
+
+**Feedback loop** (runs when WiFi not connected):
+- If woke too early (had to wait for minute change): decrease `estimatedProcessingTime`
+- If woke too late (delay > 0.1s past boundary): increase `estimatedProcessingTime`
+- Smoothing factor: 0.5 (gradual adjustment)
+- Clamped to 1-20 seconds range
+
+**RTC Drift**: ESP32's internal 150kHz RC oscillator drifts ~170ms/minute (~10 sec/hour). This is normal and corrected by hourly NTP sync. The oscillator is auto-calibrated against the 40MHz crystal at boot.
+
 ### Sensor Reading
 
 - Single-shot mode: send 0x219d command, light sleep 5s, read result
