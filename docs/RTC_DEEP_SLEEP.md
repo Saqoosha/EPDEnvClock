@@ -201,6 +201,47 @@ Time restored: 2025-12-22 10:38:58.652 (boot overhead: 89 ms)
 | `EPDEnvClock.ino` | アダプティブ調整ロジック |
 | `network_manager.cpp` | NTP同期、ドリフト測定 |
 
+## 一時的な診断機能: 毎ブートNTPドリフト測定 (Dec 2025)
+
+### 概要
+
+RTC ドリフトを詳細に分析するため、毎ブートで WiFi 接続して NTP 時刻を取得し、
+システム時刻との差分（ドリフト）を測定する機能。
+
+**注意**: この機能は診断目的で、バッテリー消費が約50%増加する。
+分析完了後は無効化を検討すること。
+
+### 動作
+
+1. 毎ブートで WiFi 接続
+2. カスタム NTP 実装でミリ秒精度の時刻取得（システムクロック変更なし）
+3. ドリフト = NTP時刻 - システム時刻
+4. ドリフトをログに記録（`rtc_drift_ms`）
+5. 毎時0分のみシステムクロックを NTP で更新
+
+### ログ例
+
+```
+NTP drift measured: 743 ms (NTP: 1766379536.512, System: 1766379535.769)
+```
+
+### 無効化方法
+
+`EPDEnvClock.ino` で以下を変更:
+
+```cpp
+// 現在（毎ブートWiFi接続）
+bool measureDriftOnly = !needFullNtpSync;
+
+// 無効化（従来動作に戻す）
+bool measureDriftOnly = false;
+```
+
+### 実測値
+
+- RTC ドリフト: 約 170-200 ms/分 (10-12 秒/時間)
+- ESP32 内蔵 150kHz RC オシレーターの典型的なドリフト率
+
 ## 参考資料
 
 - [ESP32 Technical Reference Manual - RTC](https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf#page=591)

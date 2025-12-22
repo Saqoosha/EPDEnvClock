@@ -1,6 +1,7 @@
 #include "network_manager.h"
 
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <time.h>
 #include <esp_timer.h>
 
@@ -191,6 +192,84 @@ bool NetworkManager_SetupTimeFromRTC()
 
   LOGW(LogTag::NETWORK, "No RTC time available");
   return false;
+}
+
+int32_t NetworkManager_MeasureNtpDrift()
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    LOGW(LogTag::NETWORK, "Cannot measure NTP drift: WiFi not connected");
+    return INT32_MIN;
+  }
+
+  // Custom NTP implementation with millisecond precision
+  // NTP packet: 48 bytes, we read transmit timestamp from bytes 40-47
+  // Bytes 40-43: seconds since 1900-01-01
+  // Bytes 44-47: fractional seconds (2^32 = 1 second)
+  constexpr size_t NTP_PACKET_SIZE = 48;
+  constexpr uint32_t SEVENTY_YEARS = 2208988800UL; // 1970 - 1900 in seconds
+
+  WiFiUDP udp;
+  byte packet[NTP_PACKET_SIZE] = {0};
+
+  // NTP request header: LI=0, Version=3, Mode=3 (client)
+  packet[0] = 0xE3; // 11100011
+
+  udp.begin(123);
+  udp.beginPacket("ntp.nict.jp", 123);
+  udp.write(packet, NTP_PACKET_SIZE);
+  udp.endPacket();
+
+  // Wait for response (max 1 second)
+  unsigned long startWait = millis();
+  int packetSize = 0;
+  while (packetSize == 0 && millis() - startWait < 1000)
+  {
+    delay(10);
+    packetSize = udp.parsePacket();
+  }
+
+  if (packetSize < NTP_PACKET_SIZE)
+  {
+    LOGW(LogTag::NETWORK, "NTP drift measurement failed: no response (size=%d)", packetSize);
+    udp.stop();
+    return INT32_MIN;
+  }
+
+  // Capture system time immediately after receiving NTP response
+  struct timeval tvSystem;
+  gettimeofday(&tvSystem, NULL);
+
+  // Read NTP response
+  udp.read(packet, NTP_PACKET_SIZE);
+  udp.stop();
+
+  // Extract transmit timestamp (bytes 40-47)
+  uint32_t ntpSeconds = ((uint32_t)packet[40] << 24) | ((uint32_t)packet[41] << 16) |
+                        ((uint32_t)packet[42] << 8) | (uint32_t)packet[43];
+  uint32_t ntpFraction = ((uint32_t)packet[44] << 24) | ((uint32_t)packet[45] << 16) |
+                         ((uint32_t)packet[46] << 8) | (uint32_t)packet[47];
+
+  // Convert NTP time to Unix epoch (subtract 70 years)
+  time_t ntpUnixSec = ntpSeconds - SEVENTY_YEARS;
+
+  // Convert fractional part to milliseconds: fraction / 2^32 * 1000
+  uint32_t ntpMs = (uint32_t)(((uint64_t)ntpFraction * 1000) >> 32);
+
+  // System time
+  time_t systemSec = tvSystem.tv_sec;
+  uint32_t systemMs = tvSystem.tv_usec / 1000;
+
+  // Calculate drift in milliseconds (NTP - System)
+  // Positive = system is behind (slow), Negative = system is ahead (fast)
+  int64_t ntpTotalMs = (int64_t)ntpUnixSec * 1000 + ntpMs;
+  int64_t systemTotalMs = (int64_t)systemSec * 1000 + systemMs;
+  int32_t driftMs = (int32_t)(ntpTotalMs - systemTotalMs);
+
+  LOGI(LogTag::NETWORK, "NTP drift measured: %d ms (NTP: %ld.%03u, System: %ld.%03u)",
+       driftMs, (long)ntpUnixSec, ntpMs, (long)systemSec, systemMs);
+
+  return driftMs;
 }
 
 bool NetworkManager_SendBatchData(const String &payload)

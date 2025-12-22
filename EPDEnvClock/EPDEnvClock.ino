@@ -153,44 +153,56 @@ void setup()
   // Run WiFi/NTP sync and sensor reading in parallel using dual cores
   // This reduces startup time from ~18s to ~13s and enables single screen update
 
-  // Determine if WiFi sync is needed
-  bool needWifiSync = DeepSleepManager_ShouldSyncWiFiNtp();
+  // Determine if full NTP sync is needed (top of hour) vs drift measurement only
+  bool needFullNtpSync = DeepSleepManager_ShouldSyncWiFiNtp();
+
+  // TEMPORARY DIAGNOSTIC FEATURE (Dec 2025):
+  // Measure NTP drift every boot for RTC drift analysis.
+  // This increases battery consumption by ~50% due to WiFi every boot.
+  // To disable: set measureDriftOnly = false
+  // See docs/RTC_DEEP_SLEEP.md for details.
+  bool measureDriftOnly = !needFullNtpSync; // Measure drift when not doing full sync
+
   bool skipWifiDueToLowBattery = false;
 
-  if (needWifiSync)
+  // Check if battery allows WiFi connection
+  // Skip WiFi if battery voltage is low OR invalid (-1.0 means sensor error)
+  // Exception: allow WiFi when charging even if voltage is low
+  if ((g_batteryVoltage < 0.0f || g_batteryVoltage < kWifiMinBatteryVoltage) && !g_batteryCharging)
   {
-    LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
+    LOGW("Setup", "Skipping WiFi: %s (%.3fV)",
+         g_batteryVoltage < 0.0f ? "battery sensor error" : "low battery", g_batteryVoltage);
+    skipWifiDueToLowBattery = true;
+    needFullNtpSync = false;
+    measureDriftOnly = false;
 
-    // Skip WiFi if battery voltage is low OR invalid (-1.0 means sensor error)
-    // Exception: allow WiFi when charging even if voltage is low
-    if ((g_batteryVoltage < 0.0f || g_batteryVoltage < kWifiMinBatteryVoltage) && !g_batteryCharging)
+    // Setup timezone and restore time from RTC
+    if (NetworkManager_SetupTimeFromRTC())
     {
-      LOGW("Setup", "Skipping WiFi/NTP sync: %s (%.3fV)",
-           g_batteryVoltage < 0.0f ? "battery sensor error" : "low battery", g_batteryVoltage);
-      skipWifiDueToLowBattery = true;
-      needWifiSync = false;
-
-      // Setup timezone and restore time from RTC
-      if (NetworkManager_SetupTimeFromRTC())
-      {
-        LOGI("Setup", "Time restored from RTC after skipping WiFi");
-      }
-      else
-      {
-        LOGW("Setup", "Failed to restore time from RTC (WiFi skipped)");
-      }
+      LOGI("Setup", "Time restored from RTC after skipping WiFi");
+    }
+    else
+    {
+      LOGW("Setup", "Failed to restore time from RTC (WiFi skipped)");
     }
   }
   else
   {
-    // WiFi/NTP sync not needed (less than 1 hour since last sync)
-    LOGI("Setup", "Skipping WiFi/NTP sync (less than 1 hour since last sync)");
-    RTCState &rtcState = DeepSleepManager_GetRTCState();
-    LOGI("Setup", "Last sync was %d boots ago", rtcState.bootCount - rtcState.lastNtpSyncBootCount);
+    if (needFullNtpSync)
+    {
+      LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
+    }
+    else
+    {
+      LOGI("Setup", "WiFi for drift measurement (NTP sync not needed)");
+      RTCState &rtcState = DeepSleepManager_GetRTCState();
+      LOGI("Setup", "Last sync was %d boots ago", rtcState.bootCount - rtcState.lastNtpSyncBootCount);
+    }
   }
 
   // Show status before starting tasks
-  if (needWifiSync)
+  bool needWifi = needFullNtpSync || measureDriftOnly;
+  if (needWifi)
   {
     DisplayManager_DrawSetupStatus("WiFi + Sensor...");
   }
@@ -201,14 +213,16 @@ void setup()
 
   unsigned long taskStartTime = millis();
   bool sensorReady = false;
+  int32_t measuredDriftMs = 0;
+  bool driftMeasured = false;
 
-  if (needWifiSync)
+  if (needWifi)
   {
-    // === WiFi sync needed: Use parallel processing (dual-core) ===
-    // Run WiFi/NTP sync and sensor reading in parallel
-    // This reduces startup time from ~18s to ~13s
+    // === WiFi needed: Use parallel processing (dual-core) ===
+    // Run WiFi connection and sensor reading in parallel
+    // WiFi is used for either full NTP sync (top of hour) or drift measurement (other times)
     LOGI("Setup", "Starting parallel tasks (WiFi + Sensor)");
-    ParallelTasks_StartWiFiAndSensor(wakeFromSleep, true);
+    ParallelTasks_StartWiFiAndSensor(wakeFromSleep, needFullNtpSync, measureDriftOnly);
 
     // Wait for both tasks to complete (20 second timeout)
     bool parallelSuccess = ParallelTasks_WaitForCompletion(20000);
@@ -218,12 +232,15 @@ void setup()
     networkState = ParallelTasks_GetNetworkState();
     sensorInitialized = results.sensorInitialized;
     sensorReady = results.sensorReady;
+    driftMeasured = results.driftMeasured;
+    measuredDriftMs = results.ntpDriftMs;
 
     unsigned long taskDuration = millis() - taskStartTime;
-    LOGI("Setup", "Parallel tasks completed in %lu ms (WiFi:%d, NTP:%d, Sensor:%d)",
+    LOGI("Setup", "Parallel tasks completed in %lu ms (WiFi:%d, NTP:%d, Drift:%d ms, Sensor:%d)",
          taskDuration,
          results.wifiConnected ? 1 : 0,
          results.ntpSynced ? 1 : 0,
+         driftMeasured ? measuredDriftMs : 0,
          results.sensorReady ? 1 : 0);
 
     // Track if NTP synced this boot for drift calculation
@@ -234,10 +251,10 @@ void setup()
   }
   else
   {
-    // === WiFi sync NOT needed: Use single-core with light_sleep ===
+    // === No WiFi (low battery): Use single-core with light_sleep ===
     // This saves power by using light_sleep during sensor measurement wait
     // (~0.8mA vs ~20mA with delay())
-    LOGI("Setup", "Starting sensor-only task (with light_sleep)");
+    LOGI("Setup", "Starting sensor-only task (with light_sleep, no WiFi)");
 
     // Setup timezone and restore time from RTC
     if (NetworkManager_SetupTimeFromRTC())
@@ -251,8 +268,8 @@ void setup()
 
     // No WiFi connection - RTC maintains time
     networkState.wifiConnected = false;
-    networkState.ntpSynced = true; // Assume still synced (RTC keeps time)
-    Logger_SetNtpSynced(true);
+    networkState.ntpSynced = false;
+    Logger_SetNtpSynced(true); // RTC time is still valid
 
     // Initialize and read sensor (single-core, uses light_sleep)
     if (SensorManager_Begin(wakeFromSleep))
@@ -361,16 +378,28 @@ void setup()
 
   // === Adaptive Processing Time Adjustment ===
   // Use delayAtDrawTime captured before display update for accurate measurement (ms precision)
-  // Only adjust when WiFi is NOT connected (NTP sync causes variable timing)
-  if (!networkState.wifiConnected)
+  // Skip adjustment when full NTP sync happened (system clock was corrected, timing is different)
+  // But DO adjust when only measuring drift (system clock unchanged, timing is normal)
+  if (!ntpSyncedThisBoot)
   {
     RTCState &rtcState = DeepSleepManager_GetRTCState();
     float estimated = rtcState.estimatedProcessingTime;
 
-    // Goal: draw as close to minute boundary as possible (delayAtDrawTime = 0)
+    // Calculate actual delay considering measured NTP drift
+    // Drift = NTP time - System time
+    // Positive drift = system is behind (slow), so actual delay is larger
+    float actualDelayAtDrawTime = delayAtDrawTime;
+    if (driftMeasured)
+    {
+      actualDelayAtDrawTime += (float)measuredDriftMs / 1000.0f;
+      LOGD(LogTag::SETUP, "Delay corrected for drift: %.2f + %.2f = %.2f sec",
+           delayAtDrawTime, (float)measuredDriftMs / 1000.0f, actualDelayAtDrawTime);
+    }
+
+    // Goal: draw as close to minute boundary as possible (actualDelayAtDrawTime = 0)
     // Use smoothing formula: next = current + error * 0.5
     // - If we waited for minute change -> woke too early -> decrease est proportionally
-    // - If delayAtDrawTime > 0 -> still late -> increase est proportionally
+    // - If actualDelayAtDrawTime > 0 -> still late -> increase est proportionally
     if (waitedSeconds > 0.1f) // We had to wait more than 100ms
     {
       // We woke too early - decrease estimated time proportionally
@@ -380,20 +409,20 @@ void setup()
            estimated, newEstimated, waitedSeconds);
       rtcState.estimatedProcessingTime = newEstimated;
     }
-    else if (delayAtDrawTime > 0.1f) // More than 100ms late
+    else if (actualDelayAtDrawTime > 0.1f) // More than 100ms late (using drift-corrected delay)
     {
       // Smoothing: move halfway towards target
-      // target = estimated + delayAtDrawTime (what we actually needed)
-      // new = estimated + (target - estimated) * 0.5 = estimated + delayAtDrawTime * 0.5
-      float adjustment = delayAtDrawTime * 0.5f;
+      // target = estimated + actualDelayAtDrawTime (what we actually needed)
+      // new = estimated + (target - estimated) * 0.5 = estimated + actualDelayAtDrawTime * 0.5
+      float adjustment = actualDelayAtDrawTime * 0.5f;
       float newEstimated = estimated + adjustment;
-      LOGI(LogTag::SETUP, "Processing time adjusted: %.2f -> %.2f sec (delay: %.2f sec)",
-           estimated, newEstimated, delayAtDrawTime);
+      LOGI(LogTag::SETUP, "Processing time adjusted: %.2f -> %.2f sec (actual delay: %.2f sec)",
+           estimated, newEstimated, actualDelayAtDrawTime);
       rtcState.estimatedProcessingTime = newEstimated;
     }
     else
     {
-      LOGD(LogTag::SETUP, "Processing time optimal: %.2f sec (delay: %.3f sec)", estimated, delayAtDrawTime);
+      LOGD(LogTag::SETUP, "Processing time optimal: %.2f sec (actual delay: %.3f sec)", estimated, actualDelayAtDrawTime);
     }
 
     // Clamp to reasonable range: 1 to 20 seconds
@@ -408,7 +437,7 @@ void setup()
   }
   else
   {
-    LOGD(LogTag::SETUP, "Skipping processing time adjustment (WiFi connected)");
+    LOGD(LogTag::SETUP, "Skipping processing time adjustment (NTP synced this boot)");
   }
 
   // Log sensor values to JSONL file
@@ -421,9 +450,12 @@ void setup()
       time_t unixTimestamp;
       time(&unixTimestamp);
 
-      // Get RTC drift (only valid if NTP was synced this boot AND drift was successfully calculated)
-      int32_t rtcDriftMs = DeepSleepManager_GetLastRtcDriftMs();
-      bool driftValid = ntpSyncedThisBoot && DeepSleepManager_IsLastRtcDriftValid();
+      // Get RTC drift - now measured every boot (not just at hourly sync)
+      // measuredDriftMs and driftMeasured were set earlier by parallel tasks
+      // For hourly sync: drift is from DeepSleepManager (system clock was corrected)
+      // For drift-only measurement: drift is from NTPClient (system clock unchanged)
+      int32_t rtcDriftMs = measuredDriftMs;
+      bool driftValid = driftMeasured;
 
       float temp = SensorManager_GetTemperature();
       float humidity = SensorManager_GetHumidity();

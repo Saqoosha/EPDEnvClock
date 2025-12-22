@@ -7,7 +7,9 @@
 struct ParallelTaskResults {
   // WiFi/NTP results
   bool wifiConnected = false;
-  bool ntpSynced = false;
+  bool ntpSynced = false;           // True if system clock was updated via NTP
+  bool driftMeasured = false;       // True if drift was successfully measured
+  int32_t ntpDriftMs = 0;           // Measured drift in ms (NTP - system), valid only if driftMeasured=true
   unsigned long wifiConnectTime = 0;
   unsigned long ntpSyncTime = 0;
 
@@ -18,8 +20,9 @@ struct ParallelTaskResults {
 
 // Start parallel tasks for WiFi/NTP sync and sensor reading
 // - wakeFromSleep: true if waking from deep sleep (affects sensor init)
-// - needWifiSync: true if WiFi/NTP sync is needed (otherwise only sensor task runs)
-void ParallelTasks_StartWiFiAndSensor(bool wakeFromSleep, bool needWifiSync);
+// - needWifiSync: true if full NTP sync is needed (sets system clock)
+// - measureDriftOnly: true to measure drift without setting system clock (when needWifiSync=false but WiFi available)
+void ParallelTasks_StartWiFiAndSensor(bool wakeFromSleep, bool needWifiSync, bool measureDriftOnly = false);
 
 // Wait for both tasks to complete
 // Returns true if both completed, false on timeout

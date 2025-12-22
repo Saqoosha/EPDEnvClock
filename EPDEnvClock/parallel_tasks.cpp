@@ -30,6 +30,7 @@ NetworkState networkState;
 // Task parameters
 struct WifiTaskParams {
   bool needWifiSync;
+  bool measureDriftOnly;
 };
 
 struct SensorTaskParams {
@@ -43,31 +44,52 @@ SensorTaskParams sensorParams;
 void wifiNtpTask(void* pvParameters) {
   WifiTaskParams* params = static_cast<WifiTaskParams*>(pvParameters);
 
-  LOGI(LogTag::NETWORK, "WiFi/NTP task started on core %d", xPortGetCoreID());
+  LOGI(LogTag::NETWORK, "WiFi/NTP task started on core %d (sync=%d, measureOnly=%d)",
+       xPortGetCoreID(), params->needWifiSync, params->measureDriftOnly);
 
-  if (params->needWifiSync) {
+  bool wifiNeeded = params->needWifiSync || params->measureDriftOnly;
+
+  if (wifiNeeded) {
     // Connect WiFi
     if (NetworkManager_ConnectWiFi(networkState, nullptr)) {
       results.wifiConnected = true;
       results.wifiConnectTime = networkState.wifiConnectTime;
 
-      // Sync NTP
-      if (NetworkManager_SyncNtp(networkState, nullptr)) {
-        results.ntpSynced = true;
-        results.ntpSyncTime = networkState.ntpSyncTime;
-        DeepSleepManager_MarkNtpSynced();
-        Logger_SetNtpSynced(true);
-        LOGI(LogTag::NETWORK, "WiFi/NTP sync completed");
+      if (params->needWifiSync) {
+        // Full NTP sync mode: sync time AND measure drift
+        if (NetworkManager_SyncNtp(networkState, nullptr)) {
+          results.ntpSynced = true;
+          results.ntpSyncTime = networkState.ntpSyncTime;
+          results.driftMeasured = true;
+          results.ntpDriftMs = DeepSleepManager_GetLastRtcDriftMs();
+          DeepSleepManager_MarkNtpSynced();
+          Logger_SetNtpSynced(true);
+          LOGI(LogTag::NETWORK, "WiFi/NTP sync completed, drift: %d ms", results.ntpDriftMs);
+        } else {
+          results.ntpSynced = false;
+          Logger_SetNtpSynced(false);
+          LOGW(LogTag::NETWORK, "NTP sync failed");
+          // Setup timezone and restore time from RTC
+          NetworkManager_SetupTimeFromRTC();
+        }
       } else {
-        results.ntpSynced = false;
-        Logger_SetNtpSynced(false);
-        LOGW(LogTag::NETWORK, "NTP sync failed");
-        // Setup timezone and restore time from RTC
-        NetworkManager_SetupTimeFromRTC();
+        // Measure drift only mode: measure drift WITHOUT setting system clock
+        int32_t driftMs = NetworkManager_MeasureNtpDrift();
+        if (driftMs != INT32_MIN) {
+          results.driftMeasured = true;
+          results.ntpDriftMs = driftMs;
+          // Drift details already logged by NetworkManager_MeasureNtpDrift()
+        } else {
+          results.driftMeasured = false;
+          LOGW(LogTag::NETWORK, "NTP drift measurement failed");
+        }
+        results.ntpSynced = false;  // System clock was NOT updated
+        Logger_SetNtpSynced(true);  // But we still have valid RTC time
       }
     } else {
       results.wifiConnected = false;
       results.ntpSynced = false;
+      results.driftMeasured = false;
       LOGW(LogTag::NETWORK, "WiFi connection failed");
       // Setup timezone and restore time from RTC
       NetworkManager_SetupTimeFromRTC();
@@ -76,6 +98,7 @@ void wifiNtpTask(void* pvParameters) {
     // WiFi not needed, just mark as done
     results.wifiConnected = false;
     results.ntpSynced = true;  // Assume still synced from RTC
+    results.driftMeasured = false;
     Logger_SetNtpSynced(true);
     LOGI(LogTag::NETWORK, "WiFi sync skipped (using RTC time)");
   }
@@ -131,9 +154,9 @@ void sensorTask(void* pvParameters) {
 
 }  // namespace
 
-void ParallelTasks_StartWiFiAndSensor(bool wakeFromSleep, bool needWifiSync) {
-  LOGI(LogTag::SETUP, "Starting parallel tasks (wakeFromSleep=%d, needWifiSync=%d)",
-       wakeFromSleep, needWifiSync);
+void ParallelTasks_StartWiFiAndSensor(bool wakeFromSleep, bool needWifiSync, bool measureDriftOnly) {
+  LOGI(LogTag::SETUP, "Starting parallel tasks (wakeFromSleep=%d, needWifiSync=%d, measureDriftOnly=%d)",
+       wakeFromSleep, needWifiSync, measureDriftOnly);
 
   // Reset results
   results = ParallelTaskResults();
@@ -149,6 +172,7 @@ void ParallelTasks_StartWiFiAndSensor(bool wakeFromSleep, bool needWifiSync) {
 
   // Store parameters
   wifiParams.needWifiSync = needWifiSync;
+  wifiParams.measureDriftOnly = measureDriftOnly;
   sensorParams.wakeFromSleep = wakeFromSleep;
 
   // Create WiFi/NTP task on Core 0 (WiFi stack runs on Core 0)
