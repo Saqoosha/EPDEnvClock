@@ -174,13 +174,13 @@ uint16_t drawGlyphSequence(const uint8_t* glyphs, uint8_t count, uint16_t x, uin
     {
       float advance = getAdvancef(glyphs[i], size);
       float kern = getKerningf(glyphs[i], glyphs[i + 1], size);
-      LOGD(LogTag::FONT, "  [%d] glyph=%d, x=%d, adv=%.1f, kern=%.1f", i, glyphs[i], drawX, advance, kern);
+      // LOGD(LogTag::FONT, "  [%d] glyph=%d, x=%d, adv=%.1f, kern=%.1f", i, glyphs[i], drawX, advance, kern);
       currentX += advance + kern;
     }
     else // Last glyph
     {
       uint16_t bitmapWidth = getGlyphBitmapWidth(glyphs[i], size);
-      LOGD(LogTag::FONT, "  [%d] glyph=%d, x=%d, width=%d (last)", i, glyphs[i], drawX, bitmapWidth);
+      // LOGD(LogTag::FONT, "  [%d] glyph=%d, x=%d, width=%d (last)", i, glyphs[i], drawX, bitmapWidth);
       currentX += bitmapWidth;
     }
   }
