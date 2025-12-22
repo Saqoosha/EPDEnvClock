@@ -66,12 +66,15 @@ void restoreTimeFromRTC()
     int64_t currentTimeUs = esp_timer_get_time();
     int64_t bootOverheadUs = currentTimeUs; // Time since boot until now
 
-    // Calculate wakeup time: savedTime + sleepDuration + bootOverhead
-    time_t wakeupTime = rtcState.savedTime + (rtcState.sleepDurationUs / 1000000) + (bootOverheadUs / 1000000);
+    // Calculate wakeup time with microsecond precision to avoid truncation drift
+    // Previous bug: integer division caused up to 1 second loss per cycle,
+    // accumulating to ~1 minute per hour of drift
+    int64_t savedTimeUs = (int64_t)rtcState.savedTime * 1000000LL + rtcState.savedTimeUs;
+    int64_t wakeupTimeUs = savedTimeUs + (int64_t)rtcState.sleepDurationUs + bootOverheadUs;
 
     struct timeval tv;
-    tv.tv_sec = wakeupTime;
-    tv.tv_usec = 0;
+    tv.tv_sec = (time_t)(wakeupTimeUs / 1000000LL);
+    tv.tv_usec = (suseconds_t)(wakeupTimeUs % 1000000LL);
     settimeofday(&tv, NULL);
 
     // Re-apply timezone
@@ -79,10 +82,11 @@ void restoreTimeFromRTC()
     tzset();
 
     // ctime() includes newline, so we format manually
-    struct tm *timeinfo = localtime(&wakeupTime);
-    LOGI(LogTag::DEEPSLEEP, "Time restored: %04d-%02d-%02d %02d:%02d:%02d (boot overhead: %lld ms)",
+    struct tm *timeinfo = localtime(&tv.tv_sec);
+    LOGI(LogTag::DEEPSLEEP, "Time restored: %04d-%02d-%02d %02d:%02d:%02d.%03ld (boot overhead: %lld ms)",
          timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
          timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
+         tv.tv_usec / 1000,
          bootOverheadUs / 1000);
   }
 }
@@ -113,6 +117,7 @@ void DeepSleepManager_Init()
     rtcState.lastRtcDriftValid = false;
     rtcState.imageSize = 0;
     rtcState.savedTime = 0;
+    rtcState.savedTimeUs = 0;
     rtcState.sleepDurationUs = 0;
     rtcState.estimatedProcessingTime = 5.0f; // Default 5 seconds
   }
@@ -234,10 +239,12 @@ void DeepSleepManager_EnterDeepSleep()
 {
   uint64_t sleepDuration = DeepSleepManager_CalculateSleepDuration();
 
-  // Save current time and sleep duration to RTC
-  time_t now;
-  time(&now);
-  rtcState.savedTime = now;
+  // Save current time with microsecond precision and sleep duration to RTC
+  // This prevents truncation drift (~1 minute/hour) from integer division
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  rtcState.savedTime = tv.tv_sec;
+  rtcState.savedTimeUs = tv.tv_usec;
   rtcState.sleepDurationUs = sleepDuration;
 
   LOGI(LogTag::DEEPSLEEP, "Entering deep sleep for %llu seconds", sleepDuration / 1000000ULL);

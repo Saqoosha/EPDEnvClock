@@ -15,8 +15,9 @@ struct RTCState
   int32_t lastRtcDriftMs = 0;        // RTC drift in milliseconds (NTP time - RTC time) at last sync
   bool lastRtcDriftValid = false;    // True if lastRtcDriftMs contains valid measurement
   size_t imageSize = 0;              // Size of image data (uncompressed)
-  time_t savedTime = 0;              // Saved epoch time before sleep
-  uint64_t sleepDurationUs = 0;      // Intended sleep duration
+  time_t savedTime = 0;              // Saved epoch time before sleep (seconds)
+  int32_t savedTimeUs = 0;           // Saved epoch time microseconds part (0-999999)
+  uint64_t sleepDurationUs = 0;      // Intended sleep duration in microseconds
   time_t lastUploadedTime = 0;       // Timestamp of the last successfully uploaded data point
   float estimatedProcessingTime = 5.0f; // Estimated boot-to-display time in seconds (adaptive, ms precision)
 };
