@@ -187,7 +187,7 @@ sleepMs = (ms until next minute) - estimatedProcessingTime
 - Smoothing factor: 0.5 (gradual adjustment)
 - Clamped to 1-20 seconds range
 
-**RTC Drift**: ESP32's internal 150kHz RC oscillator drifts ~170ms/minute (~10 sec/hour). This is normal and corrected by hourly NTP sync. The oscillator is auto-calibrated against the 40MHz crystal at boot.
+**RTC Drift**: ESP32's internal 150kHz RC oscillator drifts ~180ms/minute (~10.8 sec/hour, measured Dec 2025). This is normal and corrected by hourly NTP sync. The oscillator is auto-calibrated against the 40MHz crystal at boot. Drift accumulates during deep sleep and is logged as `rtc_drift_ms` in sensor logs when WiFi connects.
 
 ### Sensor Reading
 

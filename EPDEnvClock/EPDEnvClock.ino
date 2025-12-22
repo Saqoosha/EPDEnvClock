@@ -159,9 +159,9 @@ void setup()
   // TEMPORARY DIAGNOSTIC FEATURE (Dec 2025):
   // Measure NTP drift every boot for RTC drift analysis.
   // This increases battery consumption by ~50% due to WiFi every boot.
-  // To disable: set measureDriftOnly = false
+  // To enable: set measureDriftOnly = !needFullNtpSync
   // See docs/RTC_DEEP_SLEEP.md for details.
-  bool measureDriftOnly = !needFullNtpSync; // Measure drift when not doing full sync
+  bool measureDriftOnly = false; // Disabled - only sync hourly to save battery
 
   bool skipWifiDueToLowBattery = false;
 

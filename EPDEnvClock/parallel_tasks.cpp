@@ -60,9 +60,9 @@ void wifiNtpTask(void* pvParameters) {
         if (NetworkManager_SyncNtp(networkState, nullptr)) {
           results.ntpSynced = true;
           results.ntpSyncTime = networkState.ntpSyncTime;
+          DeepSleepManager_MarkNtpSynced();  // Calculate drift first
           results.driftMeasured = true;
-          results.ntpDriftMs = DeepSleepManager_GetLastRtcDriftMs();
-          DeepSleepManager_MarkNtpSynced();
+          results.ntpDriftMs = DeepSleepManager_GetLastRtcDriftMs();  // Then get the value
           Logger_SetNtpSynced(true);
           LOGI(LogTag::NETWORK, "WiFi/NTP sync completed, drift: %d ms", results.ntpDriftMs);
         } else {

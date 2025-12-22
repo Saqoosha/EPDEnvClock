@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <esp_sleep.h>
 #include <esp_timer.h>
+#include <esp32/clk.h>
 #include <time.h>
 #include <SPI.h>
 #include <SPIFFS.h>
@@ -102,6 +103,14 @@ void DeepSleepManager_Init()
 
   // Increment boot count on each wake
   rtcState.bootCount++;
+
+  // Log RTC slow clock calibration value
+  // The calibration value is the period of one RTC_SLOW_CLK cycle in Q13.19 fixed-point format
+  // ESP32 uses this to correct timer values, reducing raw oscillator error (~5%) to residual drift (~0.3%)
+  uint32_t cal = esp_clk_slowclk_cal_get();
+  float period_us = (float)cal / (1 << 19);  // Convert Q13.19 to float
+  float freq_khz = 1000.0f / period_us;  // Actual frequency in kHz
+  LOGD(LogTag::DEEPSLEEP, "RTC slow clock: %.2f kHz (period: %.3f us, cal: %u)", freq_khz, period_us, cal);
 
   // Validate RTC state
   if (rtcState.magic != 0xDEADBEEF)
@@ -303,14 +312,34 @@ bool DeepSleepManager_ShouldSyncWiFiNtp()
     return true;
   }
 
-  // Sync at the top of every hour (when minutes == 0)
-  // This ensures NTP sync happens at 3:00, 4:00, etc.
+  // Sync at the top of every hour
+  // Use lastDisplayedMinute to detect hour boundary crossing:
+  // - Device wakes at XX:59:53 to update display at XX+1:00:00
+  // - At wake time, current minute is still 59
+  // - But lastDisplayedMinute is also 59, meaning we're about to cross to minute 0
+  // - If lastDisplayedMinute was 59 and we're waking for the next cycle, sync is needed
   time_t now;
   time(&now);
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
 
-  return (timeinfo.tm_min == 0);
+  // At the top of the hour (current minute is 0)
+  if (timeinfo.tm_min == 0)
+  {
+    return true;
+  }
+
+  // About to cross the hour boundary:
+  // Last displayed minute was 59, and we're at minute 59 again
+  // This means we're waking up to display minute 0
+  if (rtcState.lastDisplayedMinute == 59 && timeinfo.tm_min == 59)
+  {
+    LOGD(LogTag::DEEPSLEEP, "Hour boundary: last=%d, current=%d, triggering NTP sync",
+         rtcState.lastDisplayedMinute, timeinfo.tm_min);
+    return true;
+  }
+
+  return false;
 }
 
 void DeepSleepManager_SaveRtcTimeBeforeSync()

@@ -76,63 +76,101 @@ bool NetworkManager_ConnectWiFi(NetworkState &state, StatusCallback statusCallba
 
 bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
 {
-  constexpr const char *ntpServer = "ntp.nict.jp";
-  constexpr long gmtOffset_sec = 9 * 3600;
-  constexpr int daylightOffset_sec = 0;
+  constexpr long gmtOffset_sec = 9 * 3600; // JST = UTC+9
 
   updateStatus(statusCallback, "Syncing NTP...");
 
-  const unsigned long startTime = millis();
-
   // Save RTC time immediately before NTP sync to measure accurate drift
-  // (not including WiFi connection time)
   DeepSleepManager_SaveRtcTimeBeforeSync();
 
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  const unsigned long startTime = millis();
 
-  LOGD(LogTag::NETWORK, "Waiting for NTP time sync");
-  struct tm timeinfo;
-  int attempts = 0;
-  while (!getLocalTime(&timeinfo) && attempts < 10)
+  // === Custom NTP implementation (same as MeasureNtpDrift but also sets time) ===
+  constexpr size_t NTP_PACKET_SIZE = 48;
+  constexpr uint32_t SEVENTY_YEARS = 2208988800UL; // 1970 - 1900 in seconds
+
+  WiFiUDP udp;
+  byte packet[NTP_PACKET_SIZE] = {0};
+
+  // NTP request header: LI=0, Version=3, Mode=3 (client)
+  packet[0] = 0xE3; // 11100011
+
+  udp.begin(123);
+  udp.beginPacket("ntp.nict.jp", 123);
+  udp.write(packet, NTP_PACKET_SIZE);
+  udp.endPacket();
+
+  // Wait for response (max 2 seconds)
+  unsigned long startWait = millis();
+  int packetSize = 0;
+  while (packetSize == 0 && millis() - startWait < 2000)
   {
-    LOGD(LogTag::NETWORK, ".");
-    delay(1000);
-    attempts++;
+    delay(10);
+    packetSize = udp.parsePacket();
 
-    char statusMsg[48];
-    snprintf(statusMsg, sizeof(statusMsg), "NTP syncing... %d", attempts);
-    updateStatus(statusCallback, statusMsg);
+    // Update status periodically
+    if ((millis() - startWait) % 500 == 0)
+    {
+      char statusMsg[48];
+      snprintf(statusMsg, sizeof(statusMsg), "NTP syncing... %lums", millis() - startWait);
+      updateStatus(statusCallback, statusMsg);
+    }
   }
+
+  if (packetSize < NTP_PACKET_SIZE)
+  {
+    LOGW(LogTag::NETWORK, "NTP sync failed: no response (size=%d)", packetSize);
+    udp.stop();
+    state.ntpSynced = false;
+    state.ntpSyncTime = 0;
+    updateStatus(statusCallback, "NTP FAILED!");
+    delay(1000);
+    return false;
+  }
+
+  // Read response
+  udp.read(packet, NTP_PACKET_SIZE);
+  udp.stop();
+
+  // Extract transmit timestamp (bytes 40-47)
+  uint32_t ntpSeconds = (packet[40] << 24) | (packet[41] << 16) | (packet[42] << 8) | packet[43];
+  uint32_t ntpFraction = (packet[44] << 24) | (packet[45] << 16) | (packet[46] << 8) | packet[47];
+
+  // Convert to Unix timestamp and milliseconds
+  time_t unixSeconds = ntpSeconds - SEVENTY_YEARS;
+  uint32_t milliseconds = (uint32_t)(((uint64_t)ntpFraction * 1000) >> 32);
 
   const unsigned long syncTime = millis() - startTime;
 
-  if (attempts < 10)
-  {
-    state.ntpSynced = true;
-    state.ntpSyncTime = syncTime;
-    LOGI(LogTag::NETWORK, "Time synchronized!");
-    LOGI(LogTag::NETWORK, "Current time: %d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-    LOGD(LogTag::NETWORK, "NTP sync time: %lu ms", syncTime);
+  // Set system time
+  struct timeval tv;
+  tv.tv_sec = unixSeconds;
+  tv.tv_usec = milliseconds * 1000;
+  settimeofday(&tv, NULL);
 
-    // Save NTP sync duration to compensate for RTC drift calculation
-    // The RTC continues running during NTP sync wait time, so we need to account for it
-    DeepSleepManager_SaveNtpSyncDuration(syncTime);
+  // Set timezone
+  setenv("TZ", "JST-9", 1);
+  tzset();
 
-    char statusMsg[48];
-    snprintf(statusMsg, sizeof(statusMsg), "NTP OK! (%lums)", syncTime);
-    updateStatus(statusCallback, statusMsg);
-    delay(500);
-    return true;
-  }
+  // Save sync duration for drift calculation
+  DeepSleepManager_SaveNtpSyncDuration(syncTime);
 
-  state.ntpSynced = false;
-  state.ntpSyncTime = 0;
-  LOGW(LogTag::NETWORK, "NTP time sync failed!");
-  LOGD(LogTag::NETWORK, "NTP sync attempt time: %lu ms", syncTime);
+  // Get local time for logging
+  struct tm timeinfo;
+  getLocalTime(&timeinfo);
 
-  updateStatus(statusCallback, "NTP FAILED!");
-  delay(1000);
-  return false;
+  state.ntpSynced = true;
+  state.ntpSyncTime = syncTime;
+  LOGI(LogTag::NETWORK, "Time synchronized via custom NTP!");
+  LOGI(LogTag::NETWORK, "Current time: %d:%02d:%02d.%03u",
+       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, milliseconds);
+  LOGD(LogTag::NETWORK, "NTP sync time: %lu ms", syncTime);
+
+  char statusMsg[48];
+  snprintf(statusMsg, sizeof(statusMsg), "NTP OK! (%lums)", syncTime);
+  updateStatus(statusCallback, statusMsg);
+  delay(500);
+  return true;
 }
 
 bool NetworkManager_CheckNtpResync(NetworkState &state, unsigned long intervalMs, StatusCallback statusCallback)
@@ -174,19 +212,21 @@ bool NetworkManager_SetupTimeFromRTC()
     int64_t currentTimeUs = esp_timer_get_time();
     int64_t bootOverheadUs = currentTimeUs; // Time since boot until now
 
-    // Calculate wakeup time: savedTime + sleepDuration + bootOverhead
-    time_t wakeupTime = rtcState.savedTime + (rtcState.sleepDurationUs / 1000000) + (bootOverheadUs / 1000000);
+    // Calculate wakeup time with microsecond precision to avoid truncation drift
+    // (same calculation as restoreTimeFromRTC() in deep_sleep_manager.cpp)
+    int64_t savedTimeUs = (int64_t)rtcState.savedTime * 1000000LL + rtcState.savedTimeUs;
+    int64_t wakeupTimeUs = savedTimeUs + (int64_t)rtcState.sleepDurationUs + bootOverheadUs;
 
     struct timeval tv;
-    tv.tv_sec = wakeupTime;
-    tv.tv_usec = 0;
+    tv.tv_sec = (time_t)(wakeupTimeUs / 1000000LL);
+    tv.tv_usec = (suseconds_t)(wakeupTimeUs % 1000000LL);
     settimeofday(&tv, NULL);
 
     // Re-apply timezone
     setenv("TZ", "JST-9", 1);
     tzset();
 
-    LOGI(LogTag::NETWORK, "Time restored from RTC: %lu", (unsigned long)wakeupTime);
+    LOGI(LogTag::NETWORK, "Time restored from RTC: %lu.%03lu", (unsigned long)tv.tv_sec, (unsigned long)(tv.tv_usec / 1000));
     return true;
   }
 
