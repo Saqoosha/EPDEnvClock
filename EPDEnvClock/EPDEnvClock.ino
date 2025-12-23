@@ -219,6 +219,7 @@ void setup()
   bool sensorReady = false;
   int32_t measuredDriftMs = 0;
   bool driftMeasured = false;
+  int64_t measuredCumulativeCompMs = 0;  // Cumulative compensation before NTP reset
 
   if (needWifi)
   {
@@ -238,6 +239,7 @@ void setup()
     sensorReady = results.sensorReady;
     driftMeasured = results.driftMeasured;
     measuredDriftMs = results.ntpDriftMs;
+    measuredCumulativeCompMs = results.cumulativeCompMs;
 
     unsigned long taskDuration = millis() - taskStartTime;
     LOGI("Setup", "Parallel tasks completed in %lu ms (WiFi:%d, NTP:%d, Drift:%d ms, Sensor:%d)",
@@ -461,9 +463,9 @@ void setup()
       int32_t rtcDriftMs = measuredDriftMs;
       bool driftValid = driftMeasured;
 
-      // Get cumulative compensation and drift rate for analysis
+      // Get cumulative compensation (saved before MarkNtpSynced reset) and current drift rate
       RTCState &logRtcState = DeepSleepManager_GetRTCState();
-      int64_t cumulativeCompMs = logRtcState.cumulativeCompensationMs;
+      int64_t cumulativeCompMs = measuredCumulativeCompMs;
       float driftRateMsPerMin = logRtcState.driftRateMsPerMin;
 
       float temp = SensorManager_GetTemperature();

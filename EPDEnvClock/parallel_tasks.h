@@ -10,6 +10,7 @@ struct ParallelTaskResults {
   bool ntpSynced = false;           // True if system clock was updated via NTP
   bool driftMeasured = false;       // True if drift was successfully measured
   int32_t ntpDriftMs = 0;           // Measured drift in ms (NTP - system), valid only if driftMeasured=true
+  int64_t cumulativeCompMs = 0;     // Cumulative compensation applied before NTP sync (for logging)
   unsigned long wifiConnectTime = 0;
   unsigned long ntpSyncTime = 0;
 

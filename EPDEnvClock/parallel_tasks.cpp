@@ -60,11 +60,15 @@ void wifiNtpTask(void* pvParameters) {
         if (NetworkManager_SyncNtp(networkState, nullptr)) {
           results.ntpSynced = true;
           results.ntpSyncTime = networkState.ntpSyncTime;
-          DeepSleepManager_MarkNtpSynced();  // Calculate drift first
+          // Save cumulative compensation BEFORE MarkNtpSynced resets it
+          RTCState &rtcState = DeepSleepManager_GetRTCState();
+          results.cumulativeCompMs = rtcState.cumulativeCompensationMs;
+          DeepSleepManager_MarkNtpSynced();  // Calculate drift (resets cumulativeCompensationMs)
           results.driftMeasured = true;
-          results.ntpDriftMs = DeepSleepManager_GetLastRtcDriftMs();  // Then get the value
+          results.ntpDriftMs = DeepSleepManager_GetLastRtcDriftMs();
           Logger_SetNtpSynced(true);
-          LOGI(LogTag::NETWORK, "WiFi/NTP sync completed, drift: %d ms", results.ntpDriftMs);
+          LOGI(LogTag::NETWORK, "WiFi/NTP sync completed, drift: %d ms, cumulative comp: %lld ms",
+               results.ntpDriftMs, results.cumulativeCompMs);
         } else {
           results.ntpSynced = false;
           Logger_SetNtpSynced(false);
