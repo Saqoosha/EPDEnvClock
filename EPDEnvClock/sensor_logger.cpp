@@ -39,12 +39,14 @@ void generateLogFilename(const struct tm &timeinfo, char *filename, size_t maxLe
 }
 
 // Format JSON line
-// If NTP synced this boot, includes rtc_drift_ms field
+// If NTP synced this boot, includes drift fields for analysis
 // batt_percent: linear percent (3.4V=0%, 4.2V=100%)
 // batt_max17048_percent: MAX17048 reported percent (for reference)
 void formatJSONLine(const struct tm &timeinfo,
                     time_t unixTimestamp,
                     int32_t rtcDriftMs,
+                    int64_t cumulativeCompensationMs,
+                    float driftRateMsPerMin,
                     bool ntpSynced,
                     float temperature,
                     float humidity,
@@ -84,13 +86,16 @@ void formatJSONLine(const struct tm &timeinfo,
 
   if (ntpSynced)
   {
-    // Include RTC drift when NTP was synced this boot
+    // Include drift fields for analysis when NTP was synced this boot
+    // true_drift = rtc_drift_ms + cumulative_compensation_ms
     snprintf(buffer, bufferSize,
-             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%s,\"batt_percent\":%s,\"batt_max17048_percent\":%s,\"batt_rate\":%s,\"charging\":%s}\n",
+             "{\"date\":\"%04d.%02d.%02d\",\"time\":\"%02d:%02d:%02d\",\"unixtimestamp\":%ld,\"rtc_drift_ms\":%d,\"cumulative_comp_ms\":%lld,\"drift_rate\":%.1f,\"temp\":%.1f,\"humidity\":%.1f,\"co2\":%u,\"batt_voltage\":%s,\"batt_percent\":%s,\"batt_max17048_percent\":%s,\"batt_rate\":%s,\"charging\":%s}\n",
              year, month, day,
              hour, minute, second,
              (long)unixTimestamp,
              rtcDriftMs,
+             (long long)cumulativeCompensationMs,
+             driftRateMsPerMin,
              temperature, humidity, co2,
              battVoltageStr, battPercentStr, battMax17048Str, battRateStr,
              batteryCharging ? "true" : "false");
@@ -150,6 +155,8 @@ bool SensorLogger_LogValues(
     const struct tm &timeinfo,
     time_t unixTimestamp,
     int32_t rtcDriftMs,
+    int64_t cumulativeCompensationMs,
+    float driftRateMsPerMin,
     bool ntpSynced,
     float temperature,
     float humidity,
@@ -176,9 +183,10 @@ bool SensorLogger_LogValues(
   char filename[kMaxFilenameLength];
   generateLogFilename(timeinfo, filename, sizeof(filename));
 
-  // Format JSON line (increased buffer for new field)
-  char jsonLine[384];
-  formatJSONLine(timeinfo, unixTimestamp, rtcDriftMs, ntpSynced, temperature, humidity, co2,
+  // Format JSON line (increased buffer for drift fields)
+  char jsonLine[448];
+  formatJSONLine(timeinfo, unixTimestamp, rtcDriftMs, cumulativeCompensationMs, driftRateMsPerMin,
+                 ntpSynced, temperature, humidity, co2,
                  batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate, batteryCharging,
                  jsonLine, sizeof(jsonLine));
 

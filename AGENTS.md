@@ -165,12 +165,29 @@ This reduces startup time by ~2 seconds and enables single screen update (instea
 ESP32's system clock is lost during deep sleep. On wake, time is restored from RTC memory:
 
 ```
-wakeup_time = saved_time + sleep_duration + boot_overhead
+wakeup_time = saved_time + sleep_duration + boot_overhead + drift_compensation
 ```
 
 **Critical**: All calculations use microsecond precision (int64_t) to avoid truncation drift:
 - `savedTime` (seconds) + `savedTimeUs` (microseconds) stored separately
 - Integer division truncation caused ~1 second loss per cycle → ~1 minute/hour drift (fixed Dec 2025)
+
+#### RTC Drift Compensation (Dec 2025)
+
+ESP32's internal 150kHz RC oscillator drifts ~170ms/minute (~10.2 sec/hour). This drift is now actively compensated:
+
+```cpp
+// In restoreTimeFromRTC()
+drift_compensation = sleep_minutes * driftRateMsPerMin * 1000;  // in microseconds
+wakeup_time += drift_compensation;
+```
+
+**Drift rate calibration:**
+- Default rate: 170 ms/min (measured on this device)
+- Calibrated hourly via NTP sync using true drift = residual + cumulative compensation
+- Exponential moving average (70% old + 30% new) for stability
+
+**Expected accuracy after compensation:** ~10ms/min residual error (vs ~170ms/min without)
 
 #### Adaptive Sleep Duration
 
@@ -181,13 +198,11 @@ Goal: Wake up and update display exactly at minute boundary (XX:XX:00).
 sleepMs = (ms until next minute) - estimatedProcessingTime
 ```
 
-**Feedback loop** (runs when WiFi not connected):
+**Feedback loop** (runs when NTP sync not performed):
 - If woke too early (had to wait for minute change): decrease `estimatedProcessingTime`
 - If woke too late (delay > 0.1s past boundary): increase `estimatedProcessingTime`
 - Smoothing factor: 0.5 (gradual adjustment)
 - Clamped to 1-20 seconds range
-
-**RTC Drift**: ESP32's internal 150kHz RC oscillator drifts ~180ms/minute (~10.8 sec/hour, measured Dec 2025). This is normal and corrected by hourly NTP sync. The oscillator is auto-calibrated against the 40MHz crystal at boot. Drift accumulates during deep sleep and is logged as `rtc_drift_ms` in sensor logs when WiFi connects.
 
 ### Sensor Reading
 

@@ -8,8 +8,10 @@ void SensorLogger_Init();
 
 // Log sensor values to JSONL file on SD card
 // Returns true if successful, false otherwise
-// rtcDriftMs: RTC drift in milliseconds from last NTP sync (0 if not synced this boot)
-// driftValid: true if rtcDriftMs contains a valid measurement
+// rtcDriftMs: RTC drift in milliseconds from last NTP sync (residual after compensation)
+// cumulativeCompensationMs: total drift compensation applied since last NTP sync
+// driftRateMsPerMin: current drift rate used for compensation (ms/min)
+// driftValid: true if drift values contain valid measurements
 // batteryPercent: linear battery percent (3.4V=0%, 4.2V=100%) - used for display
 // batteryMax17048Percent: MAX17048 reported percent - for reference/analysis
 // batteryChargeRate: battery charge/discharge rate in %/hr (positive=charging, negative=discharging)
@@ -18,6 +20,8 @@ bool SensorLogger_LogValues(
     const struct tm &timeinfo,
     time_t unixTimestamp,
     int32_t rtcDriftMs,
+    int64_t cumulativeCompensationMs,
+    float driftRateMsPerMin,
     bool driftValid,
     float temperature,
     float humidity,

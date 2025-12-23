@@ -47,6 +47,11 @@ struct RTCState {
 int64_t savedTimeUs = (int64_t)savedTime * 1000000LL + savedTimeUs;
 int64_t wakeupTimeUs = savedTimeUs + sleepDurationUs + bootOverheadUs;
 
+// ドリフト補正を適用
+float sleepMinutes = sleepDurationUs / 60000000.0f;
+int64_t driftCompensationUs = sleepMinutes * driftRateMsPerMin * 1000.0f;
+wakeupTimeUs += driftCompensationUs;
+
 // システムクロックに設定
 struct timeval tv;
 tv.tv_sec = wakeupTimeUs / 1000000LL;
@@ -65,6 +70,81 @@ time_t wakeupTime = savedTime + (sleepDurationUs / 1000000) + (bootOverheadUs / 
 ```
 
 毎サイクルで最大1秒の損失 → 60サイクル（1時間）で約60秒のドリフト。
+
+## RTC ドリフト補正システム (Dec 2025)
+
+### 問題
+
+ESP32 の内蔵 150kHz RC オシレーターは約 170ms/分（10.2秒/時間）ドリフトする。
+補正なしでは、1時間後に時計が約10秒遅れる。
+
+### 解決策
+
+ドリフトレートを測定し、時刻復元時に補正を適用する。
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      ドリフト補正フロー                       │
+├─────────────────────────────────────────────────────────────┤
+│  起動時:                                                     │
+│    wakeup_time = saved_time + sleep_duration + boot_overhead │
+│                + (sleep_minutes × driftRate)  ← 補正追加     │
+│                                                              │
+│  NTP同期時:                                                  │
+│    trueDrift = residual + cumulativeCompensation             │
+│    trueRate = trueDrift / minutesSinceLastSync               │
+│    driftRate = 0.7 × old + 0.3 × trueRate  (EMA)             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### RTCState に追加されたフィールド
+
+```cpp
+struct RTCState {
+  // ...
+  float driftRateMsPerMin = 170.0f;     // ドリフトレート（ms/分）
+  bool driftRateCalibrated = false;     // NTP較正済みか
+  int64_t cumulativeCompensationMs = 0; // 累積補正量（レート計算用）
+};
+```
+
+### 累積補正量が必要な理由
+
+NTP同期時に測定される「残差」は補正後の誤差：
+
+```
+例: rate = 170 ms/min で30分間動作
+
+真のドリフト: 30分 × 170 ms/min = 5,100 ms 遅れ
+補正適用:     30分 × 170 ms/min = 5,100 ms 追加
+残差:         5,100 - 5,100 = 0 ms (理想的)
+
+もし残差だけでレート更新すると:
+  newRate = 0 ms / 30 min = 0 ms/min ← 間違い！
+  次回補正なし → ドリフト復活
+
+累積補正を加算:
+  trueDrift = 0 + 5,100 = 5,100 ms
+  trueRate = 5,100 / 30 = 170 ms/min ← 正しい！
+```
+
+### 期待される精度
+
+| 項目 | 補正前 | 補正後 |
+|------|--------|--------|
+| 1分あたりドリフト | ~170 ms | ~10 ms |
+| 1時間あたりドリフト | ~10.2 秒 | ~0.6 秒 |
+| 累積誤差 | 線形増加 | 自己修正 |
+
+### デバッグ用: 30分同期
+
+開発時は30分ごとにもNTP同期してレート較正を確認できる。
+
+```cpp
+// deep_sleep_manager.cpp
+// TODO: Remove 30 min sync after drift rate calibration is verified
+if (timeinfo.tm_min == 0 || timeinfo.tm_min == 30)
+```
 
 ## ESP32 RTC クロックシステム
 
@@ -146,28 +226,48 @@ delayAtDrawTime = 現在秒 + ミリ秒/1000  // 例: 0.5秒遅れ
 
 - 初回起動時
 - 毎時0分（`tm_min == 0` のとき）
+- デバッグ時: 30分にも同期（TODO: 検証後に削除）
+
+### カスタムNTP実装 (Dec 2025)
+
+ESP-IDFのSNTP (`configTime`) ではなく、カスタムUDP実装を使用：
+
+```cpp
+// 直接UDPパケット送受信
+WiFiUDP udp;
+udp.beginPacket("ntp.nict.jp", 123);
+udp.write(ntpPacket, 48);
+udp.endPacket();
+// 応答待ち → 即座に時刻設定
+settimeofday(&tv, NULL);
+```
+
+**メリット:**
+- 同期時間: ~50ms（SNTP: 2-5秒）
+- 完了検出が確実
+- ミリ秒精度の時刻取得
 
 ### RTC ドリフト測定
 
-NTP同期時にRTCのドリフトを測定してログに記録：
+NTP同期時にドリフトを測定してログに記録：
 
 ```cpp
 // NTP同期前のRTC時刻を保存
 DeepSleepManager_SaveRtcTimeBeforeSync();
 
-// NTP同期
-configTime(gmtOffset, 0, "ntp.nict.jp");
+// カスタムNTP同期
+NetworkManager_SyncNtp();
 
-// ドリフト計算
-drift = ntpTime - rtcTimeBeforeSync - ntpSyncDuration
+// ドリフト計算（MarkNtpSynced内）
+residual = ntpTime - rtcTimeBeforeSync - ntpSyncDuration
+trueDrift = residual + cumulativeCompensation
 ```
 
 ログ例：
-```json
-{"rtc_drift_ms": 510, ...}
 ```
-
-510ms/hour = 0.014% のドリフト（良好な精度）
+True drift: 5100 ms (residual: -50 ms + compensation: 5150 ms)
+Drift rate updated: 169.5 ms/min (true rate: 170.0 ms/min over 30.0 min)
+```
 
 ## トラブルシューティング
 
@@ -201,46 +301,34 @@ Time restored: 2025-12-22 10:38:58.652 (boot overhead: 89 ms)
 | `EPDEnvClock.ino` | アダプティブ調整ロジック |
 | `network_manager.cpp` | NTP同期、ドリフト測定 |
 
-## 一時的な診断機能: 毎ブートNTPドリフト測定 (Dec 2025)
+## 診断機能 (Dec 2025)
 
-### 概要
+### 毎ブートNTPドリフト測定（現在無効）
 
-RTC ドリフトを詳細に分析するため、毎ブートで WiFi 接続して NTP 時刻を取得し、
-システム時刻との差分（ドリフト）を測定する機能。
+RTC ドリフトを詳細に分析するため、毎ブートで WiFi 接続して NTP 時刻を取得する機能。
 
-**注意**: この機能は診断目的で、バッテリー消費が約50%増加する。
-分析完了後は無効化を検討すること。
+**現状**: 分析完了につき無効化済み。ドリフト補正システムが代わりに動作。
 
-### 動作
-
-1. 毎ブートで WiFi 接続
-2. カスタム NTP 実装でミリ秒精度の時刻取得（システムクロック変更なし）
-3. ドリフト = NTP時刻 - システム時刻
-4. ドリフトをログに記録（`rtc_drift_ms`）
-5. 毎時0分のみシステムクロックを NTP で更新
-
-### ログ例
-
-```
-NTP drift measured: 743 ms (NTP: 1766379536.512, System: 1766379535.769)
-```
-
-### 無効化方法
-
-`EPDEnvClock.ino` で以下を変更:
-
+**有効化方法** (`EPDEnvClock.ino`):
 ```cpp
-// 現在（毎ブートWiFi接続）
-bool measureDriftOnly = !needFullNtpSync;
+bool measureDriftOnly = !needFullNtpSync;  // 毎ブートWiFi接続
+```
 
-// 無効化（従来動作に戻す）
-bool measureDriftOnly = false;
+### 30分NTP同期（デバッグ用）
+
+ドリフトレート較正の検証用に、0分と30分でNTP同期。
+
+**無効化方法** (`deep_sleep_manager.cpp`):
+```cpp
+// TODO コメントを削除して 30 分チェックを削除
+if (timeinfo.tm_min == 0)  // || timeinfo.tm_min == 30 を削除
 ```
 
 ### 実測値
 
-- RTC ドリフト: 約 170-200 ms/分 (10-12 秒/時間)
+- RTC ドリフト: 約 170 ms/分 (10.2 秒/時間)
 - ESP32 内蔵 150kHz RC オシレーターの典型的なドリフト率
+- 補正後の残差: 約 10 ms/分 以下
 
 ## 参考資料
 

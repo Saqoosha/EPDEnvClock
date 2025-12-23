@@ -73,6 +73,17 @@ void restoreTimeFromRTC()
     int64_t savedTimeUs = (int64_t)rtcState.savedTime * 1000000LL + rtcState.savedTimeUs;
     int64_t wakeupTimeUs = savedTimeUs + (int64_t)rtcState.sleepDurationUs + bootOverheadUs;
 
+    // Apply RTC drift compensation
+    // RTC slow clock runs slower than nominal, causing time to fall behind
+    // Compensate by adding the expected drift based on sleep duration
+    float sleepMinutes = (float)rtcState.sleepDurationUs / 60000000.0f;
+    int64_t driftCompensationUs = (int64_t)(sleepMinutes * rtcState.driftRateMsPerMin * 1000.0f);
+    wakeupTimeUs += driftCompensationUs;
+
+    // Track cumulative compensation for accurate drift rate calculation
+    // This is reset when NTP sync occurs
+    rtcState.cumulativeCompensationMs += driftCompensationUs / 1000;
+
     struct timeval tv;
     tv.tv_sec = (time_t)(wakeupTimeUs / 1000000LL);
     tv.tv_usec = (suseconds_t)(wakeupTimeUs % 1000000LL);
@@ -84,11 +95,12 @@ void restoreTimeFromRTC()
 
     // ctime() includes newline, so we format manually
     struct tm *timeinfo = localtime(&tv.tv_sec);
-    LOGI(LogTag::DEEPSLEEP, "Time restored: %04d-%02d-%02d %02d:%02d:%02d.%03ld (boot overhead: %lld ms)",
+    LOGI(LogTag::DEEPSLEEP, "Time restored: %04d-%02d-%02d %02d:%02d:%02d.%03ld",
          timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
          timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
-         tv.tv_usec / 1000,
-         bootOverheadUs / 1000);
+         tv.tv_usec / 1000);
+    LOGD(LogTag::DEEPSLEEP, "Drift compensation: +%.0f ms (rate: %.1f ms/min, sleep: %.2f min, cumulative: %lld ms)",
+         driftCompensationUs / 1000.0f, rtcState.driftRateMsPerMin, sleepMinutes, rtcState.cumulativeCompensationMs);
   }
 }
 
@@ -312,30 +324,42 @@ bool DeepSleepManager_ShouldSyncWiFiNtp()
     return true;
   }
 
-  // Sync at the top of every hour
-  // Use lastDisplayedMinute to detect hour boundary crossing:
-  // - Device wakes at XX:59:53 to update display at XX+1:00:00
-  // - At wake time, current minute is still 59
-  // - But lastDisplayedMinute is also 59, meaning we're about to cross to minute 0
-  // - If lastDisplayedMinute was 59 and we're waking for the next cycle, sync is needed
   time_t now;
   time(&now);
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
 
-  // At the top of the hour (current minute is 0)
-  if (timeinfo.tm_min == 0)
+  uint8_t currentMinute = timeinfo.tm_min;
+  uint8_t lastMinute = rtcState.lastDisplayedMinute;
+
+  // Only sync when we're about to display a NEW sync-point minute (0 or 30)
+  // This prevents double-sync: if lastDisplayedMinute == currentMinute,
+  // we're waking early and will wait for minute change anyway
+  // TODO: Remove 30 min sync after drift rate calibration is verified
+  bool isSyncMinute = (currentMinute == 0 || currentMinute == 30);
+  bool isNewMinute = (lastMinute != currentMinute);
+
+  // Case 1: Current minute is sync minute AND it's a new minute to display
+  if (isSyncMinute && isNewMinute)
   {
+    LOGD(LogTag::DEEPSLEEP, "Sync minute: last=%d, current=%d, triggering NTP sync",
+         lastMinute, currentMinute);
     return true;
   }
 
-  // About to cross the hour boundary:
-  // Last displayed minute was 59, and we're at minute 59 again
-  // This means we're waking up to display minute 0
-  if (rtcState.lastDisplayedMinute == 59 && timeinfo.tm_min == 59)
+  // Case 2: About to cross to sync minute (woke early, waiting for minute change)
+  // lastDisplayedMinute is 59 or 29, current is same (hasn't rolled yet)
+  // After waiting, minute will be 0 or 30
+  if (lastMinute == 59 && currentMinute == 59)
   {
-    LOGD(LogTag::DEEPSLEEP, "Hour boundary: last=%d, current=%d, triggering NTP sync",
-         rtcState.lastDisplayedMinute, timeinfo.tm_min);
+    LOGD(LogTag::DEEPSLEEP, "Hour boundary approaching: last=%d, current=%d",
+         lastMinute, currentMinute);
+    return true;
+  }
+  if (lastMinute == 29 && currentMinute == 29)
+  {
+    LOGD(LogTag::DEEPSLEEP, "30min boundary approaching: last=%d, current=%d",
+         lastMinute, currentMinute);
     return true;
   }
 
@@ -362,6 +386,9 @@ void DeepSleepManager_MarkNtpSynced()
   // Get NTP time (after sync)
   struct timeval ntpTime;
   gettimeofday(&ntpTime, NULL);
+
+  // Save previous sync time for drift rate calculation
+  time_t previousNtpSyncTime = rtcState.lastNtpSyncTime;
   rtcState.lastNtpSyncTime = ntpTime.tv_sec;
 
   // Calculate drift in milliseconds (NTP time - RTC time)
@@ -382,8 +409,57 @@ void DeepSleepManager_MarkNtpSynced()
 
     rtcState.lastRtcDriftMs = (int32_t)actualDriftMs;
     rtcState.lastRtcDriftValid = true;
-    LOGI(LogTag::DEEPSLEEP, "NTP synced at boot %u, RTC drift: %d ms (raw: %lld ms, sync wait: %lu ms)",
+    LOGI(LogTag::DEEPSLEEP, "NTP synced at boot %u, residual drift: %d ms (raw: %lld ms, sync wait: %lu ms)",
          rtcState.bootCount, rtcState.lastRtcDriftMs, rawDriftMs, ntpSyncDurationMs);
+
+    // Update drift rate using exponential moving average
+    // This allows the compensation to adapt to temperature and device variations
+    if (previousNtpSyncTime > kMinValidTime)
+    {
+      float minutesSinceSync = (float)(ntpTime.tv_sec - previousNtpSyncTime) / 60.0f;
+      if (minutesSinceSync >= 1.0f)  // At least 1 minute elapsed
+      {
+        // Calculate TRUE drift rate by adding back the compensation we applied
+        // actualDriftMs is the residual error after compensation
+        // trueDrift = residual + cumulative compensation applied since last sync
+        int64_t trueDriftMs = actualDriftMs + rtcState.cumulativeCompensationMs;
+        float trueRate = (float)trueDriftMs / minutesSinceSync;
+
+        LOGI(LogTag::DEEPSLEEP, "True drift: %lld ms (residual: %lld ms + compensation: %lld ms)",
+             trueDriftMs, actualDriftMs, rtcState.cumulativeCompensationMs);
+
+        // Clamp true rate to reasonable range (50-300 ms/min)
+        // Typical ESP32 RTC drift is 100-200 ms/min
+        constexpr float kMinDriftRate = 50.0f;
+        constexpr float kMaxDriftRate = 300.0f;
+        float clampedRate = trueRate;
+        if (clampedRate < kMinDriftRate) clampedRate = kMinDriftRate;
+        if (clampedRate > kMaxDriftRate) clampedRate = kMaxDriftRate;
+
+        if (trueRate != clampedRate)
+        {
+          LOGW(LogTag::DEEPSLEEP, "True rate %.1f ms/min clamped to %.1f ms/min",
+               trueRate, clampedRate);
+        }
+
+        if (rtcState.driftRateCalibrated)
+        {
+          // Exponential moving average: 70% old, 30% new for stability
+          rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.7f + clampedRate * 0.3f;
+        }
+        else
+        {
+          // First calibration - use measured value directly
+          rtcState.driftRateMsPerMin = clampedRate;
+          rtcState.driftRateCalibrated = true;
+        }
+        LOGI(LogTag::DEEPSLEEP, "Drift rate updated: %.1f ms/min (true rate: %.1f ms/min over %.1f min)",
+             rtcState.driftRateMsPerMin, trueRate, minutesSinceSync);
+      }
+    }
+
+    // Reset cumulative compensation after NTP sync
+    rtcState.cumulativeCompensationMs = 0;
   }
   else
   {
@@ -404,6 +480,11 @@ bool DeepSleepManager_IsLastRtcDriftValid()
 int32_t DeepSleepManager_GetLastRtcDriftMs()
 {
   return rtcState.lastRtcDriftMs;
+}
+
+float DeepSleepManager_GetDriftRateMsPerMin()
+{
+  return rtcState.driftRateMsPerMin;
 }
 
 bool DeepSleepManager_SaveFrameBuffer(const uint8_t *buffer, size_t size)

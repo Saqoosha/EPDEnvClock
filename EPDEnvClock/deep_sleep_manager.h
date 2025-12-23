@@ -4,6 +4,11 @@
 #include <sys/time.h>
 
 // RTC memory structure to persist across deep sleep
+// Default RTC drift rate measured on this device (Dec 2025)
+// RTC slow clock runs at ~143.69 kHz instead of nominal 150 kHz
+// This causes time to fall behind by ~170ms per minute of deep sleep
+constexpr float kDefaultDriftRateMsPerMin = 170.0f;
+
 struct RTCState
 {
   uint32_t magic = 0xDEADBEEF; // Magic number to detect valid RTC data
@@ -20,6 +25,9 @@ struct RTCState
   uint64_t sleepDurationUs = 0;      // Intended sleep duration in microseconds
   time_t lastUploadedTime = 0;       // Timestamp of the last successfully uploaded data point
   float estimatedProcessingTime = 5.0f; // Estimated boot-to-display time in seconds (adaptive, ms precision)
+  float driftRateMsPerMin = kDefaultDriftRateMsPerMin; // Measured RTC drift rate (positive = slow, ms/min)
+  bool driftRateCalibrated = false;                    // True after first NTP sync calibrates the rate
+  int64_t cumulativeCompensationMs = 0;                // Cumulative drift compensation since last NTP sync (for rate calculation)
 };
 
 // Initialize deep sleep manager
@@ -59,6 +67,9 @@ int32_t DeepSleepManager_GetLastRtcDriftMs();
 
 // Check if the last RTC drift measurement is valid
 bool DeepSleepManager_IsLastRtcDriftValid();
+
+// Get current drift rate in ms/min (positive = RTC runs slow)
+float DeepSleepManager_GetDriftRateMsPerMin();
 
 // Save frame buffer to SD card (or SPIFFS if SD card not available)
 // Returns true if successful

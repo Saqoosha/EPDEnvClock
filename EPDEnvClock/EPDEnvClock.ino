@@ -190,13 +190,17 @@ void setup()
   {
     if (needFullNtpSync)
     {
-      LOGI("Setup", "WiFi/NTP sync needed (top of hour)");
+      LOGI("Setup", "WiFi/NTP sync needed (top of hour or 30min)");
+    }
+    else if (measureDriftOnly)
+    {
+      LOGI("Setup", "WiFi for drift measurement only");
+      RTCState &rtcState = DeepSleepManager_GetRTCState();
+      LOGI("Setup", "Last sync was %d boots ago", rtcState.bootCount - rtcState.lastNtpSyncBootCount);
     }
     else
     {
-      LOGI("Setup", "WiFi for drift measurement (NTP sync not needed)");
-      RTCState &rtcState = DeepSleepManager_GetRTCState();
-      LOGI("Setup", "Last sync was %d boots ago", rtcState.bootCount - rtcState.lastNtpSyncBootCount);
+      LOGI("Setup", "No WiFi needed, using RTC time");
     }
   }
 
@@ -457,6 +461,11 @@ void setup()
       int32_t rtcDriftMs = measuredDriftMs;
       bool driftValid = driftMeasured;
 
+      // Get cumulative compensation and drift rate for analysis
+      RTCState &logRtcState = DeepSleepManager_GetRTCState();
+      int64_t cumulativeCompMs = logRtcState.cumulativeCompensationMs;
+      float driftRateMsPerMin = logRtcState.driftRateMsPerMin;
+
       float temp = SensorManager_GetTemperature();
       float humidity = SensorManager_GetHumidity();
       uint16_t co2 = SensorManager_GetCO2();
@@ -466,7 +475,7 @@ void setup()
       float batteryChargeRate = g_batteryChargeRate;
       bool batteryCharging = g_batteryCharging;
 
-      if (SensorLogger_LogValues(timeinfo, unixTimestamp, rtcDriftMs, driftValid, temp, humidity, co2, batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate, batteryCharging))
+      if (SensorLogger_LogValues(timeinfo, unixTimestamp, rtcDriftMs, cumulativeCompMs, driftRateMsPerMin, driftValid, temp, humidity, co2, batteryVoltage, batteryPercent, batteryMax17048Percent, batteryChargeRate, batteryCharging))
       {
         LOGI(LogTag::SETUP, "Sensor values logged successfully");
       }
