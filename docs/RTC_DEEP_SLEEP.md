@@ -269,6 +269,20 @@ True drift: 5100 ms (residual: -50 ms + compensation: 5150 ms)
 Drift rate updated: 169.5 ms/min (true rate: 170.0 ms/min over 30.0 min)
 ```
 
+### センサーログに記録されるフィールド
+
+NTP同期時に以下がJSONLとD1に記録される：
+
+| フィールド | 説明 |
+|-----------|------|
+| `rtc_drift_ms` | 残差ドリフト（補正後の誤差） |
+| `cumulative_comp_ms` | 累積補正量（前回NTP以降に適用した補正の合計） |
+| `drift_rate` | 使用したドリフトレート（ms/分） |
+
+```json
+{"unixtimestamp":1766451000,"rtc_drift_ms":103,"cumulative_comp_ms":5100,"drift_rate":170.0,...}
+```
+
 ## トラブルシューティング
 
 ### 時計が1分/時間ズレる
@@ -328,7 +342,8 @@ if (timeinfo.tm_min == 0)  // || timeinfo.tm_min == 30 を削除
 
 - RTC ドリフト: 約 170 ms/分 (10.2 秒/時間)
 - ESP32 内蔵 150kHz RC オシレーターの典型的なドリフト率
-- 補正後の残差: 約 10 ms/分 以下
+- 補正後の残差: 約 100 ms/同期 以下（1時間あたり）
+- 温度依存性あり（高温ほどドリフトが大きい傾向）
 
 ## 参考資料
 

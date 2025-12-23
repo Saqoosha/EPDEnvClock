@@ -187,7 +187,12 @@ wakeup_time += drift_compensation;
 - Calibrated hourly via NTP sync using true drift = residual + cumulative compensation
 - Exponential moving average (70% old + 30% new) for stability
 
-**Expected accuracy after compensation:** ~10ms/min residual error (vs ~170ms/min without)
+**Expected accuracy after compensation:** ~100ms/hour residual error (vs ~10 sec/hour without)
+
+**Logged fields (NTP sync only):**
+- `rtc_drift_ms`: Residual drift after compensation
+- `cumulative_comp_ms`: Total compensation applied since last sync
+- `drift_rate`: Current drift rate used (ms/min)
 
 #### Adaptive Sleep Duration
 
@@ -314,7 +319,9 @@ The script uses `wrangler d1 execute` to query the D1 database. Authentication i
 - Config: `web/wrangler.toml`
 
 The script analyzes:
-- RTC drift values (after WiFi connection time fix)
+- RTC drift values and drift rate calibration
+- Cumulative compensation and residual error
 - Battery voltage trends and WiFi skip patterns
 - Sensor readings (temperature, humidity, CO2)
 - WiFi/NTP sync frequency vs battery voltage
+- Temperature vs drift rate correlation

@@ -41,7 +41,7 @@ Edit `secrets.h`:
 ### 3. Log file format (JSONL)
 
 ```json
-{"date":"2025.11.28","time":"12:00:00","unixtimestamp":1732780800,"temp":23.5,"humidity":45.0,"co2":650,"batt_voltage":4.2,"batt_percent":85.5,"batt_rate":-0.5}
+{"date":"2025.11.28","time":"12:00:00","unixtimestamp":1732780800,"rtc_drift_ms":103,"cumulative_comp_ms":5100,"drift_rate":170.0,"temp":23.5,"humidity":45.0,"co2":650,"batt_voltage":4.2,"batt_percent":85.5,"batt_rate":-0.5}
 {"date":"2025.11.28","time":"12:01:00","unixtimestamp":1732780860,"temp":23.6,"humidity":44.8,"co2":655,"batt_voltage":4.19,"batt_percent":85.3,"batt_rate":-0.5}
 ```
 
@@ -234,7 +234,9 @@ Batch (recommended for ESP32):
 - `batt_percent`: Battery percentage - linear model (3.4V=0%, 4.2V=100%) (optional)
 - `batt_max17048_percent`: Battery percentage - MAX17048 reported (optional, for reference)
 - `batt_rate`: Battery charge rate in %/hr (optional, positive=charging, negative=discharging)
-- `rtc_drift_ms`: RTC drift in milliseconds (optional, only when NTP synced)
+- `rtc_drift_ms`: RTC drift in milliseconds (optional, only when NTP synced) - residual after compensation
+- `cumulative_comp_ms`: Cumulative drift compensation applied since last NTP sync (optional)
+- `drift_rate`: Drift rate used for compensation in ms/min (optional)
 
 **Duplicate handling:**
 
