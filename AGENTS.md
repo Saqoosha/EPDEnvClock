@@ -184,7 +184,7 @@ wakeup_time += drift_compensation;
 
 **Drift rate calibration:**
 - Default rate: 170 ms/min (initial value)
-- Calibrated via NTP sync (every 30 min for debugging, hourly in production)
+- Calibrated via NTP sync (hourly at minute 0)
 - True drift = residual + cumulative compensation
 - Exponential moving average (70% old + 30% new) for stability
 - Clamped to 50-300 ms/min range

@@ -332,11 +332,10 @@ bool DeepSleepManager_ShouldSyncWiFiNtp()
   uint8_t currentMinute = timeinfo.tm_min;
   uint8_t lastMinute = rtcState.lastDisplayedMinute;
 
-  // Only sync when we're about to display a NEW sync-point minute (0 or 30)
+  // Only sync when we're about to display a NEW hour (minute == 0)
   // This prevents double-sync: if lastDisplayedMinute == currentMinute,
   // we're waking early and will wait for minute change anyway
-  // TODO: Remove 30 min sync after drift rate calibration is verified
-  bool isSyncMinute = (currentMinute == 0 || currentMinute == 30);
+  bool isSyncMinute = (currentMinute == 0);
   bool isNewMinute = (lastMinute != currentMinute);
 
   // Case 1: Current minute is sync minute AND it's a new minute to display
@@ -348,17 +347,11 @@ bool DeepSleepManager_ShouldSyncWiFiNtp()
   }
 
   // Case 2: About to cross to sync minute (woke early, waiting for minute change)
-  // lastDisplayedMinute is 59 or 29, current is same (hasn't rolled yet)
-  // After waiting, minute will be 0 or 30
+  // lastDisplayedMinute is 59, current is same (hasn't rolled yet)
+  // After waiting, minute will be 0
   if (lastMinute == 59 && currentMinute == 59)
   {
     LOGD(LogTag::DEEPSLEEP, "Hour boundary approaching: last=%d, current=%d",
-         lastMinute, currentMinute);
-    return true;
-  }
-  if (lastMinute == 29 && currentMinute == 29)
-  {
-    LOGD(LogTag::DEEPSLEEP, "30min boundary approaching: last=%d, current=%d",
          lastMinute, currentMinute);
     return true;
   }

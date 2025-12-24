@@ -136,14 +136,14 @@ NTP同期時に測定される「残差」は補正後の誤差：
 | 1時間あたりドリフト | ~10.2 秒 | ~0.6 秒 |
 | 累積誤差 | 線形増加 | 自己修正 |
 
-### デバッグ用: 30分同期
+### デバッグ用: 30分同期（無効化済み）
 
-開発時は30分ごとにもNTP同期してレート較正を確認できる。
+開発時に30分ごとにNTP同期してレート較正を確認した。
+温度依存性の観測完了後、毎時0分のみの同期に戻した（Dec 2025）。
 
 ```cpp
-// deep_sleep_manager.cpp
-// TODO: Remove 30 min sync after drift rate calibration is verified
-if (timeinfo.tm_min == 0 || timeinfo.tm_min == 30)
+// deep_sleep_manager.cpp - 現在のコード
+bool isSyncMinute = (currentMinute == 0);  // 毎時0分のみ
 ```
 
 ## ESP32 RTC クロックシステム
@@ -328,14 +328,13 @@ RTC ドリフトを詳細に分析するため、毎ブートで WiFi 接続し�
 bool measureDriftOnly = !needFullNtpSync;  // 毎ブートWiFi接続
 ```
 
-### 30分NTP同期（デバッグ用）
+### 30分NTP同期（無効化済み）
 
-ドリフトレート較正の検証用に、0分と30分でNTP同期。
+ドリフトレート較正の検証用に使用。温度依存性の観測完了後に無効化（Dec 2025）。
 
-**無効化方法** (`deep_sleep_manager.cpp`):
+**有効化方法** (`deep_sleep_manager.cpp`):
 ```cpp
-// TODO コメントを削除して 30 分チェックを削除
-if (timeinfo.tm_min == 0)  // || timeinfo.tm_min == 30 を削除
+bool isSyncMinute = (currentMinute == 0 || currentMinute == 30);
 ```
 
 ### 実測値
