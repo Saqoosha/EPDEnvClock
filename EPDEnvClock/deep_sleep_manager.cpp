@@ -36,6 +36,7 @@ SPIClass SD_SPI = SPIClass(HSPI);
 // SD card has much better write endurance than SPIFFS Flash memory
 constexpr char kFrameBufferFile[] = "/frame.bin";
 constexpr char kLastUploadedTimeFile[] = "/last_uploaded.txt";
+constexpr char kDriftRateFile[] = "/drift_rate.txt";
 
 bool sdCardAvailable = false;
 bool spiffsMounted = false;
@@ -199,6 +200,19 @@ void DeepSleepManager_Init()
     {
       rtcState.lastUploadedTime = storedTime;
       LOGI(LogTag::DEEPSLEEP, "Restored lastUploadedTime from storage: %ld", (long)storedTime);
+    }
+  }
+
+  // Restore driftRateMsPerMin from SD card if not calibrated in RTC memory
+  // This allows drift rate to persist across power cycles/reboots
+  if (!rtcState.driftRateCalibrated)
+  {
+    float storedRate = DeepSleepManager_LoadDriftRate();
+    if (storedRate > 0)
+    {
+      rtcState.driftRateMsPerMin = storedRate;
+      rtcState.driftRateCalibrated = true;
+      LOGI(LogTag::DEEPSLEEP, "Restored driftRate from storage: %.1f ms/min", storedRate);
     }
   }
 
@@ -448,6 +462,9 @@ void DeepSleepManager_MarkNtpSynced()
         }
         LOGI(LogTag::DEEPSLEEP, "Drift rate updated: %.1f ms/min (true rate: %.1f ms/min over %.1f min)",
              rtcState.driftRateMsPerMin, trueRate, minutesSinceSync);
+
+        // Save drift rate to SD card for persistence across power cycles
+        DeepSleepManager_SaveDriftRate(rtcState.driftRateMsPerMin);
       }
     }
 
@@ -827,4 +844,95 @@ time_t DeepSleepManager_LoadLastUploadedTime()
   }
 
   return timestamp;
+}
+
+void DeepSleepManager_SaveDriftRate(float driftRate)
+{
+  File file;
+  const char *storageType;
+
+  if (sdCardAvailable)
+  {
+    file = SD.open(kDriftRateFile, FILE_WRITE);
+    storageType = "SD card";
+  }
+  else if (spiffsMounted)
+  {
+    file = SPIFFS.open(kDriftRateFile, FILE_WRITE);
+    storageType = "SPIFFS";
+  }
+  else
+  {
+    LOGW(LogTag::DEEPSLEEP, "Cannot save driftRate: no storage available");
+    return;
+  }
+
+  if (!file)
+  {
+    LOGW(LogTag::DEEPSLEEP, "Failed to open driftRate file for writing on %s", storageType);
+    return;
+  }
+
+  file.printf("%.2f\n", driftRate);
+  file.close();
+  LOGD(LogTag::DEEPSLEEP, "Saved driftRate %.1f to %s", driftRate, storageType);
+}
+
+float DeepSleepManager_LoadDriftRate()
+{
+  File file;
+  const char *storageType;
+  bool fileExists = false;
+
+  if (sdCardAvailable)
+  {
+    fileExists = SD.exists(kDriftRateFile);
+    storageType = "SD card";
+  }
+  else if (spiffsMounted)
+  {
+    fileExists = SPIFFS.exists(kDriftRateFile);
+    storageType = "SPIFFS";
+  }
+  else
+  {
+    return 0;
+  }
+
+  if (!fileExists)
+  {
+    LOGD(LogTag::DEEPSLEEP, "driftRate file not found on %s", storageType);
+    return 0;
+  }
+
+  if (sdCardAvailable)
+  {
+    file = SD.open(kDriftRateFile, FILE_READ);
+  }
+  else if (spiffsMounted)
+  {
+    file = SPIFFS.open(kDriftRateFile, FILE_READ);
+  }
+  else
+  {
+    return 0;
+  }
+
+  if (!file)
+  {
+    LOGW(LogTag::DEEPSLEEP, "Failed to open driftRate file for reading on %s", storageType);
+    return 0;
+  }
+
+  String line = file.readStringUntil('\n');
+  file.close();
+
+  float driftRate = line.toFloat();
+
+  if (driftRate > 0)
+  {
+    LOGI(LogTag::DEEPSLEEP, "Loaded driftRate %.1f from %s", driftRate, storageType);
+  }
+
+  return driftRate;
 }

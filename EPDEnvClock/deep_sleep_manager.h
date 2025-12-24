@@ -104,3 +104,11 @@ void DeepSleepManager_SaveLastUploadedTime(time_t timestamp);
 // Load lastUploadedTime from SD card
 // Returns 0 if file doesn't exist or read fails
 time_t DeepSleepManager_LoadLastUploadedTime();
+
+// Save drift rate to SD card (persists across power cycles)
+// Call this after drift rate calibration via NTP sync
+void DeepSleepManager_SaveDriftRate(float driftRate);
+
+// Load drift rate from SD card
+// Returns 0 if file doesn't exist or read fails
+float DeepSleepManager_LoadDriftRate();
