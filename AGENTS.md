@@ -174,7 +174,7 @@ wakeup_time = saved_time + sleep_duration + boot_overhead + drift_compensation
 
 #### RTC Drift Compensation (Dec 2025)
 
-ESP32's internal 150kHz RC oscillator drifts ~170ms/minute (~10.2 sec/hour). This drift is now actively compensated:
+ESP32's internal 150kHz RC oscillator drifts at a temperature-dependent rate. This drift is now actively compensated:
 
 ```cpp
 // In restoreTimeFromRTC()
@@ -183,11 +183,19 @@ wakeup_time += drift_compensation;
 ```
 
 **Drift rate calibration:**
-- Default rate: 170 ms/min (measured on this device)
-- Calibrated hourly via NTP sync using true drift = residual + cumulative compensation
+- Default rate: 170 ms/min (initial value)
+- Calibrated via NTP sync (every 30 min for debugging, hourly in production)
+- True drift = residual + cumulative compensation
 - Exponential moving average (70% old + 30% new) for stability
+- Clamped to 50-300 ms/min range
 
-**Expected accuracy after compensation:** ~100ms/hour residual error (vs ~10 sec/hour without)
+**Temperature dependency (observed Dec 2025):**
+- Higher temperature → higher drift rate
+- ~22.7°C: 110-130 ms/min
+- ~21.3°C: 40-60 ms/min
+- EMA adapts automatically to temperature changes
+
+**Expected accuracy after compensation:** ~100ms residual per sync cycle
 
 **Logged fields (NTP sync only):**
 - `rtc_drift_ms`: Residual drift after compensation
