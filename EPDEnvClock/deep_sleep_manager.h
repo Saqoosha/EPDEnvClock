@@ -6,8 +6,9 @@
 // RTC memory structure to persist across deep sleep
 // Default RTC drift rate measured on this device (Dec 2025)
 // RTC slow clock runs at ~143.69 kHz instead of nominal 150 kHz
-// This causes time to fall behind by ~170ms per minute of deep sleep
-constexpr float kDefaultDriftRateMsPerMin = 170.0f;
+// This causes time to fall behind. Observed: ~28 ms/min at 20-22°C (Dec 2025)
+// Default is conservative; EMA will calibrate quickly, and value persists to SD card
+constexpr float kDefaultDriftRateMsPerMin = 50.0f;
 
 struct RTCState
 {
