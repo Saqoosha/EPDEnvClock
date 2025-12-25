@@ -183,19 +183,19 @@ wakeup_time += drift_compensation;
 ```
 
 **Drift rate calibration:**
-- Default rate: 170 ms/min (initial value)
+- Default rate: 50 ms/min (initial value)
 - Calibrated via NTP sync (hourly at minute 0)
 - True drift = residual + cumulative compensation
 - Exponential moving average (70% old + 30% new) for stability
-- Clamped to 50-300 ms/min range
+- Clamped to 20-300 ms/min range
+- **Persisted to SD card** (`/drift_rate.txt`) across power cycles
 
 **Temperature dependency (observed Dec 2025):**
-- Higher temperature → higher drift rate
-- ~22.7°C: 110-130 ms/min
-- ~21.3°C: 40-60 ms/min
+- Lower temperature → lower drift rate (at room temp)
+- ~20-22°C: 25-40 ms/min (observed 12/25)
 - EMA adapts automatically to temperature changes
 
-**Expected accuracy after compensation:** ~100ms residual per sync cycle
+**Expected accuracy after compensation:** ~1 second residual per sync cycle (mostly overcompensation when clamped)
 
 **Logged fields (NTP sync only):**
 - `rtc_drift_ms`: Residual drift after compensation
