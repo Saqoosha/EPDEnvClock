@@ -436,17 +436,17 @@ void DeepSleepManager_MarkNtpSynced()
              trueDriftMs, actualDriftMs, rtcState.cumulativeCompensationMs);
 
         // Clamp true rate to reasonable range (50-300 ms/min)
-        // ESP32-S3 RTC drift varies: observed 3-10 ms/min at 20-24°C (Dec 2025)
-        constexpr float kMinDriftRate = 5.0f;
-        constexpr float kMaxDriftRate = 300.0f;
+        // No clamping - let EMA handle smoothing
+        // ESP32-S3 observed: 3-10 ms/min at 20-24°C (Dec 2025)
         float clampedRate = trueRate;
-        if (clampedRate < kMinDriftRate) clampedRate = kMinDriftRate;
-        if (clampedRate > kMaxDriftRate) clampedRate = kMaxDriftRate;
-
-        if (trueRate != clampedRate)
-        {
-          LOGW(LogTag::DEEPSLEEP, "True rate %.1f ms/min clamped to %.1f ms/min",
-               trueRate, clampedRate);
+        
+        // Only clamp for safety against NaN/extreme values
+        if (isnan(clampedRate) || isinf(clampedRate)) {
+          LOGW(LogTag::DEEPSLEEP, "Invalid rate detected, keeping previous value");
+          clampedRate = rtcState.driftRateMsPerMin;
+        } else if (clampedRate < -100.0f || clampedRate > 500.0f) {
+          LOGW(LogTag::DEEPSLEEP, "Extreme rate %.1f ms/min, keeping previous value", trueRate);
+          clampedRate = rtcState.driftRateMsPerMin;
         }
 
         if (rtcState.driftRateCalibrated)
