@@ -436,8 +436,8 @@ void DeepSleepManager_MarkNtpSynced()
              trueDriftMs, actualDriftMs, rtcState.cumulativeCompensationMs);
 
         // Clamp true rate to reasonable range (50-300 ms/min)
-        // ESP32 RTC drift varies by temperature: ~28 ms/min at 20-22°C, ~100-200 ms/min at higher temps
-        constexpr float kMinDriftRate = 20.0f;
+        // ESP32-S3 RTC drift varies: observed 3-10 ms/min at 20-24°C (Dec 2025)
+        constexpr float kMinDriftRate = 5.0f;
         constexpr float kMaxDriftRate = 300.0f;
         float clampedRate = trueRate;
         if (clampedRate < kMinDriftRate) clampedRate = kMinDriftRate;
