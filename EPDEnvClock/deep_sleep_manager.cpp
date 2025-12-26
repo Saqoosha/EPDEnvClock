@@ -436,23 +436,28 @@ void DeepSleepManager_MarkNtpSynced()
              trueDriftMs, actualDriftMs, rtcState.cumulativeCompensationMs);
 
         // Clamp true rate to reasonable range (50-300 ms/min)
-        // No clamping - let EMA handle smoothing
+        // Clamp to reasonable range to prevent feedback instability
         // ESP32-S3 observed: 3-10 ms/min at 20-24°C (Dec 2025)
+        // Allow slight negative for measurement noise, but RTC typically runs slow
+        constexpr float kMinDriftRate = -10.0f;
+        constexpr float kMaxDriftRate = 100.0f;
         float clampedRate = trueRate;
         
-        // Only clamp for safety against NaN/extreme values
+        // Guard against NaN/inf
         if (isnan(clampedRate) || isinf(clampedRate)) {
           LOGW(LogTag::DEEPSLEEP, "Invalid rate detected, keeping previous value");
           clampedRate = rtcState.driftRateMsPerMin;
-        } else if (clampedRate < -100.0f || clampedRate > 500.0f) {
-          LOGW(LogTag::DEEPSLEEP, "Extreme rate %.1f ms/min, keeping previous value", trueRate);
-          clampedRate = rtcState.driftRateMsPerMin;
+        } else if (clampedRate < kMinDriftRate || clampedRate > kMaxDriftRate) {
+          float prevRate = clampedRate;
+          if (clampedRate < kMinDriftRate) clampedRate = kMinDriftRate;
+          if (clampedRate > kMaxDriftRate) clampedRate = kMaxDriftRate;
+          LOGW(LogTag::DEEPSLEEP, "Rate %.1f clamped to %.1f ms/min", prevRate, clampedRate);
         }
 
         if (rtcState.driftRateCalibrated)
         {
-          // Exponential moving average: 40% old, 60% new for faster convergence
-          rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.4f + clampedRate * 0.6f;
+          // Exponential moving average: 50% old, 50% new for balanced convergence
+          rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.5f + clampedRate * 0.5f;
         }
         else
         {
