@@ -451,8 +451,8 @@ void DeepSleepManager_MarkNtpSynced()
 
         if (rtcState.driftRateCalibrated)
         {
-          // Exponential moving average: 70% old, 30% new for stability
-          rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.7f + clampedRate * 0.3f;
+          // Exponential moving average: 40% old, 60% new for faster convergence
+          rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.4f + clampedRate * 0.6f;
         }
         else
         {
