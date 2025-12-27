@@ -169,6 +169,7 @@ wakeup_time = saved_time + sleep_duration + boot_overhead + drift_compensation
 ```
 
 **Critical**: All calculations use microsecond precision (int64_t) to avoid truncation drift:
+
 - `savedTime` (seconds) + `savedTimeUs` (microseconds) stored separately
 - Integer division truncation caused ~1 second loss per cycle → ~1 minute/hour drift (fixed Dec 2025)
 
@@ -183,6 +184,7 @@ wakeup_time += drift_compensation;
 ```
 
 **Drift rate calibration:**
+
 - Default rate: 50 ms/min (initial value)
 - Calibrated via NTP sync (hourly at minute 0)
 - True drift = residual + cumulative compensation
@@ -191,6 +193,7 @@ wakeup_time += drift_compensation;
 - **Persisted to SD card** (`/drift_rate.txt`) across power cycles
 
 **Temperature dependency (observed Dec 2025):**
+
 - Lower temperature → lower drift rate (at room temp)
 - ~20-22°C: 25-40 ms/min (observed 12/25)
 - EMA adapts automatically to temperature changes
@@ -198,6 +201,7 @@ wakeup_time += drift_compensation;
 **Expected accuracy after compensation:** ~1 second residual per sync cycle (mostly overcompensation when clamped)
 
 **Logged fields (NTP sync only):**
+
 - `rtc_drift_ms`: Residual drift after compensation
 - `cumulative_comp_ms`: Total compensation applied since last sync
 - `drift_rate`: Current drift rate used (ms/min)
@@ -207,11 +211,13 @@ wakeup_time += drift_compensation;
 Goal: Wake up and update display exactly at minute boundary (XX:XX:00).
 
 **Sleep calculation:**
+
 ```cpp
 sleepMs = (ms until next minute) - estimatedProcessingTime
 ```
 
 **Feedback loop** (runs when NTP sync not performed):
+
 - If woke too early (had to wait for minute change): decrease `estimatedProcessingTime`
 - If woke too late (delay > 0.1s past boundary): increase `estimatedProcessingTime`
 - Smoothing factor: 0.5 (gradual adjustment)
@@ -302,40 +308,46 @@ python3 scripts/analyze_data.py [hours]
 
 **Authentication Required:**
 
-The script uses `wrangler d1 execute` to query the D1 database. Either authentication method works:
+The script uses `wrangler d1 execute` to query the D1 database. Authentication methods:
 
-1. **Option 1: Cloudflare API Token via `.envrc`** (recommended, persistent)
-   - Create `.envrc` file in project root:
+1. **Option 1: CLOUDFLARE_API_TOKEN in `.env`** (recommended)
+   - Add to `.env` file in project root:
+
      ```bash
-     export CF_API_TOKEN='your-cloudflare-api-token'
+     CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
      ```
-   - Get token from: https://dash.cloudflare.com/profile/api-tokens
+
+   - Wrangler automatically reads `CLOUDFLARE_API_TOKEN` from environment
+   - Get token from: <https://dash.cloudflare.com/profile/api-tokens>
      - Required permissions: Account → D1 → Read
-   - Allow direnv (one-time): `direnv allow`
-   - Token is automatically loaded when entering project directory
-   - `.envrc` is gitignored (not committed)
+   - `.env` is gitignored (not committed)
 
 2. **Option 2: Wrangler Login** (session expires)
+
    ```bash
    cd web
    bunx wrangler login
    ```
+
    Credentials are stored in `~/.wrangler/config/default.toml`
    - Session expires, requires re-login periodically
 
 3. **Option 3: Manual export** (temporary, current shell only)
+
    ```bash
-   export CF_API_TOKEN='your-cloudflare-api-token'
+   export CLOUDFLARE_API_TOKEN='your-cloudflare-api-token'
    ```
 
-**Note**: `.env` file contains `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for Cloudflare Access (API authentication), but D1 access requires `CF_API_TOKEN` or `wrangler login`.
+**Note**: `.env` file also contains `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for Cloudflare Access (API authentication to the dashboard). D1 database access uses `CLOUDFLARE_API_TOKEN`.
 
 **Database Info:**
+
 - Database name: `epd-sensor-db`
 - Database ID: `fc27137d-cc9d-48cd-bfc0-5c270356dc98`
 - Config: `web/wrangler.toml`
 
 The script analyzes:
+
 - RTC drift values and drift rate calibration
 - Cumulative compensation and residual error
 - Battery voltage trends and WiFi skip patterns
