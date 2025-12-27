@@ -302,22 +302,31 @@ python3 scripts/analyze_data.py [hours]
 
 **Authentication Required:**
 
-The script uses `wrangler d1 execute` to query the D1 database. Authentication is required:
+The script uses `wrangler d1 execute` to query the D1 database. Either authentication method works:
 
-1. **Option 1: Cloudflare API Token** (recommended for scripts)
-   ```bash
-   export CF_API_TOKEN='your-cloudflare-api-token'
-   ```
-   Get token from: https://dash.cloudflare.com/profile/api-tokens
-   - Required permissions: Account → D1 → Read
-   - **Note**: Token is NOT stored in `.env` (use environment variable or `wrangler login`)
+1. **Option 1: Cloudflare API Token via `.envrc`** (recommended, persistent)
+   - Create `.envrc` file in project root:
+     ```bash
+     export CF_API_TOKEN='your-cloudflare-api-token'
+     ```
+   - Get token from: https://dash.cloudflare.com/profile/api-tokens
+     - Required permissions: Account → D1 → Read
+   - Allow direnv (one-time): `direnv allow`
+   - Token is automatically loaded when entering project directory
+   - `.envrc` is gitignored (not committed)
 
-2. **Option 2: Wrangler Login** (for interactive use)
+2. **Option 2: Wrangler Login** (session expires)
    ```bash
    cd web
    bunx wrangler login
    ```
    Credentials are stored in `~/.wrangler/config/default.toml`
+   - Session expires, requires re-login periodically
+
+3. **Option 3: Manual export** (temporary, current shell only)
+   ```bash
+   export CF_API_TOKEN='your-cloudflare-api-token'
+   ```
 
 **Note**: `.env` file contains `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for Cloudflare Access (API authentication), but D1 access requires `CF_API_TOKEN` or `wrangler login`.
 

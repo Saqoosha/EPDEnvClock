@@ -6,6 +6,7 @@ secrets.h
 
 # Environment variables for scripts
 .env
+.envrc
 
 # Build artifacts
 *.build/
