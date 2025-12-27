@@ -74,6 +74,106 @@ bool NetworkManager_ConnectWiFi(NetworkState &state, StatusCallback statusCallba
   return false;
 }
 
+namespace
+{
+  // NTP servers to try in order (Japan-optimized)
+  // 1. ntp.nict.jp - NICT (Japan's official time source)
+  // 2. jp.pool.ntp.org - NTP Pool Japan zone (multiple servers)
+  // 3. time.google.com - Google public NTP (global, highly reliable)
+  const char *NTP_SERVERS[] = {
+      "ntp.nict.jp",
+      "jp.pool.ntp.org",
+      "time.google.com"};
+  constexpr size_t NTP_SERVER_COUNT = sizeof(NTP_SERVERS) / sizeof(NTP_SERVERS[0]);
+  constexpr size_t NTP_PACKET_SIZE = 48;
+  constexpr uint32_t SEVENTY_YEARS = 2208988800UL; // 1970 - 1900 in seconds
+
+  // Try to get NTP response from a single server
+  // Returns true if successful, fills in ntpSeconds and ntpFraction
+  bool tryNtpServer(const char *server, uint32_t &ntpSeconds, uint32_t &ntpFraction, StatusCallback statusCallback)
+  {
+    // DNS resolution
+    LOGD(LogTag::NETWORK, "NTP: Resolving %s...", server);
+    IPAddress ntpServerIP;
+    if (!WiFi.hostByName(server, ntpServerIP))
+    {
+      LOGW(LogTag::NETWORK, "NTP: DNS resolution failed for %s", server);
+      return false;
+    }
+    LOGD(LogTag::NETWORK, "NTP: Resolved to %s", ntpServerIP.toString().c_str());
+
+    WiFiUDP udp;
+    byte packet[NTP_PACKET_SIZE] = {0};
+
+    // NTP request header: LI=0, Version=3, Mode=3 (client)
+    packet[0] = 0xE3; // 11100011
+
+    // Open UDP socket
+    int udpBeginResult = udp.begin(123);
+    LOGD(LogTag::NETWORK, "NTP: UDP begin result: %d", udpBeginResult);
+
+    // Send NTP request
+    int beginPacketResult = udp.beginPacket(ntpServerIP, 123);
+    if (beginPacketResult == 0)
+    {
+      LOGW(LogTag::NETWORK, "NTP: beginPacket failed for %s", server);
+      udp.stop();
+      return false;
+    }
+
+    size_t bytesWritten = udp.write(packet, NTP_PACKET_SIZE);
+    int endPacketResult = udp.endPacket();
+    LOGD(LogTag::NETWORK, "NTP: Sent %zu bytes, endPacket=%d", bytesWritten, endPacketResult);
+
+    if (endPacketResult == 0)
+    {
+      LOGW(LogTag::NETWORK, "NTP: endPacket failed for %s", server);
+      udp.stop();
+      return false;
+    }
+
+    // Wait for response (max 2 seconds)
+    unsigned long startWait = millis();
+    int packetSize = 0;
+    LOGD(LogTag::NETWORK, "NTP: Waiting for response from %s...", server);
+    while (packetSize == 0 && millis() - startWait < 2000)
+    {
+      delay(10);
+      packetSize = udp.parsePacket();
+
+      // Update status periodically
+      if ((millis() - startWait) % 500 == 0)
+      {
+        char statusMsg[48];
+        snprintf(statusMsg, sizeof(statusMsg), "NTP %s %lums", server, millis() - startWait);
+        updateStatus(statusCallback, statusMsg);
+      }
+    }
+
+    unsigned long waitTime = millis() - startWait;
+    if (packetSize < NTP_PACKET_SIZE)
+    {
+      LOGW(LogTag::NETWORK, "NTP: No response from %s after %lums (size=%d)", server, waitTime, packetSize);
+      udp.stop();
+      return false;
+    }
+    LOGD(LogTag::NETWORK, "NTP: Received %d bytes from %s after %lums", packetSize, server, waitTime);
+
+    // Read response
+    udp.read(packet, NTP_PACKET_SIZE);
+    udp.stop();
+
+    // Extract transmit timestamp (bytes 40-47)
+    ntpSeconds = ((uint32_t)packet[40] << 24) | ((uint32_t)packet[41] << 16) |
+                 ((uint32_t)packet[42] << 8) | (uint32_t)packet[43];
+    ntpFraction = ((uint32_t)packet[44] << 24) | ((uint32_t)packet[45] << 16) |
+                  ((uint32_t)packet[46] << 8) | (uint32_t)packet[47];
+
+    LOGI(LogTag::NETWORK, "NTP: Got time from %s", server);
+    return true;
+  }
+} // namespace
+
 bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
 {
   constexpr long gmtOffset_sec = 9 * 3600; // JST = UTC+9
@@ -85,56 +185,35 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
 
   const unsigned long startTime = millis();
 
-  // === Custom NTP implementation (same as MeasureNtpDrift but also sets time) ===
-  constexpr size_t NTP_PACKET_SIZE = 48;
-  constexpr uint32_t SEVENTY_YEARS = 2208988800UL; // 1970 - 1900 in seconds
+  // Try each NTP server in order until one succeeds
+  uint32_t ntpSeconds = 0;
+  uint32_t ntpFraction = 0;
+  const char *successServer = nullptr;
 
-  WiFiUDP udp;
-  byte packet[NTP_PACKET_SIZE] = {0};
-
-  // NTP request header: LI=0, Version=3, Mode=3 (client)
-  packet[0] = 0xE3; // 11100011
-
-  udp.begin(123);
-  udp.beginPacket("ntp.nict.jp", 123);
-  udp.write(packet, NTP_PACKET_SIZE);
-  udp.endPacket();
-
-  // Wait for response (max 2 seconds)
-  unsigned long startWait = millis();
-  int packetSize = 0;
-  while (packetSize == 0 && millis() - startWait < 2000)
+  for (size_t i = 0; i < NTP_SERVER_COUNT; i++)
   {
-    delay(10);
-    packetSize = udp.parsePacket();
-
-    // Update status periodically
-    if ((millis() - startWait) % 500 == 0)
+    if (tryNtpServer(NTP_SERVERS[i], ntpSeconds, ntpFraction, statusCallback))
     {
-      char statusMsg[48];
-      snprintf(statusMsg, sizeof(statusMsg), "NTP syncing... %lums", millis() - startWait);
-      updateStatus(statusCallback, statusMsg);
+      successServer = NTP_SERVERS[i];
+      break;
+    }
+    // Brief delay before trying next server
+    if (i < NTP_SERVER_COUNT - 1)
+    {
+      LOGI(LogTag::NETWORK, "NTP: Trying fallback server...");
+      delay(100);
     }
   }
 
-  if (packetSize < NTP_PACKET_SIZE)
+  if (successServer == nullptr)
   {
-    LOGW(LogTag::NETWORK, "NTP sync failed: no response (size=%d)", packetSize);
-    udp.stop();
+    LOGE(LogTag::NETWORK, "NTP sync failed: all %d servers failed", NTP_SERVER_COUNT);
     state.ntpSynced = false;
     state.ntpSyncTime = 0;
     updateStatus(statusCallback, "NTP FAILED!");
     delay(1000);
     return false;
   }
-
-  // Read response
-  udp.read(packet, NTP_PACKET_SIZE);
-  udp.stop();
-
-  // Extract transmit timestamp (bytes 40-47)
-  uint32_t ntpSeconds = (packet[40] << 24) | (packet[41] << 16) | (packet[42] << 8) | packet[43];
-  uint32_t ntpFraction = (packet[44] << 24) | (packet[45] << 16) | (packet[46] << 8) | packet[47];
 
   // Convert to Unix timestamp and milliseconds
   time_t unixSeconds = ntpSeconds - SEVENTY_YEARS;
@@ -242,74 +321,106 @@ int32_t NetworkManager_MeasureNtpDrift()
     return INT32_MIN;
   }
 
-  // Custom NTP implementation with millisecond precision
-  // NTP packet: 48 bytes, we read transmit timestamp from bytes 40-47
-  // Bytes 40-43: seconds since 1900-01-01
-  // Bytes 44-47: fractional seconds (2^32 = 1 second)
-  constexpr size_t NTP_PACKET_SIZE = 48;
-  constexpr uint32_t SEVENTY_YEARS = 2208988800UL; // 1970 - 1900 in seconds
-
-  WiFiUDP udp;
-  byte packet[NTP_PACKET_SIZE] = {0};
-
-  // NTP request header: LI=0, Version=3, Mode=3 (client)
-  packet[0] = 0xE3; // 11100011
-
-  udp.begin(123);
-  udp.beginPacket("ntp.nict.jp", 123);
-  udp.write(packet, NTP_PACKET_SIZE);
-  udp.endPacket();
-
-  // Wait for response (max 1 second)
-  unsigned long startWait = millis();
-  int packetSize = 0;
-  while (packetSize == 0 && millis() - startWait < 1000)
+  // Try each NTP server until one succeeds
+  for (size_t serverIdx = 0; serverIdx < NTP_SERVER_COUNT; serverIdx++)
   {
-    delay(10);
-    packetSize = udp.parsePacket();
-  }
+    const char *server = NTP_SERVERS[serverIdx];
 
-  if (packetSize < NTP_PACKET_SIZE)
-  {
-    LOGW(LogTag::NETWORK, "NTP drift measurement failed: no response (size=%d)", packetSize);
+    // DNS resolution
+    LOGD(LogTag::NETWORK, "NTP drift: Resolving %s...", server);
+    IPAddress ntpServerIP;
+    if (!WiFi.hostByName(server, ntpServerIP))
+    {
+      LOGW(LogTag::NETWORK, "NTP drift: DNS failed for %s", server);
+      continue;
+    }
+    LOGD(LogTag::NETWORK, "NTP drift: Resolved to %s", ntpServerIP.toString().c_str());
+
+    WiFiUDP udp;
+    byte packet[NTP_PACKET_SIZE] = {0};
+
+    // NTP request header: LI=0, Version=3, Mode=3 (client)
+    packet[0] = 0xE3; // 11100011
+
+    int udpBeginResult = udp.begin(123);
+    LOGD(LogTag::NETWORK, "NTP drift: UDP begin result: %d", udpBeginResult);
+
+    int beginPacketResult = udp.beginPacket(ntpServerIP, 123);
+    if (beginPacketResult == 0)
+    {
+      LOGW(LogTag::NETWORK, "NTP drift: beginPacket failed for %s", server);
+      udp.stop();
+      continue;
+    }
+
+    size_t bytesWritten = udp.write(packet, NTP_PACKET_SIZE);
+    int endPacketResult = udp.endPacket();
+    LOGD(LogTag::NETWORK, "NTP drift: Sent %zu bytes, endPacket=%d", bytesWritten, endPacketResult);
+
+    if (endPacketResult == 0)
+    {
+      LOGW(LogTag::NETWORK, "NTP drift: endPacket failed for %s", server);
+      udp.stop();
+      continue;
+    }
+
+    // Wait for response (max 1 second per server)
+    unsigned long startWait = millis();
+    int packetSize = 0;
+    LOGD(LogTag::NETWORK, "NTP drift: Waiting for response from %s...", server);
+    while (packetSize == 0 && millis() - startWait < 1000)
+    {
+      delay(10);
+      packetSize = udp.parsePacket();
+    }
+
+    unsigned long waitTime = millis() - startWait;
+    if (packetSize < NTP_PACKET_SIZE)
+    {
+      LOGW(LogTag::NETWORK, "NTP drift: No response from %s after %lums", server, waitTime);
+      udp.stop();
+      continue;
+    }
+    LOGD(LogTag::NETWORK, "NTP drift: Received %d bytes from %s after %lums", packetSize, server, waitTime);
+
+    // Capture system time immediately after receiving NTP response
+    struct timeval tvSystem;
+    gettimeofday(&tvSystem, NULL);
+
+    // Read NTP response
+    udp.read(packet, NTP_PACKET_SIZE);
     udp.stop();
-    return INT32_MIN;
+
+    // Extract transmit timestamp (bytes 40-47)
+    uint32_t ntpSeconds = ((uint32_t)packet[40] << 24) | ((uint32_t)packet[41] << 16) |
+                          ((uint32_t)packet[42] << 8) | (uint32_t)packet[43];
+    uint32_t ntpFraction = ((uint32_t)packet[44] << 24) | ((uint32_t)packet[45] << 16) |
+                           ((uint32_t)packet[46] << 8) | (uint32_t)packet[47];
+
+    // Convert NTP time to Unix epoch (subtract 70 years)
+    time_t ntpUnixSec = ntpSeconds - SEVENTY_YEARS;
+
+    // Convert fractional part to milliseconds: fraction / 2^32 * 1000
+    uint32_t ntpMs = (uint32_t)(((uint64_t)ntpFraction * 1000) >> 32);
+
+    // System time
+    time_t systemSec = tvSystem.tv_sec;
+    uint32_t systemMs = tvSystem.tv_usec / 1000;
+
+    // Calculate drift in milliseconds (NTP - System)
+    // Positive = system is behind (slow), Negative = system is ahead (fast)
+    int64_t ntpTotalMs = (int64_t)ntpUnixSec * 1000 + ntpMs;
+    int64_t systemTotalMs = (int64_t)systemSec * 1000 + systemMs;
+    int32_t driftMs = (int32_t)(ntpTotalMs - systemTotalMs);
+
+    LOGI(LogTag::NETWORK, "NTP drift measured via %s: %d ms (NTP: %ld.%03u, System: %ld.%03u)",
+         server, driftMs, (long)ntpUnixSec, ntpMs, (long)systemSec, systemMs);
+
+    return driftMs;
   }
 
-  // Capture system time immediately after receiving NTP response
-  struct timeval tvSystem;
-  gettimeofday(&tvSystem, NULL);
-
-  // Read NTP response
-  udp.read(packet, NTP_PACKET_SIZE);
-  udp.stop();
-
-  // Extract transmit timestamp (bytes 40-47)
-  uint32_t ntpSeconds = ((uint32_t)packet[40] << 24) | ((uint32_t)packet[41] << 16) |
-                        ((uint32_t)packet[42] << 8) | (uint32_t)packet[43];
-  uint32_t ntpFraction = ((uint32_t)packet[44] << 24) | ((uint32_t)packet[45] << 16) |
-                         ((uint32_t)packet[46] << 8) | (uint32_t)packet[47];
-
-  // Convert NTP time to Unix epoch (subtract 70 years)
-  time_t ntpUnixSec = ntpSeconds - SEVENTY_YEARS;
-
-  // Convert fractional part to milliseconds: fraction / 2^32 * 1000
-  uint32_t ntpMs = (uint32_t)(((uint64_t)ntpFraction * 1000) >> 32);
-
-  // System time
-  time_t systemSec = tvSystem.tv_sec;
-  uint32_t systemMs = tvSystem.tv_usec / 1000;
-
-  // Calculate drift in milliseconds (NTP - System)
-  // Positive = system is behind (slow), Negative = system is ahead (fast)
-  int64_t ntpTotalMs = (int64_t)ntpUnixSec * 1000 + ntpMs;
-  int64_t systemTotalMs = (int64_t)systemSec * 1000 + systemMs;
-  int32_t driftMs = (int32_t)(ntpTotalMs - systemTotalMs);
-
-  LOGI(LogTag::NETWORK, "NTP drift measured: %d ms (NTP: %ld.%03u, System: %ld.%03u)",
-       driftMs, (long)ntpUnixSec, ntpMs, (long)systemSec, systemMs);
-
-  return driftMs;
+  LOGE(LogTag::NETWORK, "NTP drift measurement failed: all %d servers failed", NTP_SERVER_COUNT);
+  return INT32_MIN;
 }
 
 bool NetworkManager_SendBatchData(const String &payload)
