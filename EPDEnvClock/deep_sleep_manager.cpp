@@ -149,6 +149,12 @@ void DeepSleepManager_Init()
     rtcState.savedTimeUs = 0;
     rtcState.sleepDurationUs = 0;
     rtcState.estimatedProcessingTime = 5.0f; // Default 5 seconds
+    // Drift/upload fields can be stale if RTC memory was corrupted or struct changed.
+    // Reset them so we can safely restore from storage.
+    rtcState.lastUploadedTime = 0;
+    rtcState.driftRateMsPerMin = kDefaultDriftRateMsPerMin;
+    rtcState.driftRateCalibrated = false;
+    rtcState.cumulativeCompensationMs = 0;
   }
   else
   {

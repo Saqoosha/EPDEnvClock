@@ -62,10 +62,14 @@ void wifiNtpTask(void* pvParameters) {
           results.ntpSyncTime = networkState.ntpSyncTime;
           // Save cumulative compensation BEFORE MarkNtpSynced resets it
           RTCState &rtcState = DeepSleepManager_GetRTCState();
-          results.cumulativeCompMs = rtcState.cumulativeCompensationMs;
-          DeepSleepManager_MarkNtpSynced();  // Calculate drift (resets cumulativeCompensationMs)
-          results.driftMeasured = true;
-          results.ntpDriftMs = DeepSleepManager_GetLastRtcDriftMs();
+          const int64_t preResetCompMs = rtcState.cumulativeCompensationMs;
+
+          DeepSleepManager_MarkNtpSynced(); // Calculate drift (may be skipped if RTC time was invalid)
+
+          const bool driftValid = DeepSleepManager_IsLastRtcDriftValid();
+          results.driftMeasured = driftValid;
+          results.ntpDriftMs = driftValid ? DeepSleepManager_GetLastRtcDriftMs() : 0;
+          results.cumulativeCompMs = driftValid ? preResetCompMs : 0;
           Logger_SetNtpSynced(true);
           LOGI(LogTag::NETWORK, "WiFi/NTP sync completed, drift: %d ms, cumulative comp: %lld ms",
                results.ntpDriftMs, results.cumulativeCompMs);
