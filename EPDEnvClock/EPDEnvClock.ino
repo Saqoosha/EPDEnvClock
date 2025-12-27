@@ -440,6 +440,17 @@ void setup()
     {
       rtcState.estimatedProcessingTime = 20.0f;
     }
+
+    // Persist if changed meaningfully (>=50ms) to survive power cycles
+    float change = rtcState.estimatedProcessingTime - estimated;
+    if (change < 0)
+    {
+      change = -change;
+    }
+    if (change > 0.05f)
+    {
+      DeepSleepManager_SaveEstimatedProcessingTime(rtcState.estimatedProcessingTime);
+    }
   }
   else
   {

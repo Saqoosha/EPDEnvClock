@@ -13,6 +13,12 @@
 #include "logger.h"
 #include "sensor_manager.h"
 
+// Arduino/ESP32 toolchain sometimes misses the prototype in C++ translation units
+extern "C" int settimeofday(const struct timeval *tv, const struct timezone *tz);
+extern "C" int setenv(const char *name, const char *value, int overwrite);
+extern "C" void tzset(void);
+extern "C" esp_err_t esp_sleep_enable_ext0_wakeup(gpio_num_t gpio_num, int level);
+
 namespace
 {
 // RTC memory attribute ensures this persists across deep sleep
@@ -37,6 +43,7 @@ SPIClass SD_SPI = SPIClass(HSPI);
 constexpr char kFrameBufferFile[] = "/frame.bin";
 constexpr char kLastUploadedTimeFile[] = "/last_uploaded.txt";
 constexpr char kDriftRateFile[] = "/drift_rate.txt";
+constexpr char kProcessingTimeFile[] = "/processing_time.txt";
 
 bool sdCardAvailable = false;
 bool spiffsMounted = false;
@@ -214,6 +221,14 @@ void DeepSleepManager_Init()
       rtcState.driftRateCalibrated = true;
       LOGI(LogTag::DEEPSLEEP, "Restored driftRate from storage: %.1f ms/min", storedRate);
     }
+  }
+
+  // Restore estimated processing time if available (persists across power cycles)
+  float storedProcessingTime = DeepSleepManager_LoadEstimatedProcessingTime();
+  if (storedProcessingTime > 0.0f)
+  {
+    rtcState.estimatedProcessingTime = storedProcessingTime;
+    LOGI(LogTag::DEEPSLEEP, "Restored estimatedProcessingTime from storage: %.2f sec", storedProcessingTime);
   }
 
   LOGI(LogTag::DEEPSLEEP, "Boot count: %u", rtcState.bootCount);
@@ -426,6 +441,14 @@ void DeepSleepManager_MarkNtpSynced()
       float minutesSinceSync = (float)(ntpTime.tv_sec - previousNtpSyncTime) / 60.0f;
       if (minutesSinceSync >= 1.0f)  // At least 1 minute elapsed
       {
+        // If reboot直後など短時間でのNTPはレート更新をスキップして暴れを防ぐ
+        constexpr float kMinMinutesForRateUpdate = 30.0f; // require >=30min interval
+        if (minutesSinceSync < kMinMinutesForRateUpdate)
+        {
+          LOGW(LogTag::DEEPSLEEP, "NTP interval too short (%.1f min), skip rate update", minutesSinceSync);
+        }
+        else
+        {
         // Calculate TRUE drift rate by adding back the compensation we applied
         // actualDriftMs is the residual error after compensation
         // trueDrift = residual + cumulative compensation applied since last sync
@@ -439,10 +462,10 @@ void DeepSleepManager_MarkNtpSynced()
         // Clamp to reasonable range to prevent feedback instability
         // ESP32-S3 observed: 3-10 ms/min at 20-24°C (Dec 2025)
         // Allow slight negative for measurement noise, but RTC typically runs slow
-        constexpr float kMinDriftRate = -10.0f;
+        constexpr float kMinDriftRate = -40.0f; // allow faster (negative) drift seen at ~19°C
         constexpr float kMaxDriftRate = 100.0f;
         float clampedRate = trueRate;
-        
+
         // Guard against NaN/inf
         if (isnan(clampedRate) || isinf(clampedRate)) {
           LOGW(LogTag::DEEPSLEEP, "Invalid rate detected, keeping previous value");
@@ -454,10 +477,21 @@ void DeepSleepManager_MarkNtpSynced()
           LOGW(LogTag::DEEPSLEEP, "Rate %.1f clamped to %.1f ms/min", prevRate, clampedRate);
         }
 
+        const bool signFlip = (rtcState.driftRateCalibrated && rtcState.driftRateMsPerMin * clampedRate < 0);
+        const bool largeResidual = llabs(trueDriftMs) > 800; // ~0.8s以上は即応
+
         if (rtcState.driftRateCalibrated)
         {
-          // Exponential moving average: 50% old, 50% new for balanced convergence
-          rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.5f + clampedRate * 0.5f;
+          if (signFlip && largeResidual)
+          {
+            // 大きな残差かつ符号反転時は即座に新レートへ切り替え
+            rtcState.driftRateMsPerMin = clampedRate;
+          }
+          else
+          {
+            // Exponential moving average: 50% old, 50% new for balanced convergence
+            rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.5f + clampedRate * 0.5f;
+          }
         }
         else
         {
@@ -470,6 +504,7 @@ void DeepSleepManager_MarkNtpSynced()
 
         // Save drift rate to SD card for persistence across power cycles
         DeepSleepManager_SaveDriftRate(rtcState.driftRateMsPerMin);
+        } // end rate update block
       }
     }
 
@@ -940,4 +975,96 @@ float DeepSleepManager_LoadDriftRate()
   }
 
   return driftRate;
+}
+
+void DeepSleepManager_SaveEstimatedProcessingTime(float seconds)
+{
+  File file;
+  const char *storageType;
+
+  if (sdCardAvailable)
+  {
+    file = SD.open(kProcessingTimeFile, FILE_WRITE);
+    storageType = "SD card";
+  }
+  else if (spiffsMounted)
+  {
+    file = SPIFFS.open(kProcessingTimeFile, FILE_WRITE);
+    storageType = "SPIFFS";
+  }
+  else
+  {
+    LOGW(LogTag::DEEPSLEEP, "Cannot save processing time: no storage available");
+    return;
+  }
+
+  if (!file)
+  {
+    LOGW(LogTag::DEEPSLEEP, "Failed to open processing time file for writing on %s", storageType);
+    return;
+  }
+
+  file.printf("%.2f\n", seconds);
+  file.close();
+  LOGD(LogTag::DEEPSLEEP, "Saved estimatedProcessingTime %.2f sec to %s", seconds, storageType);
+}
+
+float DeepSleepManager_LoadEstimatedProcessingTime()
+{
+  File file;
+  const char *storageType;
+  bool fileExists = false;
+
+  if (sdCardAvailable)
+  {
+    fileExists = SD.exists(kProcessingTimeFile);
+    storageType = "SD card";
+  }
+  else if (spiffsMounted)
+  {
+    fileExists = SPIFFS.exists(kProcessingTimeFile);
+    storageType = "SPIFFS";
+  }
+  else
+  {
+    return 0;
+  }
+
+  if (!fileExists)
+  {
+    LOGD(LogTag::DEEPSLEEP, "processingTime file not found on %s", storageType);
+    return 0;
+  }
+
+  if (sdCardAvailable)
+  {
+    file = SD.open(kProcessingTimeFile, FILE_READ);
+  }
+  else if (spiffsMounted)
+  {
+    file = SPIFFS.open(kProcessingTimeFile, FILE_READ);
+  }
+  else
+  {
+    return 0;
+  }
+
+  if (!file)
+  {
+    LOGW(LogTag::DEEPSLEEP, "Failed to open processing time file for reading on %s", storageType);
+    return 0;
+  }
+
+  String line = file.readStringUntil('\n');
+  file.close();
+
+  float seconds = line.toFloat();
+
+  if (seconds >= 1.0f && seconds <= 20.0f)
+  {
+    LOGI(LogTag::DEEPSLEEP, "Loaded estimatedProcessingTime %.2f sec from %s", seconds, storageType);
+    return seconds;
+  }
+
+  return 0;
 }

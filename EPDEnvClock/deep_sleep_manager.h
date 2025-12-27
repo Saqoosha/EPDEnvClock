@@ -113,3 +113,9 @@ void DeepSleepManager_SaveDriftRate(float driftRate);
 // Load drift rate from SD card
 // Returns 0 if file doesn't exist or read fails
 float DeepSleepManager_LoadDriftRate();
+
+// Save estimated processing time (boot-to-draw) to SD/SPIFFS for persistence
+void DeepSleepManager_SaveEstimatedProcessingTime(float seconds);
+
+// Load estimated processing time, returns 0 if unavailable/invalid
+float DeepSleepManager_LoadEstimatedProcessingTime();
