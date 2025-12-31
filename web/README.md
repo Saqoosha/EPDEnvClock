@@ -234,9 +234,9 @@ Batch (recommended for ESP32):
 - `batt_percent`: Battery percentage - linear model (3.4V=0%, 4.2V=100%) (optional)
 - `batt_max17048_percent`: Battery percentage - MAX17048 reported (optional, for reference)
 - `batt_rate`: Battery charge rate in %/hr (optional, positive=charging, negative=discharging)
-- `rtc_drift_ms`: RTC drift in milliseconds (optional, only when NTP synced) - residual after compensation
+- `rtc_drift_ms`: RTC drift in milliseconds (optional, only when NTP synced) - **residual after compensation**
 - `cumulative_comp_ms`: Cumulative drift compensation applied since last NTP sync (optional)
-- `drift_rate`: Drift rate used for compensation in ms/min (optional)
+- `drift_rate`: Drift rate used for compensation in **ms/min**, EMA-smoothed and clamped to ±600 ms/min (optional)
 
 **Duplicate handling:**
 

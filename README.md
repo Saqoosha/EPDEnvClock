@@ -50,7 +50,7 @@ EPDEnvClock is a clock application using the CrowPanel ESP32-S3 E-Paper 5.79" di
 ### Data Logging
 
 - **Sensor Log**: Automatically records sensor values to SD card in JSONL format
-- **Recorded Data**: Date, time, Unix timestamp, RTC drift, temperature, humidity, CO2, battery voltage, battery %, charge rate, charging state
+- **Recorded Data**: Date, time, Unix timestamp, RTC drift (residual `rtc_drift_ms`, `drift_rate` ms/min, clamped ±600), temperature, humidity, CO2, battery voltage, battery %, charge rate, charging state
 - **File Format**: `/sensor_logs/sensor_log_YYYYMMDD.jsonl` (files split by date)
 
 ### Button Functions

@@ -192,6 +192,7 @@ wakeup_time += drift_compensation;
 - Exponential moving average (50% old + 50% new) for balanced convergence
 - Skip rate updates when NTP interval is too short (<30 min) to avoid instability after reboots
 - Clamped to -600..600 ms/min to prevent runaway feedback (negative allowed when device runs fast)
+- Learning rate (`alpha`) is normally 0.7; it is reduced to 0.5 **only when** NTP sync took long (>400 ms) **and** residual drift is already small (<300 ms). If residual is still large, keep 0.7 to converge faster.
 - On large residual + sign flip, adopt new rate immediately (faster recovery)
 - **Persisted to SD card** (`/drift_rate.txt`) across power cycles
 
