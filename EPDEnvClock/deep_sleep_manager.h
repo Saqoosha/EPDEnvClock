@@ -10,9 +10,19 @@
 // Default is conservative; EMA will calibrate quickly, and value persists to SD card
 constexpr float kDefaultDriftRateMsPerMin = 50.0f;
 
+// Magic number to detect valid RTC data.
+// IMPORTANT:
+// - This data is used to restore time after deep sleep.
+// - Changing it will wipe savedTime/sleepDurationUs on reboot (including after upload),
+//   which breaks RTC time restoration until the next NTP sync.
+// If RTCState layout changes, prefer migration/validation of fields rather than bumping this.
+constexpr uint32_t kRtcStateMagic = 0xDEADBEEF;
+// Compatibility: a short-lived firmware used this magic. Accept it to avoid wiping RTC time on upgrade.
+constexpr uint32_t kRtcStateMagicCompat_20251229 = 0xDEADBEF1;
+
 struct RTCState
 {
-  uint32_t magic = 0xDEADBEEF; // Magic number to detect valid RTC data
+  uint32_t magic = kRtcStateMagic; // Magic number to detect valid RTC data
   uint8_t lastDisplayedMinute = 255;
   bool sensorInitialized = false;
   uint32_t bootCount = 0;
@@ -25,7 +35,10 @@ struct RTCState
   int32_t savedTimeUs = 0;           // Saved epoch time microseconds part (0-999999)
   uint64_t sleepDurationUs = 0;      // Intended sleep duration in microseconds
   time_t lastUploadedTime = 0;       // Timestamp of the last successfully uploaded data point
-  float estimatedProcessingTime = 5.0f; // Estimated boot-to-display time in seconds (adaptive, ms precision)
+  // Estimated boot-to-display time in seconds (adaptive, ms precision)
+  // We keep separate estimates because WiFi/NTP boots can have different timing/jitter.
+  float estimatedProcessingTimeNoWifi = 7.5f;
+  float estimatedProcessingTimeWifi = 7.5f;
   float driftRateMsPerMin = kDefaultDriftRateMsPerMin; // Measured RTC drift rate (positive = slow, ms/min)
   bool driftRateCalibrated = false;                    // True after first NTP sync calibrates the rate
   int64_t cumulativeCompensationMs = 0;                // Cumulative drift compensation since last NTP sync (for rate calculation)
@@ -114,8 +127,12 @@ void DeepSleepManager_SaveDriftRate(float driftRate);
 // Returns 0 if file doesn't exist or read fails
 float DeepSleepManager_LoadDriftRate();
 
-// Save estimated processing time (boot-to-draw) to SD/SPIFFS for persistence
-void DeepSleepManager_SaveEstimatedProcessingTime(float seconds);
+// Save estimated processing times (boot-to-draw) to SD/SPIFFS for persistence
+// noWifiSeconds: normal minute updates (no WiFi)
+// wifiSeconds: top-of-hour (WiFi/NTP) boots
+void DeepSleepManager_SaveEstimatedProcessingTimes(float noWifiSeconds, float wifiSeconds);
 
-// Load estimated processing time, returns 0 if unavailable/invalid
-float DeepSleepManager_LoadEstimatedProcessingTime();
+// Load estimated processing times.
+// Returns true if at least noWifiSeconds was loaded successfully.
+// Backward compatible: if the file contains a single float, it's applied to both.
+bool DeepSleepManager_LoadEstimatedProcessingTimes(float &outNoWifiSeconds, float &outWifiSeconds);

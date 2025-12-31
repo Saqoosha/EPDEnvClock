@@ -9,7 +9,9 @@
 void DisplayManager_Init(bool wakeFromSleep = false);
 void DisplayManager_DrawSetupStatus(const char *message);
 void DisplayManager_SetStatus(const char *message);
-bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate = false);
+// If overrideTimeinfo is provided, the display will render that time instead of calling getLocalTime().
+// This is used to pre-render the *next minute* slightly before the boundary so the visible refresh aligns.
+bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate = false, const struct tm *overrideTimeinfo = nullptr);
 void DisplayManager_FullUpdate(const NetworkState &networkState);
 uint8_t *DisplayManager_GetFrameBuffer();
 // Battery measurement - reads from MAX17048 fuel gauge only

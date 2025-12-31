@@ -8,6 +8,9 @@ secrets.h
 .env
 .envrc
 
+# VSCode/Cursor settings (contains API tokens)
+.vscode/settings.json
+
 # Build artifacts
 *.build/
 

@@ -156,7 +156,7 @@ This reduces startup time by ~2 seconds and enables single screen update (instea
 
 ### Time Management
 
-- NTP server: `ntp.nict.jp`, Timezone: JST (UTC+9)
+- NTP server: `ntp.nict.jp` (fallback: `jp.pool.ntp.org`, `time.google.com`), Timezone: JST (UTC+9)
 - Time saved to RTC memory before sleep, restored on wake
 - NTP sync at the top of every hour (when `tm_min == 0`)
 
@@ -188,9 +188,14 @@ wakeup_time += drift_compensation;
 - Default rate: 50 ms/min (initial value)
 - Calibrated via NTP sync (hourly at minute 0)
 - True drift = residual + cumulative compensation
-- Exponential moving average (70% old + 30% new) for stability
-- Clamped to 20-300 ms/min range
+- Drift rate unit: **ms/min of sleep** (derived from total deep-sleep minutes since last sync)
+- Exponential moving average (50% old + 50% new) for balanced convergence
+- Skip rate updates when NTP interval is too short (<30 min) to avoid instability after reboots
+- Clamped to -600..600 ms/min to prevent runaway feedback (negative allowed when device runs fast)
+- On large residual + sign flip, adopt new rate immediately (faster recovery)
 - **Persisted to SD card** (`/drift_rate.txt`) across power cycles
+
+**Note (Dec 2025)**: Custom NTP sync computes **offset + RTT** using full NTP timestamps (t1/t2/t3/t4) to avoid “network latency bias” in `rtc_drift_ms`. Older data (Transmit timestamp only) could look like ~-1s even when RTC drift compensation logic changed.
 
 **Temperature dependency (observed Dec 2025):**
 
@@ -198,7 +203,7 @@ wakeup_time += drift_compensation;
 - ~20-22°C: 25-40 ms/min (observed 12/25)
 - EMA adapts automatically to temperature changes
 
-**Expected accuracy after compensation:** ~1 second residual per sync cycle (mostly overcompensation when clamped)
+**Expected accuracy after compensation:** typically sub-second residual per sync cycle; if the clamp is too tight, residual can get stuck around ~1 second
 
 **Logged fields (NTP sync only):**
 
@@ -253,8 +258,14 @@ The `scripts/arduwrap` wrapper provides convenient compile and serial log access
 # Compile and upload (requires serve running in another terminal)
 scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
 
-# Get serial log (last 64KB buffered)
+# Get serial log (in-memory buffer; default 512KB, configurable via `arduwrap serve --buffer-kb`)
 scripts/arduwrap log
+
+# Get serial log from the latest host-side file log (useful if buffer was cleared on upload)
+scripts/arduwrap log --from-file
+
+# List recent host-side serial log files
+scripts/arduwrap log --list-files
 
 # Get filtered log (regex pattern)
 scripts/arduwrap log --filter "ERROR|WARN"

@@ -107,7 +107,7 @@ void restoreTimeFromRTC()
          timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
          timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
          tv.tv_usec / 1000);
-    LOGD(LogTag::DEEPSLEEP, "Drift compensation: +%.0f ms (rate: %.1f ms/min, sleep: %.2f min, cumulative: %lld ms)",
+    LOGD(LogTag::DEEPSLEEP, "Drift compensation: %.0f ms (rate: %.1f ms/min, sleep: %.2f min, cumulative: %lld ms)",
          driftCompensationUs / 1000.0f, rtcState.driftRateMsPerMin, sleepMinutes, rtcState.cumulativeCompensationMs);
   }
 }
@@ -133,10 +133,11 @@ void DeepSleepManager_Init()
   LOGD(LogTag::DEEPSLEEP, "RTC slow clock: %.2f kHz (period: %.3f us, cal: %u)", freq_khz, period_us, cal);
 
   // Validate RTC state
-  if (rtcState.magic != 0xDEADBEEF)
+  const bool magicValid = (rtcState.magic == kRtcStateMagic) || (rtcState.magic == kRtcStateMagicCompat_20251229);
+  if (!magicValid)
   {
     // First boot or invalid RTC data - reset state
-    rtcState.magic = 0xDEADBEEF;
+    rtcState.magic = kRtcStateMagic;
     rtcState.lastDisplayedMinute = 255;
     rtcState.sensorInitialized = false;
     rtcState.bootCount = 1;
@@ -148,7 +149,9 @@ void DeepSleepManager_Init()
     rtcState.savedTime = 0;
     rtcState.savedTimeUs = 0;
     rtcState.sleepDurationUs = 0;
-    rtcState.estimatedProcessingTime = 5.0f; // Default 5 seconds
+    // Default processing estimates (boot-to-draw). Will be refined by adaptive loop.
+    rtcState.estimatedProcessingTimeNoWifi = 7.5f;
+    rtcState.estimatedProcessingTimeWifi = 7.5f;
     // Drift/upload fields can be stale if RTC memory was corrupted or struct changed.
     // Reset them so we can safely restore from storage.
     rtcState.lastUploadedTime = 0;
@@ -158,6 +161,11 @@ void DeepSleepManager_Init()
   }
   else
   {
+    // Normalize magic to current value (keeps RTC time intact across firmware upgrades)
+    if (rtcState.magic != kRtcStateMagic)
+    {
+      rtcState.magic = kRtcStateMagic;
+    }
     // Restore time if not syncing via NTP immediately
     // But we only know if we sync NTP later.
     // It's safe to restore it now; NTP will overwrite it if needed.
@@ -218,23 +226,62 @@ void DeepSleepManager_Init()
 
   // Restore driftRateMsPerMin from SD card if not calibrated in RTC memory
   // This allows drift rate to persist across power cycles/reboots
-  if (!rtcState.driftRateCalibrated)
+  const bool driftRateLooksValid =
+      !isnan(rtcState.driftRateMsPerMin) &&
+      !isinf(rtcState.driftRateMsPerMin) &&
+      fabsf(rtcState.driftRateMsPerMin) >= 0.01f &&
+      fabsf(rtcState.driftRateMsPerMin) <= 500.0f;
+
+  if (!rtcState.driftRateCalibrated || !driftRateLooksValid)
   {
     float storedRate = DeepSleepManager_LoadDriftRate();
-    if (storedRate > 0)
+    if (!isnan(storedRate) && !isinf(storedRate) && storedRate != 0.0f)
     {
-      rtcState.driftRateMsPerMin = storedRate;
+      // Sanity clamp on load (prevents corrupted file values from wrecking time)
+      // NOTE: Clamp is a safety net against feedback runaway / corrupted file values.
+      // Recent logs show true_rate can exceed -300ms/min (e.g. -320..-330ms/min),
+      // so keep the clamp wide enough to avoid a permanent ~1s residual each hour.
+      constexpr float kMinStoredRate = -600.0f;
+      constexpr float kMaxStoredRate = 600.0f;
+      float clampedStoredRate = storedRate;
+      if (clampedStoredRate < kMinStoredRate) clampedStoredRate = kMinStoredRate;
+      if (clampedStoredRate > kMaxStoredRate) clampedStoredRate = kMaxStoredRate;
+
+      rtcState.driftRateMsPerMin = clampedStoredRate;
       rtcState.driftRateCalibrated = true;
-      LOGI(LogTag::DEEPSLEEP, "Restored driftRate from storage: %.1f ms/min", storedRate);
+      LOGI(LogTag::DEEPSLEEP, "Restored driftRate from storage: %.1f ms/min", clampedStoredRate);
+    }
+    else if (!driftRateLooksValid)
+    {
+      // RTC memory may contain stale layout/garbage after firmware updates.
+      // Keep time restoration fields intact, but reset drift fields to safe defaults.
+      rtcState.driftRateMsPerMin = kDefaultDriftRateMsPerMin;
+      rtcState.driftRateCalibrated = false;
+      rtcState.cumulativeCompensationMs = 0;
+      rtcState.lastRtcDriftValid = false;
+      LOGW(LogTag::DEEPSLEEP, "Invalid driftRate in RTC memory; reset drift fields to defaults");
     }
   }
 
   // Restore estimated processing time if available (persists across power cycles)
-  float storedProcessingTime = DeepSleepManager_LoadEstimatedProcessingTime();
-  if (storedProcessingTime > 0.0f)
+  float storedNoWifi = 0.0f;
+  float storedWifi = 0.0f;
+  if (DeepSleepManager_LoadEstimatedProcessingTimes(storedNoWifi, storedWifi))
   {
-    rtcState.estimatedProcessingTime = storedProcessingTime;
-    LOGI(LogTag::DEEPSLEEP, "Restored estimatedProcessingTime from storage: %.2f sec", storedProcessingTime);
+    rtcState.estimatedProcessingTimeNoWifi = storedNoWifi;
+    rtcState.estimatedProcessingTimeWifi = storedWifi;
+    LOGI(LogTag::DEEPSLEEP, "Restored processing times from storage: noWiFi=%.2f sec, WiFi=%.2f sec",
+         rtcState.estimatedProcessingTimeNoWifi, rtcState.estimatedProcessingTimeWifi);
+  }
+  // Validate processing times (migration safety when RTC layout changed)
+  if (rtcState.estimatedProcessingTimeNoWifi < 1.0f || rtcState.estimatedProcessingTimeNoWifi > 20.0f)
+  {
+    rtcState.estimatedProcessingTimeNoWifi = 7.5f;
+  }
+  if (rtcState.estimatedProcessingTimeWifi < 1.0f || rtcState.estimatedProcessingTimeWifi > 20.0f)
+  {
+    // If wifi estimate is invalid, fallback to no-wifi estimate
+    rtcState.estimatedProcessingTimeWifi = rtcState.estimatedProcessingTimeNoWifi;
   }
 
   LOGI(LogTag::DEEPSLEEP, "Boot count: %u", rtcState.bootCount);
@@ -254,6 +301,11 @@ RTCState &DeepSleepManager_GetRTCState()
 
 uint64_t DeepSleepManager_CalculateSleepDuration()
 {
+  // EPD update takes ~0.65-0.75s (EPD_Display + PartUpdate).
+  // To make the *visible* refresh align to the minute boundary, we wake up this much earlier.
+  constexpr float kEpdLeadTimeSec = 0.70f;
+  constexpr float kEpdLeadTimeMs = kEpdLeadTimeSec * 1000.0f;
+
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {
@@ -275,18 +327,25 @@ uint64_t DeepSleepManager_CalculateSleepDuration()
 
   // Wake up early to account for processing time (boot to display update)
   // This is adaptively adjusted based on actual measured delay
-  float processingTimeMs = rtcState.estimatedProcessingTime * 1000.0f;
+  // Use separate estimate for the next cycle:
+  // - If we're at minute 59, the next update is top-of-hour (WiFi/NTP) and can be jittery/longer.
+  const bool nextCycleWifiLikely = (currentMinute == 59);
+  const float processingTimeSec = nextCycleWifiLikely ? rtcState.estimatedProcessingTimeWifi
+                                                      : rtcState.estimatedProcessingTimeNoWifi;
+  float processingTimeMs = processingTimeSec * 1000.0f;
 
   // Calculate sleep time in milliseconds, ensuring we don't go negative
-  float sleepMs = msUntilNextMinute - processingTimeMs;
+  float sleepMs = msUntilNextMinute - processingTimeMs - kEpdLeadTimeMs;
   if (sleepMs < 1000.0f)
   {
     // Very close to minute boundary, sleep minimal time
     sleepMs = 1000.0f;
   }
 
-  LOGD(LogTag::DEEPSLEEP, "Current time: %d:%02d:%02d.%03d, Sleeping for %.1f sec (est. processing: %.2f sec)",
-       timeinfo.tm_hour, currentMinute, currentSecond, (int)currentMs, sleepMs / 1000.0f, rtcState.estimatedProcessingTime);
+  LOGD(LogTag::DEEPSLEEP,
+       "Current time: %d:%02d:%02d.%03d, Sleeping for %.1f sec (est. processing: %.2f sec, %s)",
+       timeinfo.tm_hour, currentMinute, currentSecond, (int)currentMs, sleepMs / 1000.0f,
+       processingTimeSec, nextCycleWifiLikely ? "wifi" : "no-wifi");
 
   return (uint64_t)(sleepMs * 1000.0f); // Convert milliseconds to microseconds
 }
@@ -444,14 +503,14 @@ void DeepSleepManager_MarkNtpSynced()
     // This allows the compensation to adapt to temperature and device variations
     if (previousNtpSyncTime > kMinValidTime)
     {
-      float minutesSinceSync = (float)(ntpTime.tv_sec - previousNtpSyncTime) / 60.0f;
-      if (minutesSinceSync >= 1.0f)  // At least 1 minute elapsed
+      const float wallMinutesSinceSync = (float)(ntpTime.tv_sec - previousNtpSyncTime) / 60.0f;
+      if (wallMinutesSinceSync >= 1.0f)  // At least 1 minute elapsed
       {
         // If reboot直後など短時間でのNTPはレート更新をスキップして暴れを防ぐ
         constexpr float kMinMinutesForRateUpdate = 30.0f; // require >=30min interval
-        if (minutesSinceSync < kMinMinutesForRateUpdate)
+        if (wallMinutesSinceSync < kMinMinutesForRateUpdate)
         {
-          LOGW(LogTag::DEEPSLEEP, "NTP interval too short (%.1f min), skip rate update", minutesSinceSync);
+          LOGW(LogTag::DEEPSLEEP, "NTP interval too short (%.1f min), skip rate update", wallMinutesSinceSync);
         }
         else
         {
@@ -459,17 +518,37 @@ void DeepSleepManager_MarkNtpSynced()
         // actualDriftMs is the residual error after compensation
         // trueDrift = residual + cumulative compensation applied since last sync
         int64_t trueDriftMs = actualDriftMs + rtcState.cumulativeCompensationMs;
-        float trueRate = (float)trueDriftMs / minutesSinceSync;
+        // IMPORTANT: The drift we compensate is primarily from the deep-sleep timer,
+        // so we calibrate in units of "ms per minute of sleep", not wall time.
+        // Derive total sleep minutes since last sync from the compensation we applied:
+        // cumulative_comp_ms = used_rate_ms_per_min * total_sleep_minutes
+        float sleepMinutesSinceSync = wallMinutesSinceSync; // fallback
+        const float usedRateDuringInterval = rtcState.driftRateMsPerMin;
+        if (fabsf(usedRateDuringInterval) > 0.01f && rtcState.cumulativeCompensationMs != 0)
+        {
+          float derivedSleepMinutes = (float)rtcState.cumulativeCompensationMs / usedRateDuringInterval;
+          if (derivedSleepMinutes < 0.0f) derivedSleepMinutes = -derivedSleepMinutes;
+          // Sanity: sleep minutes should be >0 and usually < wall minutes (we wake early to draw)
+          if (derivedSleepMinutes >= 1.0f && derivedSleepMinutes <= wallMinutesSinceSync * 1.2f)
+          {
+            sleepMinutesSinceSync = derivedSleepMinutes;
+          }
+        }
+
+        float trueRate = (float)trueDriftMs / sleepMinutesSinceSync;
 
         LOGI(LogTag::DEEPSLEEP, "True drift: %lld ms (residual: %lld ms + compensation: %lld ms)",
              trueDriftMs, actualDriftMs, rtcState.cumulativeCompensationMs);
 
-        // Clamp true rate to reasonable range (50-300 ms/min)
         // Clamp to reasonable range to prevent feedback instability
-        // ESP32-S3 observed: 3-10 ms/min at 20-24°C (Dec 2025)
-        // Allow slight negative for measurement noise, but RTC typically runs slow
-        constexpr float kMinDriftRate = -40.0f; // allow faster (negative) drift seen at ~19°C
-        constexpr float kMaxDriftRate = 100.0f;
+        // Unit: ms per minute of sleep
+        // Negative means the device runs fast (system time ahead), positive means slow.
+        // NOTE: Clamp is a safety net against feedback runaway.
+        // Clamp is a safety net against feedback runaway.
+        // IMPORTANT: If this is too tight, drift_rate will stick at the clamp and leave
+        // a persistent residual drift each sync cycle.
+        constexpr float kMinDriftRate = -600.0f;
+        constexpr float kMaxDriftRate = 600.0f;
         float clampedRate = trueRate;
 
         // Guard against NaN/inf
@@ -484,7 +563,12 @@ void DeepSleepManager_MarkNtpSynced()
         }
 
         const bool signFlip = (rtcState.driftRateCalibrated && rtcState.driftRateMsPerMin * clampedRate < 0);
-        const bool largeResidual = llabs(trueDriftMs) > 800; // ~0.8s以上は即応
+        // Residual drift is the remaining error after applying compensation (what we actually want to drive to 0).
+        const bool largeResidual = llabs(actualDriftMs) > 800; // ~0.8s以上は即応
+
+        const float prevRate = rtcState.driftRateMsPerMin;
+        const float preDeltaRate = fabsf(clampedRate - prevRate);
+        float appliedAlpha = 1.0f; // 1.0 = direct adopt
 
         if (rtcState.driftRateCalibrated)
         {
@@ -495,8 +579,29 @@ void DeepSleepManager_MarkNtpSynced()
           }
           else
           {
-            // Exponential moving average: 50% old, 50% new for balanced convergence
-            rtcState.driftRateMsPerMin = rtcState.driftRateMsPerMin * 0.5f + clampedRate * 0.5f;
+            // Exponential moving average (adaptive):
+            // - When we're far from the measured rate (or still have large residual),
+            //   converge faster so rtc_drift_ms actually improves within a few sync cycles.
+            // - Otherwise keep a conservative weight to reduce jitter.
+            float alpha = 0.5f; // default: balanced
+            if (preDeltaRate >= 20.0f || llabs(trueDriftMs) >= 2000)
+            {
+              alpha = 0.7f; // fast catch-up
+            }
+            else if (preDeltaRate >= 10.0f || llabs(trueDriftMs) >= 1200)
+            {
+              alpha = 0.6f;
+            }
+
+            // If NTP sync took unusually long, be conservative only when residual is already small.
+            // Long sync can happen due to server fallback; the derived drift over ~1h is still usable.
+            if (ntpSyncDurationMs > 400 && llabs(actualDriftMs) < 300)
+            {
+              alpha = 0.5f;
+            }
+
+            appliedAlpha = alpha;
+            rtcState.driftRateMsPerMin = prevRate * (1.0f - alpha) + clampedRate * alpha;
           }
         }
         else
@@ -505,8 +610,10 @@ void DeepSleepManager_MarkNtpSynced()
           rtcState.driftRateMsPerMin = clampedRate;
           rtcState.driftRateCalibrated = true;
         }
-        LOGI(LogTag::DEEPSLEEP, "Drift rate updated: %.1f ms/min (true rate: %.1f ms/min over %.1f min)",
-             rtcState.driftRateMsPerMin, trueRate, minutesSinceSync);
+        LOGI(LogTag::DEEPSLEEP,
+             "Drift rate updated: %.1f ms/min (true %.1f, sleep %.1f min, wall %.1f min, alpha %.2f, pre-delta %.1f, ntpSync %lu ms)",
+             rtcState.driftRateMsPerMin, trueRate, sleepMinutesSinceSync, wallMinutesSinceSync,
+             appliedAlpha, preDeltaRate, ntpSyncDurationMs);
 
         // Save drift rate to SD card for persistence across power cycles
         DeepSleepManager_SaveDriftRate(rtcState.driftRateMsPerMin);
@@ -975,7 +1082,7 @@ float DeepSleepManager_LoadDriftRate()
 
   float driftRate = line.toFloat();
 
-  if (driftRate > 0)
+  if (driftRate != 0.0f)
   {
     LOGI(LogTag::DEEPSLEEP, "Loaded driftRate %.1f from %s", driftRate, storageType);
   }
@@ -983,7 +1090,7 @@ float DeepSleepManager_LoadDriftRate()
   return driftRate;
 }
 
-void DeepSleepManager_SaveEstimatedProcessingTime(float seconds)
+void DeepSleepManager_SaveEstimatedProcessingTimes(float noWifiSeconds, float wifiSeconds)
 {
   File file;
   const char *storageType;
@@ -1010,12 +1117,14 @@ void DeepSleepManager_SaveEstimatedProcessingTime(float seconds)
     return;
   }
 
-  file.printf("%.2f\n", seconds);
+  // Simple key=value lines for easy manual inspection/editing.
+  file.printf("no_wifi=%.2f\nwifi=%.2f\n", noWifiSeconds, wifiSeconds);
   file.close();
-  LOGD(LogTag::DEEPSLEEP, "Saved estimatedProcessingTime %.2f sec to %s", seconds, storageType);
+  LOGD(LogTag::DEEPSLEEP, "Saved processing times (noWiFi=%.2f, WiFi=%.2f) to %s",
+       noWifiSeconds, wifiSeconds, storageType);
 }
 
-float DeepSleepManager_LoadEstimatedProcessingTime()
+bool DeepSleepManager_LoadEstimatedProcessingTimes(float &outNoWifiSeconds, float &outWifiSeconds)
 {
   File file;
   const char *storageType;
@@ -1039,7 +1148,7 @@ float DeepSleepManager_LoadEstimatedProcessingTime()
   if (!fileExists)
   {
     LOGD(LogTag::DEEPSLEEP, "processingTime file not found on %s", storageType);
-    return 0;
+    return false;
   }
 
   if (sdCardAvailable)
@@ -1058,19 +1167,102 @@ float DeepSleepManager_LoadEstimatedProcessingTime()
   if (!file)
   {
     LOGW(LogTag::DEEPSLEEP, "Failed to open processing time file for reading on %s", storageType);
-    return 0;
+    return false;
   }
 
-  String line = file.readStringUntil('\n');
+  // Read whole file (small).
+  String content = file.readString();
   file.close();
 
-  float seconds = line.toFloat();
-
-  if (seconds >= 1.0f && seconds <= 20.0f)
+  content.trim();
+  if (content.length() == 0)
   {
-    LOGI(LogTag::DEEPSLEEP, "Loaded estimatedProcessingTime %.2f sec from %s", seconds, storageType);
-    return seconds;
+    return false;
   }
 
-  return 0;
+  // Backward compatible: if file is just a float, apply to both.
+  if (content.indexOf('=') < 0)
+  {
+    float seconds = content.toFloat();
+    if (seconds >= 1.0f && seconds <= 20.0f)
+    {
+      outNoWifiSeconds = seconds;
+      outWifiSeconds = seconds;
+      LOGI(LogTag::DEEPSLEEP, "Loaded processingTime %.2f sec (legacy) from %s", seconds, storageType);
+      return true;
+    }
+    return false;
+  }
+
+  float noWifi = 0.0f;
+  float wifi = 0.0f;
+  bool hasNoWifi = false;
+  bool hasWifi = false;
+
+  int start = 0;
+  while (start < content.length())
+  {
+    int end = content.indexOf('\n', start);
+    if (end < 0) end = content.length();
+    String line = content.substring(start, end);
+    line.trim();
+    start = end + 1;
+
+    if (line.length() == 0 || line.startsWith("#"))
+    {
+      continue;
+    }
+
+    int eq = line.indexOf('=');
+    if (eq < 0)
+    {
+      continue;
+    }
+
+    String key = line.substring(0, eq);
+    String val = line.substring(eq + 1);
+    key.trim();
+    key.toLowerCase();
+    val.trim();
+
+    float seconds = val.toFloat();
+    if (seconds < 1.0f || seconds > 20.0f)
+    {
+      continue;
+    }
+
+    if (key == "no_wifi" || key == "nowifi" || key == "no_wifi_seconds" || key == "nowifiseconds")
+    {
+      noWifi = seconds;
+      hasNoWifi = true;
+    }
+    else if (key == "wifi" || key == "wifi_seconds" || key == "wifiseconds")
+    {
+      wifi = seconds;
+      hasWifi = true;
+    }
+  }
+
+  if (!hasNoWifi && hasWifi)
+  {
+    // If only wifi is present, use it for both.
+    noWifi = wifi;
+    hasNoWifi = true;
+  }
+  if (hasNoWifi && !hasWifi)
+  {
+    wifi = noWifi;
+    hasWifi = true;
+  }
+
+  if (hasNoWifi)
+  {
+    outNoWifiSeconds = noWifi;
+    outWifiSeconds = wifi;
+    LOGI(LogTag::DEEPSLEEP, "Loaded processing times from %s: noWiFi=%.2f sec, WiFi=%.2f sec",
+         storageType, outNoWifiSeconds, outWifiSeconds);
+    return true;
+  }
+
+  return false;
 }

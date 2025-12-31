@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from datetime import datetime
 
 try:
     import serial
@@ -30,11 +31,10 @@ ARDUINO_CONFIG = PROJECT_ROOT / "arduino-cli.yaml"
 
 
 class SerialMonitor:
-    MAX_LOG_SIZE = 64 * 1024  # 64KB log buffer
     RECONNECT_INTERVAL = 0.5  # seconds between reconnect attempts (normal)
     FAST_RECONNECT_INTERVAL = 0.05  # seconds between reconnect attempts (after resume)
 
-    def __init__(self, port, baud):
+    def __init__(self, port, baud, *, buffer_bytes: int = 512 * 1024, log_dir: str | None = None, rotate_bytes: int = 50 * 1024 * 1024):
         self.port = port
         self.baud = baud
         self.serial_conn = None
@@ -44,6 +44,79 @@ class SerialMonitor:
         self.lock = threading.Lock()
         self.log_buffer = bytearray()
         self.log_lock = threading.Lock()
+        self.max_log_size = buffer_bytes
+
+        # Optional persistent log to file (host-side), for long-term investigation.
+        self.log_dir = Path(log_dir) if log_dir else None
+        self.rotate_bytes = rotate_bytes if rotate_bytes and rotate_bytes > 0 else 0
+        self.log_file = None
+        self.log_file_base = None
+        self.log_file_index = 0
+        self.log_file_size = 0
+
+    def start_file_logging(self):
+        """Start persistent serial logging to a file (if log_dir is configured)."""
+        if not self.log_dir:
+            return
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.log_file_base = self.log_dir / f"serial_{ts}.log"
+        self.log_file_index = 0
+        self._open_new_log_file()
+        self.write_marker(f"logging started: port={self.port} baud={self.baud}")
+
+    def stop_file_logging(self):
+        """Stop persistent serial logging."""
+        with self.log_lock:
+            if self.log_file is not None:
+                try:
+                    self.log_file.flush()
+                    self.log_file.close()
+                except Exception:
+                    pass
+                self.log_file = None
+
+    def _open_new_log_file(self):
+        if not self.log_dir or not self.log_file_base:
+            return
+        # Close current
+        if self.log_file is not None:
+            try:
+                self.log_file.flush()
+                self.log_file.close()
+            except Exception:
+                pass
+            self.log_file = None
+
+        if self.log_file_index == 0:
+            path = self.log_file_base
+        else:
+            path = self.log_dir / f"{self.log_file_base.stem}_{self.log_file_index:03d}{self.log_file_base.suffix}"
+
+        self.log_file = open(path, "ab")
+        try:
+            self.log_file_size = path.stat().st_size
+        except Exception:
+            self.log_file_size = 0
+
+    def write_marker(self, message: str):
+        """Write a visible marker line into the persistent log (if enabled)."""
+        if not self.log_dir:
+            return
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = f"\n[arduwrap] {stamp} {message}\n".encode("utf-8")
+        with self.log_lock:
+            if self.log_file is None:
+                self._open_new_log_file()
+            if self.log_file is None:
+                return
+            try:
+                self.log_file.write(line)
+                self.log_file.flush()
+                self.log_file_size += len(line)
+            except Exception:
+                # Ignore file logging errors (monitoring should still continue)
+                pass
 
     def open(self):
         """Open serial port for monitoring."""
@@ -102,6 +175,7 @@ class SerialMonitor:
                     last_reconnect_attempt = now
                     if self.open():
                         print(f"[Monitor] Reconnected to {self.port}", file=sys.stderr)
+                        self.write_marker(f"serial reconnected: port={self.port} baud={self.baud}")
                         self.eager_reconnect = False  # Connected, back to normal mode
                     # else: keep trying (fast if eager_reconnect, slow otherwise)
                 time.sleep(0.02)  # Short sleep for responsive reconnect
@@ -120,11 +194,28 @@ class SerialMonitor:
                         with self.log_lock:
                             self.log_buffer.extend(data)
                             # Trim if too large
-                            if len(self.log_buffer) > self.MAX_LOG_SIZE:
-                                self.log_buffer = self.log_buffer[-self.MAX_LOG_SIZE:]
+                            if len(self.log_buffer) > self.max_log_size:
+                                self.log_buffer = self.log_buffer[-self.max_log_size:]
+
+                            # Persistent file log (optional)
+                            if self.log_dir:
+                                if self.log_file is None:
+                                    self._open_new_log_file()
+                                if self.log_file is not None:
+                                    try:
+                                        self.log_file.write(data)
+                                        self.log_file_size += len(data)
+                                        # Rotate if too large
+                                        if self.rotate_bytes and self.log_file_size >= self.rotate_bytes:
+                                            self.log_file_index += 1
+                                            self._open_new_log_file()
+                                    except Exception:
+                                        # Ignore file logging errors
+                                        pass
             except (OSError, serial.SerialException) as e:
                 # Device disconnected
                 print(f"[Monitor] Disconnected: {e}", file=sys.stderr)
+                self.write_marker(f"serial disconnected: {e}")
                 self.close()
                 continue
             except Exception as e:
@@ -152,8 +243,8 @@ class SerialMonitor:
 
 
 class ArduinoWrapperServer:
-    def __init__(self, port, baud):
-        self.monitor = SerialMonitor(port, baud)
+    def __init__(self, port, baud, *, buffer_bytes: int = 512 * 1024, log_dir: str | None = None, rotate_bytes: int = 50 * 1024 * 1024):
+        self.monitor = SerialMonitor(port, baud, buffer_bytes=buffer_bytes, log_dir=log_dir, rotate_bytes=rotate_bytes)
         self.server_socket = None
         self.running = False
         self.monitor_thread = None
@@ -162,6 +253,7 @@ class ArduinoWrapperServer:
         """Start serial monitoring in background thread."""
         self.monitor.running = True
         self.monitor.open()
+        self.monitor.start_file_logging()
         self.monitor_thread = threading.Thread(target=self.monitor.monitor_loop, daemon=True)
         self.monitor_thread.start()
 
@@ -169,6 +261,7 @@ class ArduinoWrapperServer:
         """Stop serial monitoring completely."""
         self.monitor.running = False
         self.monitor.close()
+        self.monitor.stop_file_logging()
 
     def pause_monitor(self):
         """Pause monitoring (for compile/upload)."""
@@ -201,6 +294,7 @@ class ArduinoWrapperServer:
             args = ["-p", self.monitor.port] + filtered_args
 
             # Pause monitor before compile and clear log for fresh boot log
+            self.monitor.write_marker(f"compile requested (baud={self.monitor.baud})")
             self.pause_monitor()
             self.monitor.clear_log()
 
@@ -239,6 +333,7 @@ class ArduinoWrapperServer:
                 process.wait()
                 exit_code = process.returncode
 
+                self.monitor.write_marker(f"compile finished (exit_code={exit_code})")
                 return {
                     "success": exit_code == 0,
                     "exit_code": exit_code,
@@ -289,6 +384,9 @@ class ArduinoWrapperServer:
 
         print(f"[Server] Listening on {SOCKET_PATH}", file=sys.stderr)
         print(f"[Server] Started monitoring {self.monitor.port} at {self.monitor.baud} baud", file=sys.stderr)
+        if self.monitor.log_dir:
+            rotate_mb = int(self.monitor.rotate_bytes / (1024 * 1024)) if self.monitor.rotate_bytes else 0
+            print(f"[Server] Serial logs: {self.monitor.log_dir} (rotate={rotate_mb}MB, buffer={int(self.monitor.max_log_size/1024)}KB)", file=sys.stderr)
 
         # Start monitoring
         self.start_monitor()
@@ -402,7 +500,15 @@ def cmd_serve(args):
         print("Error: --baud is required", file=sys.stderr)
         sys.exit(1)
 
-    server = ArduinoWrapperServer(args.port, args.baud)
+    buffer_bytes = max(16 * 1024, int(args.buffer_kb) * 1024)
+    rotate_bytes = 0 if int(args.log_rotate_mb) <= 0 else int(args.log_rotate_mb) * 1024 * 1024
+    server = ArduinoWrapperServer(
+        args.port,
+        args.baud,
+        buffer_bytes=buffer_bytes,
+        log_dir=args.log_dir,
+        rotate_bytes=rotate_bytes,
+    )
     server.run()
 
 
@@ -445,15 +551,58 @@ def cmd_compile(args):
 
 
 def cmd_log(args):
-    """Log command: Get buffered log from server."""
-    response = send_request("log", clear=args.clear)
+    """Log command: Get buffered log from server (default) or tail the host-side file log."""
+    log_content = ""
 
-    if not response.get("success"):
-        error = response.get("error", "Unknown error")
-        print(f"Error: {error}", file=sys.stderr)
-        sys.exit(1)
+    if getattr(args, "list_files", False):
+        log_dir = Path(args.log_dir)
+        if not log_dir.exists():
+            print(f"(log dir not found) {log_dir}", file=sys.stderr)
+            return
+        files = sorted(log_dir.glob("serial_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not files:
+            print(f"(no serial log files) {log_dir}", file=sys.stderr)
+            return
+        for p in files[:20]:
+            try:
+                size_kb = int(p.stat().st_size / 1024)
+            except Exception:
+                size_kb = -1
+            print(f"{p} ({size_kb}KB)")
+        return
 
-    log_content = response.get("log", "")
+    if getattr(args, "from_file", False):
+        log_dir = Path(args.log_dir)
+        files = []
+        if log_dir.exists():
+            files = sorted(log_dir.glob("serial_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not files:
+            print(f"(no serial log files) {log_dir}", file=sys.stderr)
+            return
+
+        path = files[0]
+        tail_bytes = max(1, int(args.tail_kb)) * 1024
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - tail_bytes), os.SEEK_SET)
+                data = f.read()
+            log_content = data.decode("utf-8", errors="replace")
+        except Exception as e:
+            print(f"Error reading log file {path}: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"[log:file] {path}", file=sys.stderr)
+    else:
+        response = send_request("log", clear=args.clear)
+
+        if not response.get("success"):
+            error = response.get("error", "Unknown error")
+            print(f"Error: {error}", file=sys.stderr)
+            sys.exit(1)
+
+        log_content = response.get("log", "")
+
     if not log_content:
         print("(no log data)", file=sys.stderr)
         return
@@ -500,6 +649,12 @@ def main():
     serve_parser = subparsers.add_parser("serve", help="Start monitoring server")
     serve_parser.add_argument("--port", required=True, help="Serial port (e.g., /dev/cu.usbmodem1101)")
     serve_parser.add_argument("--baud", required=True, type=int, help="Baud rate (e.g., 115200)")
+    serve_parser.add_argument("--log-dir", default=str(PROJECT_ROOT / "logs" / "serial_logs"),
+                             help="Directory to save continuous serial logs (host-side).")
+    serve_parser.add_argument("--log-rotate-mb", type=int, default=50,
+                             help="Rotate serial log file after N MB (0 to disable rotation).")
+    serve_parser.add_argument("--buffer-kb", type=int, default=512,
+                             help="In-memory serial log buffer size for 'arduwrap log' (KB).")
     serve_parser.set_defaults(func=cmd_serve)
 
     # compile command - pass through all arguments to arduino-cli
@@ -509,6 +664,12 @@ def main():
 
     # log command
     log_parser = subparsers.add_parser("log", help="Get buffered log from server (since last reboot or clear)")
+    log_parser.add_argument("--from-file", action="store_true", help="Read from latest host-side serial log file instead of server buffer")
+    log_parser.add_argument("--list-files", action="store_true", help="List recent host-side serial log files and exit")
+    log_parser.add_argument("--log-dir", default=str(PROJECT_ROOT / "logs" / "serial_logs"),
+                            help="Directory to read host-side serial logs from (used with --from-file/--list-files)")
+    log_parser.add_argument("--tail-kb", type=int, default=1024,
+                            help="When using --from-file, read last N KB (default: 1024KB)")
     log_parser.add_argument("--clear", "-c", action="store_true", help="Clear log buffer after retrieving")
     log_parser.add_argument("--filter", "-f", metavar="PATTERN", help="Filter log lines by regex pattern")
     log_parser.add_argument("--ignore-case", "-i", action="store_true", help="Case-insensitive filter matching")

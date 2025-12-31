@@ -267,36 +267,44 @@ void drawStatus(const NetworkState &networkState, float batteryVoltage, float ba
 
 void drawStatus(const NetworkState &networkState, float batteryVoltage, float batteryPercent); // Forward declaration
 
-bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool fullUpdate)
+bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool fullUpdate, const struct tm *overrideTimeinfo)
 {
   struct tm timeinfo;
   bool timeAvailable = false;
 
-  if (!getLocalTime(&timeinfo))
+  if (overrideTimeinfo != nullptr)
   {
-    LOGE(LogTag::DISPLAY_MGR, "Failed to get local time, trying RTC fallback");
-    // Try to restore time from RTC as fallback
-    if (NetworkManager_SetupTimeFromRTC())
+    timeinfo = *overrideTimeinfo;
+    timeAvailable = true;
+  }
+  else
+  {
+    if (!getLocalTime(&timeinfo))
     {
-      // Try again after RTC restore
-      if (getLocalTime(&timeinfo))
+      LOGE(LogTag::DISPLAY_MGR, "Failed to get local time, trying RTC fallback");
+      // Try to restore time from RTC as fallback
+      if (NetworkManager_SetupTimeFromRTC())
       {
-        LOGI(LogTag::DISPLAY_MGR, "Time restored from RTC fallback");
-        timeAvailable = true;
+        // Try again after RTC restore
+        if (getLocalTime(&timeinfo))
+        {
+          LOGI(LogTag::DISPLAY_MGR, "Time restored from RTC fallback");
+          timeAvailable = true;
+        }
+        else
+        {
+          LOGE(LogTag::DISPLAY_MGR, "Failed to get local time even after RTC restore");
+        }
       }
       else
       {
-        LOGE(LogTag::DISPLAY_MGR, "Failed to get local time even after RTC restore");
+        LOGE(LogTag::DISPLAY_MGR, "Failed to get local time and RTC fallback also failed");
       }
     }
     else
     {
-      LOGE(LogTag::DISPLAY_MGR, "Failed to get local time and RTC fallback also failed");
+      timeAvailable = true;
     }
-  }
-  else
-  {
-    timeAvailable = true;
   }
 
   // Check if we should skip update (only if time is available and not forced)
@@ -515,14 +523,14 @@ void DisplayManager_DrawSetupStatus(const char *message)
   EPD_PartUpdate();
 }
 
-bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate)
+bool DisplayManager_UpdateDisplay(const NetworkState &networkState, bool forceUpdate, const struct tm *overrideTimeinfo)
 {
-  return performUpdate(networkState, forceUpdate, false);
+  return performUpdate(networkState, forceUpdate, false, overrideTimeinfo);
 }
 
 void DisplayManager_FullUpdate(const NetworkState &networkState)
 {
-  performUpdate(networkState, true, true);
+  performUpdate(networkState, true, true, nullptr);
 }
 
 uint8_t *DisplayManager_GetFrameBuffer()

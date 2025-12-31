@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <SD.h>
+#include <sys/time.h>
 
 namespace
 {
@@ -87,14 +88,21 @@ void formatBootTime(char *buffer, size_t bufferSize)
 
 void formatDateTime(char *buffer, size_t bufferSize)
 {
+  // NOTE:
+  // We want a real fractional second here. Using millis()%1000 mixes boot-time with wall-clock
+  // and can appear to go backwards when system time is corrected/restored.
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+
+  time_t sec = (time_t)tv.tv_sec;
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
+  if (localtime_r(&sec, &timeinfo) == nullptr)
   {
     snprintf(buffer, bufferSize, "N/A");
     return;
   }
 
-  unsigned long ms = millis() % 1000;
+  const unsigned long ms = (unsigned long)(tv.tv_usec / 1000);
   snprintf(buffer, bufferSize, "%04d-%02d-%02d %02d:%02d:%02d.%03lu",
            timeinfo.tm_year + 1900,
            timeinfo.tm_mon + 1,

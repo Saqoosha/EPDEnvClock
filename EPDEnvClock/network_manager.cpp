@@ -4,6 +4,7 @@
 #include <WiFiUdp.h>
 #include <time.h>
 #include <esp_timer.h>
+#include <sys/time.h>
 
 #include "wifi_config.h"
 #include "server_config.h"
@@ -88,9 +89,55 @@ namespace
   constexpr size_t NTP_PACKET_SIZE = 48;
   constexpr uint32_t SEVENTY_YEARS = 2208988800UL; // 1970 - 1900 in seconds
 
+  struct NtpQueryResult
+  {
+    int64_t correctedUnixUsAtReceive = 0; // Estimated true Unix time at local receive moment (us)
+    int64_t offsetUs = 0;                // Estimated offset (server - client) at receive moment (us)
+    int64_t rttUs = 0;                   // Estimated round-trip delay (us)
+    unsigned long waitTimeMs = 0;        // Millis from wait start until response detected
+  };
+
+  inline uint32_t readU32BE(const byte *p)
+  {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+  }
+
+  inline void writeU32BE(byte *p, uint32_t v)
+  {
+    p[0] = (byte)((v >> 24) & 0xFF);
+    p[1] = (byte)((v >> 16) & 0xFF);
+    p[2] = (byte)((v >> 8) & 0xFF);
+    p[3] = (byte)(v & 0xFF);
+  }
+
+  inline uint32_t usecToNtpFrac(uint32_t usec)
+  {
+    // frac = usec / 1e6 * 2^32
+    return (uint32_t)(((uint64_t)usec << 32) / 1000000ULL);
+  }
+
+  inline uint32_t ntpFracToUsec(uint32_t frac)
+  {
+    // usec = frac / 2^32 * 1e6
+    return (uint32_t)(((uint64_t)frac * 1000000ULL) >> 32);
+  }
+
+  inline int64_t timevalToUnixUs(const struct timeval &tv)
+  {
+    return (int64_t)tv.tv_sec * 1000000LL + (int64_t)tv.tv_usec;
+  }
+
+  inline int64_t ntpTimestampToUnixUs(uint32_t ntpSec, uint32_t ntpFrac)
+  {
+    // NTP epoch(1900) -> Unix epoch(1970)
+    int64_t unixSec = (int64_t)ntpSec - (int64_t)SEVENTY_YEARS;
+    int64_t usec = (int64_t)ntpFracToUsec(ntpFrac);
+    return unixSec * 1000000LL + usec;
+  }
+
   // Try to get NTP response from a single server
-  // Returns true if successful, fills in ntpSeconds and ntpFraction
-  bool tryNtpServer(const char *server, uint32_t &ntpSeconds, uint32_t &ntpFraction, StatusCallback statusCallback)
+  // Returns true if successful, fills in NTP-derived corrected time + RTT/offset.
+  bool tryNtpServer(const char *server, NtpQueryResult &out, StatusCallback statusCallback)
   {
     // DNS resolution
     LOGD(LogTag::NETWORK, "NTP: Resolving %s...", server);
@@ -106,7 +153,18 @@ namespace
     byte packet[NTP_PACKET_SIZE] = {0};
 
     // NTP request header: LI=0, Version=3, Mode=3 (client)
-    packet[0] = 0xE3; // 11100011
+    // (0x1B = 00 011 011)
+    packet[0] = 0x1B;
+
+    // Client transmit timestamp (t1) in request (bytes 40-47)
+    // Server will echo it back as Originate timestamp in response.
+    struct timeval tv1;
+    gettimeofday(&tv1, NULL);
+    const int64_t t1UnixUs = timevalToUnixUs(tv1);
+    const uint32_t t1NtpSec = (uint32_t)((uint64_t)tv1.tv_sec + (uint64_t)SEVENTY_YEARS);
+    const uint32_t t1NtpFrac = usecToNtpFrac((uint32_t)tv1.tv_usec);
+    writeU32BE(&packet[40], t1NtpSec);
+    writeU32BE(&packet[44], t1NtpFrac);
 
     // Open UDP socket
     int udpBeginResult = udp.begin(123);
@@ -159,17 +217,50 @@ namespace
     }
     LOGD(LogTag::NETWORK, "NTP: Received %d bytes from %s after %lums", packetSize, server, waitTime);
 
+    // Capture destination timestamp (t4) as soon as packet is available
+    struct timeval tv4;
+    gettimeofday(&tv4, NULL);
+    const int64_t t4UnixUs = timevalToUnixUs(tv4);
+
     // Read response
     udp.read(packet, NTP_PACKET_SIZE);
     udp.stop();
 
-    // Extract transmit timestamp (bytes 40-47)
-    ntpSeconds = ((uint32_t)packet[40] << 24) | ((uint32_t)packet[41] << 16) |
-                 ((uint32_t)packet[42] << 8) | (uint32_t)packet[43];
-    ntpFraction = ((uint32_t)packet[44] << 24) | ((uint32_t)packet[45] << 16) |
-                  ((uint32_t)packet[46] << 8) | (uint32_t)packet[47];
+    // Parse timestamps from response
+    // Originate (t1)  : bytes 24-31 (client transmit echoed by server)
+    // Receive (t2)    : bytes 32-39
+    // Transmit (t3)   : bytes 40-47
+    const uint32_t t1RespSec = readU32BE(&packet[24]);
+    const uint32_t t1RespFrac = readU32BE(&packet[28]);
+    const uint32_t t2Sec = readU32BE(&packet[32]);
+    const uint32_t t2Frac = readU32BE(&packet[36]);
+    const uint32_t t3Sec = readU32BE(&packet[40]);
+    const uint32_t t3Frac = readU32BE(&packet[44]);
+
+    // Convert to Unix microseconds
+    // Prefer our local captured t1UnixUs (more direct); but keep response for sanity log.
+    const int64_t t2UnixUs = ntpTimestampToUnixUs(t2Sec, t2Frac);
+    const int64_t t3UnixUs = ntpTimestampToUnixUs(t3Sec, t3Frac);
+
+    // Standard NTP offset/delay (assuming symmetric network delay)
+    // offset = ((t2 - t1) + (t3 - t4)) / 2
+    // delay  = (t4 - t1) - (t3 - t2)
+    const int64_t offsetUs = ((t2UnixUs - t1UnixUs) + (t3UnixUs - t4UnixUs)) / 2;
+    const int64_t rttUs = (t4UnixUs - t1UnixUs) - (t3UnixUs - t2UnixUs);
+
+    out.offsetUs = offsetUs;
+    out.rttUs = rttUs;
+    out.waitTimeMs = waitTime;
+    out.correctedUnixUsAtReceive = t4UnixUs + offsetUs;
 
     LOGI(LogTag::NETWORK, "NTP: Got time from %s", server);
+    LOGD(LogTag::NETWORK, "NTP: t1(req)=%ld.%03ld, t1(resp)=%lu.%03u, t2=%lld.%03lld, t3=%lld.%03lld, t4=%ld.%03ld, offset=%lldms, rtt=%lldms",
+         (long)tv1.tv_sec, (long)(tv1.tv_usec / 1000),
+         (unsigned long)(t1RespSec - SEVENTY_YEARS), (unsigned) (ntpFracToUsec(t1RespFrac) / 1000),
+         (long long)(t2UnixUs / 1000000LL), (long long)((t2UnixUs % 1000000LL) / 1000LL),
+         (long long)(t3UnixUs / 1000000LL), (long long)((t3UnixUs % 1000000LL) / 1000LL),
+         (long)tv4.tv_sec, (long)(tv4.tv_usec / 1000),
+         (long long)(offsetUs / 1000LL), (long long)(rttUs / 1000LL));
     return true;
   }
 } // namespace
@@ -186,13 +277,12 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
   const unsigned long startTime = millis();
 
   // Try each NTP server in order until one succeeds
-  uint32_t ntpSeconds = 0;
-  uint32_t ntpFraction = 0;
+  NtpQueryResult ntpResult;
   const char *successServer = nullptr;
 
   for (size_t i = 0; i < NTP_SERVER_COUNT; i++)
   {
-    if (tryNtpServer(NTP_SERVERS[i], ntpSeconds, ntpFraction, statusCallback))
+    if (tryNtpServer(NTP_SERVERS[i], ntpResult, statusCallback))
     {
       successServer = NTP_SERVERS[i];
       break;
@@ -215,16 +305,33 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
     return false;
   }
 
-  // Convert to Unix timestamp and milliseconds
-  time_t unixSeconds = ntpSeconds - SEVENTY_YEARS;
-  uint32_t milliseconds = (uint32_t)(((uint64_t)ntpFraction * 1000) >> 32);
-
   const unsigned long syncTime = millis() - startTime;
+
+  // Use corrected time (offset/RTT compensated) instead of raw transmit timestamp
+  // Adjust by monotonic elapsed time since receive moment, so settimeofday reflects "now".
+  struct timeval tvNow;
+  gettimeofday(&tvNow, NULL);
+  const int64_t nowUnixUs = timevalToUnixUs(tvNow);
+  // Estimate elapsed since receive using system clock (good enough here; offset is already computed)
+  // This keeps code simple; the error is typically << 10ms.
+  int64_t elapsedSinceReceiveUs = 0;
+  if (ntpResult.correctedUnixUsAtReceive != 0)
+  {
+    // We don't store t4 separately; approximate with now - (correctedAtReceive - offset)
+    // correctedAtReceive = t4 + offset  => t4 = correctedAtReceive - offset
+    const int64_t t4UnixUsApprox = ntpResult.correctedUnixUsAtReceive - ntpResult.offsetUs;
+    elapsedSinceReceiveUs = nowUnixUs - t4UnixUsApprox;
+    if (elapsedSinceReceiveUs < 0) elapsedSinceReceiveUs = 0;
+  }
+  const int64_t correctedNowUnixUs = ntpResult.correctedUnixUsAtReceive + elapsedSinceReceiveUs;
+
+  time_t unixSeconds = (time_t)(correctedNowUnixUs / 1000000LL);
+  uint32_t microseconds = (uint32_t)(correctedNowUnixUs % 1000000LL);
 
   // Set system time
   struct timeval tv;
   tv.tv_sec = unixSeconds;
-  tv.tv_usec = milliseconds * 1000;
+  tv.tv_usec = microseconds;
   settimeofday(&tv, NULL);
 
   // Set timezone
@@ -242,13 +349,16 @@ bool NetworkManager_SyncNtp(NetworkState &state, StatusCallback statusCallback)
   state.ntpSyncTime = syncTime;
   LOGI(LogTag::NETWORK, "Time synchronized via custom NTP!");
   LOGI(LogTag::NETWORK, "Current time: %d:%02d:%02d.%03u",
-       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, milliseconds);
+       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, (unsigned)(tv.tv_usec / 1000));
   LOGD(LogTag::NETWORK, "NTP sync time: %lu ms", syncTime);
+  LOGI(LogTag::NETWORK, "NTP offset=%lld ms, RTT=%lld ms, wait=%lu ms (%s)",
+       (long long)(ntpResult.offsetUs / 1000LL), (long long)(ntpResult.rttUs / 1000LL),
+       ntpResult.waitTimeMs, successServer);
 
   char statusMsg[48];
   snprintf(statusMsg, sizeof(statusMsg), "NTP OK! (%lums)", syncTime);
   updateStatus(statusCallback, statusMsg);
-  delay(500);
+  delay(50);
   return true;
 }
 
@@ -326,96 +436,17 @@ int32_t NetworkManager_MeasureNtpDrift()
   {
     const char *server = NTP_SERVERS[serverIdx];
 
-    // DNS resolution
-    LOGD(LogTag::NETWORK, "NTP drift: Resolving %s...", server);
-    IPAddress ntpServerIP;
-    if (!WiFi.hostByName(server, ntpServerIP))
+    NtpQueryResult result;
+    if (!tryNtpServer(server, result, nullptr))
     {
-      LOGW(LogTag::NETWORK, "NTP drift: DNS failed for %s", server);
-      continue;
-    }
-    LOGD(LogTag::NETWORK, "NTP drift: Resolved to %s", ntpServerIP.toString().c_str());
-
-    WiFiUDP udp;
-    byte packet[NTP_PACKET_SIZE] = {0};
-
-    // NTP request header: LI=0, Version=3, Mode=3 (client)
-    packet[0] = 0xE3; // 11100011
-
-    int udpBeginResult = udp.begin(123);
-    LOGD(LogTag::NETWORK, "NTP drift: UDP begin result: %d", udpBeginResult);
-
-    int beginPacketResult = udp.beginPacket(ntpServerIP, 123);
-    if (beginPacketResult == 0)
-    {
-      LOGW(LogTag::NETWORK, "NTP drift: beginPacket failed for %s", server);
-      udp.stop();
       continue;
     }
 
-    size_t bytesWritten = udp.write(packet, NTP_PACKET_SIZE);
-    int endPacketResult = udp.endPacket();
-    LOGD(LogTag::NETWORK, "NTP drift: Sent %zu bytes, endPacket=%d", bytesWritten, endPacketResult);
-
-    if (endPacketResult == 0)
-    {
-      LOGW(LogTag::NETWORK, "NTP drift: endPacket failed for %s", server);
-      udp.stop();
-      continue;
-    }
-
-    // Wait for response (max 1 second per server)
-    unsigned long startWait = millis();
-    int packetSize = 0;
-    LOGD(LogTag::NETWORK, "NTP drift: Waiting for response from %s...", server);
-    while (packetSize == 0 && millis() - startWait < 1000)
-    {
-      delay(10);
-      packetSize = udp.parsePacket();
-    }
-
-    unsigned long waitTime = millis() - startWait;
-    if (packetSize < NTP_PACKET_SIZE)
-    {
-      LOGW(LogTag::NETWORK, "NTP drift: No response from %s after %lums", server, waitTime);
-      udp.stop();
-      continue;
-    }
-    LOGD(LogTag::NETWORK, "NTP drift: Received %d bytes from %s after %lums", packetSize, server, waitTime);
-
-    // Capture system time immediately after receiving NTP response
-    struct timeval tvSystem;
-    gettimeofday(&tvSystem, NULL);
-
-    // Read NTP response
-    udp.read(packet, NTP_PACKET_SIZE);
-    udp.stop();
-
-    // Extract transmit timestamp (bytes 40-47)
-    uint32_t ntpSeconds = ((uint32_t)packet[40] << 24) | ((uint32_t)packet[41] << 16) |
-                          ((uint32_t)packet[42] << 8) | (uint32_t)packet[43];
-    uint32_t ntpFraction = ((uint32_t)packet[44] << 24) | ((uint32_t)packet[45] << 16) |
-                           ((uint32_t)packet[46] << 8) | (uint32_t)packet[47];
-
-    // Convert NTP time to Unix epoch (subtract 70 years)
-    time_t ntpUnixSec = ntpSeconds - SEVENTY_YEARS;
-
-    // Convert fractional part to milliseconds: fraction / 2^32 * 1000
-    uint32_t ntpMs = (uint32_t)(((uint64_t)ntpFraction * 1000) >> 32);
-
-    // System time
-    time_t systemSec = tvSystem.tv_sec;
-    uint32_t systemMs = tvSystem.tv_usec / 1000;
-
-    // Calculate drift in milliseconds (NTP - System)
-    // Positive = system is behind (slow), Negative = system is ahead (fast)
-    int64_t ntpTotalMs = (int64_t)ntpUnixSec * 1000 + ntpMs;
-    int64_t systemTotalMs = (int64_t)systemSec * 1000 + systemMs;
-    int32_t driftMs = (int32_t)(ntpTotalMs - systemTotalMs);
-
-    LOGI(LogTag::NETWORK, "NTP drift measured via %s: %d ms (NTP: %ld.%03u, System: %ld.%03u)",
-         server, driftMs, (long)ntpUnixSec, ntpMs, (long)systemSec, systemMs);
-
+    // offsetUs is (server - client) at receive moment.
+    // Positive = system is behind (slow), Negative = system is ahead (fast).
+    int32_t driftMs = (int32_t)(result.offsetUs / 1000LL);
+    LOGI(LogTag::NETWORK, "NTP drift measured via %s: %d ms (offset=%lldms, rtt=%lldms, wait=%lums)",
+         server, driftMs, (long long)(result.offsetUs / 1000LL), (long long)(result.rttUs / 1000LL), result.waitTimeMs);
     return driftMs;
   }
 

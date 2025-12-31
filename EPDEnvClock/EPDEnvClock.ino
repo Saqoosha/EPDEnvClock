@@ -323,54 +323,119 @@ void setup()
   // This check happens AFTER parallel tasks complete, so processing time has elapsed.
   // If we still haven't reached the next minute, wait briefly.
   // Also capture the time at draw moment for adaptive timing adjustment (ms precision).
-  float delayAtDrawTime = 0.0f; // Seconds past minute boundary (with ms precision)
+  // Signed seconds relative to the minute boundary:
+  // - negative: we're still BEFORE the boundary (early)
+  // - positive: we're AFTER the boundary (late)
+  float drawOffsetSec = 0.0f;
   float waitedSeconds = 0.0f;   // How long we waited for minute to change
+  // EPD partial update takes ~0.65-0.75s (EPD_Display + PartUpdate).
+  // Start updating this much BEFORE the minute boundary so the visible flip lands on the boundary.
+  constexpr float kEpdLeadTimeSec = 0.70f;
+  constexpr int32_t kEpdLeadTimeMs = (int32_t)(kEpdLeadTimeSec * 1000.0f);
+
+  // When we start updating before the boundary, we must render the *next minute*.
+  struct tm overrideTimeinfo;
+  const struct tm *overrideTimePtr = nullptr;
+  auto computeOffsetSec = [&](float &outOffsetSec) -> bool {
+    struct timeval tvNow;
+    gettimeofday(&tvNow, NULL);
+    time_t nowSec = (time_t)tvNow.tv_sec;
+    struct tm tmNow;
+    if (localtime_r(&nowSec, &tmNow) == nullptr)
+    {
+      return false;
+    }
+    // Map ms into signed range around the boundary (e.g. 59.900s -> -0.100s)
+    int32_t phaseMs = (int32_t)tmNow.tm_sec * 1000 + (int32_t)(tvNow.tv_usec / 1000);
+    if (phaseMs > 30000)
+    {
+      phaseMs -= 60000;
+    }
+    outOffsetSec = (float)phaseMs / 1000.0f;
+    return true;
+  };
   if (wakeFromSleep)
   {
     RTCState &rtcState = DeepSleepManager_GetRTCState();
-    struct tm timeinfo;
     struct timeval tv;
-    if (getLocalTime(&timeinfo))
+    gettimeofday(&tv, NULL);
+    time_t nowSec = (time_t)tv.tv_sec;
+    struct tm timeinfo;
+    if (localtime_r(&nowSec, &timeinfo) != nullptr)
     {
       uint8_t currentMinute = timeinfo.tm_min;
       if (currentMinute == rtcState.lastDisplayedMinute)
       {
         // Calculate exact milliseconds until next minute boundary
+        const int32_t msIntoMinute = (int32_t)timeinfo.tm_sec * 1000 + (int32_t)(tv.tv_usec / 1000);
+        int32_t msUntilNextMinute = 60000 - msIntoMinute;
+        if (msUntilNextMinute < 0)
+        {
+          msUntilNextMinute = 0;
+        }
+
+        // Wait only until we're within the EPD lead-time window.
+        int32_t waitMs = msUntilNextMinute - kEpdLeadTimeMs;
+        if (waitMs > 0)
+        {
+          waitedSeconds = (float)waitMs / 1000.0f; // Record wait time for adjustment
+          LOGI(LogTag::SETUP, "Still same minute (%d), waiting %d ms (lead %d ms) for boundary...",
+               currentMinute, waitMs, kEpdLeadTimeMs);
+          delay((unsigned long)waitMs);
+        }
+
+        // Recompute remaining ms to boundary after waiting, and pre-render the next minute.
         gettimeofday(&tv, NULL);
-        uint16_t currentMs = tv.tv_usec / 1000;
-        uint16_t msUntilNextMinute = (60 - timeinfo.tm_sec) * 1000 - currentMs;
-        waitedSeconds = msUntilNextMinute / 1000.0f; // Record wait time for adjustment
-        LOGI(LogTag::SETUP, "Still same minute (%d), waiting %d ms for next minute...",
-             currentMinute, msUntilNextMinute);
-        delay(msUntilNextMinute);
-        // Refresh time after waiting
-        if (getLocalTime(&timeinfo))
+        nowSec = (time_t)tv.tv_sec;
+        if (localtime_r(&nowSec, &timeinfo) != nullptr)
         {
           currentMinute = timeinfo.tm_min;
+          const int32_t msIntoMinute2 = (int32_t)timeinfo.tm_sec * 1000 + (int32_t)(tv.tv_usec / 1000);
+          msUntilNextMinute = 60000 - msIntoMinute2;
+          if (msUntilNextMinute < 0) msUntilNextMinute = 0;
+
+          time_t displayEpoch = nowSec + (time_t)((msUntilNextMinute + 999) / 1000); // ceil to cross boundary
+          if (localtime_r(&displayEpoch, &overrideTimeinfo) != nullptr)
+          {
+            overrideTimePtr = &overrideTimeinfo;
+            LOGD(LogTag::SETUP, "Pre-boundary render: now=%02d:%02d:%02d, render=%02d:%02d (msToBoundary=%d)",
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+                 overrideTimeinfo.tm_hour, overrideTimeinfo.tm_min, msUntilNextMinute);
+          }
         }
-        LOGI(LogTag::SETUP, "Minute changed to %d", currentMinute);
       }
-      // Capture time with millisecond precision (right before display update)
-      gettimeofday(&tv, NULL);
-      delayAtDrawTime = (float)timeinfo.tm_sec + (float)(tv.tv_usec / 1000) / 1000.0f;
+      // Capture time offset with millisecond precision (right before display update)
+      (void)computeOffsetSec(drawOffsetSec);
     }
   }
   else
   {
     // Cold boot - also capture time
-    struct tm timeinfo;
-    struct timeval tv;
-    if (getLocalTime(&timeinfo))
-    {
-      gettimeofday(&tv, NULL);
-      delayAtDrawTime = (float)timeinfo.tm_sec + (float)(tv.tv_usec / 1000) / 1000.0f;
-    }
+    (void)computeOffsetSec(drawOffsetSec);
   }
 
   // === Single Display Update ===
   // Now that both WiFi/NTP and sensor data are ready, update display once
+  // Capture timing around the EPD refresh so we can compare with human-observed flip delay.
+  float displayStartOffsetSec = 0.0f;
+  float displayEndOffsetSec = 0.0f;
+  struct timeval tvDisplayStart;
+  struct timeval tvDisplayEnd;
+  gettimeofday(&tvDisplayStart, NULL);
+  (void)computeOffsetSec(displayStartOffsetSec);
+
   DisplayManager_SetStatus("Running");
-  if (DisplayManager_UpdateDisplay(networkState, true))
+  const bool displayUpdated = DisplayManager_UpdateDisplay(networkState, true, overrideTimePtr);
+
+  gettimeofday(&tvDisplayEnd, NULL);
+  (void)computeOffsetSec(displayEndOffsetSec);
+  const int64_t displayWallMs =
+      (int64_t)(tvDisplayEnd.tv_sec - tvDisplayStart.tv_sec) * 1000LL +
+      (int64_t)(tvDisplayEnd.tv_usec - tvDisplayStart.tv_usec) / 1000LL;
+  LOGI(LogTag::SETUP, "EPD refresh timing: startOffset=%.3fs endOffset=%.3fs wall=%lldms (waited=%.3fs)",
+       displayStartOffsetSec, displayEndOffsetSec, (long long)displayWallMs, waitedSeconds);
+
+  if (displayUpdated)
   {
     LOGI(LogTag::SETUP, "Display updated (single refresh)");
     exportFrameBuffer();
@@ -383,78 +448,80 @@ void setup()
   }
 
   // === Adaptive Processing Time Adjustment ===
-  // Use delayAtDrawTime captured before display update for accurate measurement (ms precision)
-  // Skip adjustment when full NTP sync happened (system clock was corrected, timing is different)
-  // But DO adjust when only measuring drift (system clock unchanged, timing is normal)
-  if (!ntpSyncedThisBoot)
+  // Use drawOffsetSec captured before display update for accurate measurement (ms precision)
+  // Update the appropriate estimate (WiFi/no-WiFi) so top-of-hour updates can also converge.
+  // Skip cold boot: its one-time init cost would distort the steady-state estimate.
+  if (wakeFromSleep)
   {
     RTCState &rtcState = DeepSleepManager_GetRTCState();
-    float estimated = rtcState.estimatedProcessingTime;
+    const bool usedWifiThisBoot = networkState.wifiConnected;
+    float &estimateRef = usedWifiThisBoot ? rtcState.estimatedProcessingTimeWifi : rtcState.estimatedProcessingTimeNoWifi;
+    float estimated = estimateRef;
+    const float targetOffsetSec = -kEpdLeadTimeSec;
 
     // Calculate actual delay considering measured NTP drift
     // Drift = NTP time - System time
     // Positive drift = system is behind (slow), so actual delay is larger
-    float actualDelayAtDrawTime = delayAtDrawTime;
-    if (driftMeasured)
+    float actualOffsetAtDrawTime = drawOffsetSec;
+    // Only apply drift correction when we measured drift WITHOUT setting the system clock.
+    // For full NTP sync boots, the system clock has already been corrected.
+    if (driftMeasured && !ntpSyncedThisBoot)
     {
-      actualDelayAtDrawTime += (float)measuredDriftMs / 1000.0f;
-      LOGD(LogTag::SETUP, "Delay corrected for drift: %.2f + %.2f = %.2f sec",
-           delayAtDrawTime, (float)measuredDriftMs / 1000.0f, actualDelayAtDrawTime);
+      actualOffsetAtDrawTime += (float)measuredDriftMs / 1000.0f;
+      LOGD(LogTag::SETUP, "Draw offset corrected for drift: %.3f + %.3f = %.3f sec",
+           drawOffsetSec, (float)measuredDriftMs / 1000.0f, actualOffsetAtDrawTime);
     }
 
-    // Goal: draw as close to minute boundary as possible (actualDelayAtDrawTime = 0)
+    // Goal: start drawing around -kEpdLeadTimeSec so the *visible* refresh lands on the boundary.
     // Use smoothing formula: next = current + error * 0.5
     // - If we waited for minute change -> woke too early -> decrease est proportionally
-    // - If actualDelayAtDrawTime > 0 -> still late -> increase est proportionally
+    // - If offset != 0 -> adjust in both directions (early/late)
     if (waitedSeconds > 0.1f) // We had to wait more than 100ms
     {
       // We woke too early - decrease estimated time proportionally
       float adjustment = waitedSeconds * 0.5f;
       float newEstimated = estimated - adjustment;
-      LOGI(LogTag::SETUP, "Processing time adjusted: %.2f -> %.2f sec (waited %.2f sec)",
-           estimated, newEstimated, waitedSeconds);
-      rtcState.estimatedProcessingTime = newEstimated;
+      LOGI(LogTag::SETUP, "Processing time adjusted (%s): %.2f -> %.2f sec (waited %.3f sec)",
+           usedWifiThisBoot ? "wifi" : "no-wifi", estimated, newEstimated, waitedSeconds);
+      estimateRef = newEstimated;
     }
-    else if (actualDelayAtDrawTime > 0.1f) // More than 100ms late (using drift-corrected delay)
+    else if (fabsf(actualOffsetAtDrawTime - targetOffsetSec) > 0.1f) // More than 100ms off target
     {
       // Smoothing: move halfway towards target
-      // target = estimated + actualDelayAtDrawTime (what we actually needed)
-      // new = estimated + (target - estimated) * 0.5 = estimated + actualDelayAtDrawTime * 0.5
-      float adjustment = actualDelayAtDrawTime * 0.5f;
+      // error = actual - target
+      const float error = actualOffsetAtDrawTime - targetOffsetSec;
+      float adjustment = error * 0.5f;
       float newEstimated = estimated + adjustment;
-      LOGI(LogTag::SETUP, "Processing time adjusted: %.2f -> %.2f sec (actual delay: %.2f sec)",
-           estimated, newEstimated, actualDelayAtDrawTime);
-      rtcState.estimatedProcessingTime = newEstimated;
+      LOGI(LogTag::SETUP, "Processing time adjusted (%s): %.2f -> %.2f sec (draw offset: %.3f sec, target: %.3f sec)",
+           usedWifiThisBoot ? "wifi" : "no-wifi", estimated, newEstimated, actualOffsetAtDrawTime, targetOffsetSec);
+      estimateRef = newEstimated;
     }
     else
     {
-      LOGD(LogTag::SETUP, "Processing time optimal: %.2f sec (actual delay: %.3f sec)", estimated, actualDelayAtDrawTime);
+      LOGD(LogTag::SETUP, "Processing time optimal (%s): %.2f sec (draw offset: %.3f sec)",
+           usedWifiThisBoot ? "wifi" : "no-wifi", estimated, actualOffsetAtDrawTime);
     }
 
     // Clamp to reasonable range: 1 to 20 seconds
-    if (rtcState.estimatedProcessingTime < 1.0f)
+    if (estimateRef < 1.0f)
     {
-      rtcState.estimatedProcessingTime = 1.0f;
+      estimateRef = 1.0f;
     }
-    else if (rtcState.estimatedProcessingTime > 20.0f)
+    else if (estimateRef > 20.0f)
     {
-      rtcState.estimatedProcessingTime = 20.0f;
+      estimateRef = 20.0f;
     }
 
     // Persist if changed meaningfully (>=50ms) to survive power cycles
-    float change = rtcState.estimatedProcessingTime - estimated;
+    float change = estimateRef - estimated;
     if (change < 0)
     {
       change = -change;
     }
     if (change > 0.05f)
     {
-      DeepSleepManager_SaveEstimatedProcessingTime(rtcState.estimatedProcessingTime);
+      DeepSleepManager_SaveEstimatedProcessingTimes(rtcState.estimatedProcessingTimeNoWifi, rtcState.estimatedProcessingTimeWifi);
     }
-  }
-  else
-  {
-    LOGD(LogTag::SETUP, "Skipping processing time adjustment (NTP synced this boot)");
   }
 
   // Log sensor values to JSONL file

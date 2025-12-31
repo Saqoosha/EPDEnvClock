@@ -6,11 +6,41 @@ import json
 import sys
 import subprocess
 import os
+from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
 
 DATABASE_ID = "fc27137d-cc9d-48cd-bfc0-5c270356dc98"
 DATABASE_NAME = "epd-sensor-db"
+
+
+def load_dotenv():
+    """Load environment variables from .env file if it exists."""
+    # Look for .env in script directory's parent (project root)
+    script_dir = Path(__file__).parent
+    env_file = script_dir.parent / ".env"
+
+    if not env_file.exists():
+        return
+
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if not line or line.startswith("#"):
+                continue
+
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip("'\"")
+                # Only set if not already in environment
+                if key not in os.environ:
+                    os.environ[key] = value
+
+
+# Load .env file before reading environment variables
+load_dotenv()
 
 
 def fetch_data(hours: int = 48) -> Dict[str, Any]:
@@ -37,7 +67,7 @@ def fetch_data(hours: int = 48) -> Dict[str, Any]:
     # Check if CF_API_TOKEN is set
     if not env.get('CF_API_TOKEN') and not env.get('CLOUDFLARE_API_TOKEN'):
         print("⚠️  CF_API_TOKEN not set. Using wrangler login credentials if available.", file=sys.stderr)
-        print("   To use API token: export CF_API_TOKEN='your-token'", file=sys.stderr)
+        print("   To use API token: add to .envrc file or export CF_API_TOKEN='your-token'", file=sys.stderr)
 
     try:
         result = subprocess.run(
