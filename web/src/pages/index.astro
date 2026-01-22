@@ -282,6 +282,51 @@
         border-color: var(--text-primary);
       }
 
+      .time-separator {
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        padding: 0 0.5rem;
+        opacity: 0.5;
+      }
+
+      .date-range-picker {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .date-input {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+
+      .date-input::-webkit-calendar-picker-indicator {
+        filter: invert(0.8);
+        cursor: pointer;
+      }
+
+      .date-range-separator {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+
+      .apply-btn {
+        background: var(--accent-color, #4a9eff);
+        border-color: var(--accent-color, #4a9eff);
+        color: white;
+      }
+
+      .apply-btn:hover {
+        opacity: 0.9;
+      }
+
       .last-update {
         font-size: 0.75rem;
         color: var(--text-secondary);
@@ -315,6 +360,15 @@
         <button class="time-btn active" data-hours="24">24H</button>
         <button class="time-btn" data-hours="72">3D</button>
         <button class="time-btn" data-hours="168">7D</button>
+        <button class="time-btn" data-hours="336">14D</button>
+        <button class="time-btn" data-hours="720">30D</button>
+        <span class="time-separator">|</span>
+        <div class="date-range-picker">
+          <input type="date" id="date-from" class="date-input" />
+          <span class="date-range-separator">~</span>
+          <input type="date" id="date-to" class="date-input" />
+          <button class="time-btn apply-btn" id="apply-date-range">Apply</button>
+        </div>
       </div>
 
       <div class="stats">
@@ -446,9 +500,15 @@
       const useProductionApi = window.location.search.includes('prod');
       const apiBase = useProductionApi ? 'https://epd-sensor-dashboard.pages.dev' : '';
 
-      async function fetchData(hours: number): Promise<ApiResponse | null> {
+      async function fetchData(hours: number, fromTs?: number, toTs?: number): Promise<ApiResponse | null> {
         try {
-          const response = await fetch(`${apiBase}/api/data?hours=${hours}`);
+          let url: string;
+          if (fromTs && toTs) {
+            url = `${apiBase}/api/data?from=${fromTs}&to=${toTs}`;
+          } else {
+            url = `${apiBase}/api/data?hours=${hours}`;
+          }
+          const response = await fetch(url);
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
@@ -544,11 +604,20 @@
         } else if (hours <= 24) {
           return { unit: 'hour' as const, stepSize: 3, min: minTime, max: now, format: 'HH:mm' };
         } else if (hours <= 72) {
-          // 3 days: show daily at noon
+          // 3 days
+          return { unit: 'hour' as const, stepSize: 6, min: minTime, max: now, format: 'MM/dd HH:mm' };
+        } else if (hours <= 168) {
+          // 7 days
           return { unit: 'day' as const, stepSize: 1, min: minTime, max: now, format: 'MM/dd (EEE)' };
+        } else if (hours <= 336) {
+          // 14 days
+          return { unit: 'day' as const, stepSize: 2, min: minTime, max: now, format: 'MM/dd (EEE)' };
+        } else if (hours <= 720) {
+          // 30 days
+          return { unit: 'day' as const, stepSize: 3, min: minTime, max: now, format: 'MM/dd' };
         } else {
-          // 7 days: show daily
-          return { unit: 'day' as const, stepSize: 1, min: minTime, max: now, format: 'MM/dd (EEE)' };
+          // More than 30 days
+          return { unit: 'week' as const, stepSize: 1, min: minTime, max: now, format: 'MM/dd' };
         }
       }
 
@@ -883,27 +952,80 @@
         console.log('Charts created successfully');
       }
 
-      async function loadData(hours: number): Promise<void> {
+      // Track current date range for refresh
+      let currentFromTs: number | undefined;
+      let currentToTs: number | undefined;
+
+      async function loadData(hours: number, fromTs?: number, toTs?: number): Promise<void> {
         currentHours = hours;
-        console.log('Loading data for', hours, 'hours');
-        const response = await fetchData(hours);
+        currentFromTs = fromTs;
+        currentToTs = toTs;
+
+        if (fromTs && toTs) {
+          console.log('Loading data for custom range:', new Date(fromTs * 1000), 'to', new Date(toTs * 1000));
+        } else {
+          console.log('Loading data for', hours, 'hours');
+        }
+
+        const response = await fetchData(hours, fromTs, toTs);
 
         if (response && response.data && response.data.length > 0) {
+          // Calculate hours from date range for chart scaling
+          const effectiveHours = fromTs && toTs
+            ? Math.ceil((toTs - fromTs) / 3600)
+            : hours;
           updateCurrentValues(response.data, response.stats);
-          createCharts(response.data, hours);
+          createCharts(response.data, effectiveHours);
         } else {
           console.log('No data received');
         }
       }
 
-      // Time selector buttons
-      document.querySelectorAll('.time-btn').forEach(btn => {
+      // Time selector buttons (preset hours)
+      document.querySelectorAll('.time-btn[data-hours]').forEach(btn => {
         btn.addEventListener('click', () => {
-          document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+          // Remove active from all preset buttons
+          document.querySelectorAll('.time-btn[data-hours]').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
+          // Clear date inputs when using preset
+          (document.getElementById('date-from') as HTMLInputElement).value = '';
+          (document.getElementById('date-to') as HTMLInputElement).value = '';
           const hours = parseInt((btn as HTMLElement).dataset.hours || '24');
           loadData(hours);
         });
+      });
+
+      // Custom date range picker
+      document.getElementById('apply-date-range')?.addEventListener('click', () => {
+        const fromInput = document.getElementById('date-from') as HTMLInputElement;
+        const toInput = document.getElementById('date-to') as HTMLInputElement;
+
+        if (!fromInput.value || !toInput.value) {
+          showError('Please select both start and end dates');
+          return;
+        }
+
+        const fromDate = new Date(fromInput.value);
+        const toDate = new Date(toInput.value);
+
+        // Set to start and end of day
+        fromDate.setHours(0, 0, 0, 0);
+        toDate.setHours(23, 59, 59, 999);
+
+        if (fromDate > toDate) {
+          showError('Start date must be before end date');
+          return;
+        }
+
+        const fromTs = Math.floor(fromDate.getTime() / 1000);
+        const toTs = Math.floor(toDate.getTime() / 1000);
+
+        // Remove active from preset buttons
+        document.querySelectorAll('.time-btn[data-hours]').forEach(b => b.classList.remove('active'));
+
+        // Calculate hours for time scale config
+        const hours = Math.ceil((toTs - fromTs) / 3600);
+        loadData(hours, fromTs, toTs);
       });
 
       // Initial load
@@ -911,7 +1033,13 @@
       loadData(24);
 
       // Auto refresh every 5 minutes
-      setInterval(() => loadData(currentHours), 5 * 60 * 1000);
+      setInterval(() => {
+        if (currentFromTs && currentToTs) {
+          loadData(currentHours, currentFromTs, currentToTs);
+        } else {
+          loadData(currentHours);
+        }
+      }, 5 * 60 * 1000);
     </script>
   </body>
 </html>
