@@ -432,6 +432,13 @@
         </div>
 
         <div class="chart-container">
+          <div class="chart-title">Battery Consumption Rate (%/hour)</div>
+          <div class="chart-wrapper">
+            <canvas id="chart-battery-rate"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-container">
           <div class="chart-title">RTC Drift (ms per hour)</div>
           <div class="chart-wrapper">
             <canvas id="chart-rtc-drift"></canvas>
@@ -452,6 +459,7 @@
         battery_voltage: number | null;
         battery_percent: number | null;
         battery_charging: number | null;  // 1 = charging, 0 = not charging
+        battery_rate: number | null;  // %/hour (positive = charging, negative = discharging)
         rtc_drift_ms: number | null;
       }
 
@@ -466,6 +474,7 @@
         co2: MinMax;
         battery_voltage: MinMax;
         battery_percent: MinMax;
+        battery_rate: MinMax;
       }
 
       interface ApiResponse {
@@ -478,6 +487,7 @@
       let tempHumidityChart: Chart | null = null;
       let co2Chart: Chart | null = null;
       let batteryChart: Chart | null = null;
+      let batteryRateChart: Chart | null = null;
       let rtcDriftChart: Chart | null = null;
       let currentHours = 24;
 
@@ -886,12 +896,112 @@
           },
         });
 
+        // Battery Rate Chart (computed from battery_percent differences)
+        // Use full data (not downsampled) with a sliding window for smoothing
+        const RATE_WINDOW_SEC = 15 * 60; // 15-minute window
+        const batteryRateComputed: { x: number; y: number }[] = [];
+        for (let i = 1; i < data.length; i++) {
+          if (data[i].battery_percent === null) continue;
+          // Find the point approximately RATE_WINDOW_SEC ago
+          let j = i - 1;
+          while (j > 0 && (data[i].timestamp - data[j].timestamp) < RATE_WINDOW_SEC) {
+            j--;
+          }
+          if (data[j].battery_percent === null) continue;
+          const dtSec = data[i].timestamp - data[j].timestamp;
+          // Skip if the window is less than half the target (not enough data yet)
+          if (dtSec < RATE_WINDOW_SEC * 0.5) continue;
+          const dtHours = dtSec / 3600;
+          const rate = (data[i].battery_percent - data[j].battery_percent) / dtHours;
+          batteryRateComputed.push({ x: data[i].timestamp * 1000, y: rate });
+        }
+        const batteryRateData = downsample(batteryRateComputed, 200);
+
+        const ctx4 = document.getElementById('chart-battery-rate') as HTMLCanvasElement;
+        if (batteryRateChart) {
+          batteryRateChart.destroy();
+        }
+
+        batteryRateChart = new Chart(ctx4, {
+          type: 'line',
+          data: {
+            datasets: [
+              {
+                label: 'Rate (%/hr)',
+                data: batteryRateData,
+                borderColor: (context) => {
+                  const value = context.raw as { y: number } | undefined;
+                  return value && value.y >= 0 ? '#27ae60' : '#e74c3c';
+                },
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.3,
+                fill: false,
+                segment: {
+                  borderColor: (ctx) => {
+                    const yVal = ctx.p1.parsed.y;
+                    return yVal >= 0 ? '#27ae60' : '#e74c3c';
+                  },
+                },
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              intersect: false,
+              mode: 'index',
+            },
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                  color: tickColor,
+                  font: { family: "'Space Mono', monospace", size: 11 },
+                  boxWidth: 12,
+                  padding: 20,
+                },
+              },
+              tooltip: {
+                callbacks: {
+                  label: (context) => {
+                    const value = context.parsed.y;
+                    const sign = value >= 0 ? '+' : '';
+                    const status = value >= 0 ? 'charging' : 'discharging';
+                    return `${sign}${value.toFixed(2)} %/hr (${status})`;
+                  },
+                },
+              },
+            },
+            scales: {
+              x: xAxisConfig,
+              y: {
+                min: -10,
+                max: 10,
+                title: { display: true, text: '%/hr', color: '#9b59b6', font: { size: 11 } },
+                grid: { color: gridColor },
+                ticks: {
+                  color: tickColor,
+                  font: { size: 10 },
+                  callback: (value) => {
+                    const numValue = Number(value);
+                    return numValue >= 0 ? `+${numValue}` : numValue;
+                  },
+                },
+              },
+            },
+          },
+        });
+
         // RTC Drift Chart (only non-null values, ~1 per hour)
         const rtcDriftData = data
           .filter(d => d.rtc_drift_ms !== null)
           .map(d => ({ x: d.timestamp * 1000, y: d.rtc_drift_ms }));
 
-        const ctx4 = document.getElementById('chart-rtc-drift') as HTMLCanvasElement;
+        const ctx5 = document.getElementById('chart-rtc-drift') as HTMLCanvasElement;
         if (rtcDriftChart) {
           rtcDriftChart.destroy();
         }
@@ -899,7 +1009,7 @@
         // Calculate bar thickness based on number of data points (min 4px, max 20px)
         const rtcBarThickness = Math.max(4, Math.min(20, Math.floor(600 / rtcDriftData.length)));
 
-        rtcDriftChart = new Chart(ctx4, {
+        rtcDriftChart = new Chart(ctx5, {
           type: 'bar',
           data: {
             datasets: [
