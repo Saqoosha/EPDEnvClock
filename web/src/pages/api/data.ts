@@ -6,6 +6,7 @@ interface Stats {
   co2: { min: number | null; max: number | null };
   battery_voltage: { min: number | null; max: number | null };
   battery_percent: { min: number | null; max: number | null };
+  battery_rate: { min: number | null; max: number | null };
 }
 
 // CORS headers for cross-origin requests (allows local dev with production API)
@@ -44,7 +45,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
     if (fromTs && toTs) {
       // Specific time range
       dataQuery = `
-        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_charging, rtc_drift_ms, cumulative_comp_ms, drift_rate
+        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_charging, battery_rate, rtc_drift_ms, cumulative_comp_ms, drift_rate
         FROM sensor_data
         WHERE timestamp >= ? AND timestamp <= ?
         ORDER BY timestamp ASC
@@ -55,7 +56,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
           MIN(humidity) as hum_min, MAX(humidity) as hum_max,
           MIN(co2) as co2_min, MAX(co2) as co2_max,
           MIN(battery_voltage) as bat_min, MAX(battery_voltage) as bat_max,
-          MIN(battery_percent) as bat_pct_min, MAX(battery_percent) as bat_pct_max
+          MIN(battery_percent) as bat_pct_min, MAX(battery_percent) as bat_pct_max,
+          MIN(battery_rate) as bat_rate_min, MAX(battery_rate) as bat_rate_max
         FROM sensor_data
         WHERE timestamp >= ? AND timestamp <= ?
       `;
@@ -67,7 +69,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
       const startTs = nowTs - (hoursNum * 60 * 60);
 
       dataQuery = `
-        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_charging, rtc_drift_ms, cumulative_comp_ms, drift_rate
+        SELECT timestamp, temperature, humidity, co2, battery_voltage, battery_percent, battery_charging, battery_rate, rtc_drift_ms, cumulative_comp_ms, drift_rate
         FROM sensor_data
         WHERE timestamp >= ?
         ORDER BY timestamp ASC
@@ -78,7 +80,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
           MIN(humidity) as hum_min, MAX(humidity) as hum_max,
           MIN(co2) as co2_min, MAX(co2) as co2_max,
           MIN(battery_voltage) as bat_min, MAX(battery_voltage) as bat_max,
-          MIN(battery_percent) as bat_pct_min, MAX(battery_percent) as bat_pct_max
+          MIN(battery_percent) as bat_pct_min, MAX(battery_percent) as bat_pct_max,
+          MIN(battery_rate) as bat_rate_min, MAX(battery_rate) as bat_rate_max
         FROM sensor_data
         WHERE timestamp >= ?
       `;
@@ -110,6 +113,10 @@ export const GET: APIRoute = async ({ url, locals }) => {
       battery_percent: {
         min: statsResult?.bat_pct_min as number | null,
         max: statsResult?.bat_pct_max as number | null
+      },
+      battery_rate: {
+        min: statsResult?.bat_rate_min as number | null,
+        max: statsResult?.bat_rate_max as number | null
       },
     };
 
