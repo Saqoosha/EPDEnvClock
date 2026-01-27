@@ -303,11 +303,13 @@ python3 scripts/create_number_bitmaps.py \
 ```bash
 cd web
 bun run build
-bunx wrangler pages deploy dist --branch=main
+bunx wrangler pages deploy dist --branch master
 ```
 
-- `--branch=main` is required to deploy to production domain
-- Without it, deploys to preview URL only
+- `--branch master` is required to deploy to **production** (Cloudflare Pages production branch is `master`)
+- Any other branch name (including `main`, `production`) deploys to **preview** only
+- Preview URLs: `https://<hash>.epd-sensor-dashboard.pages.dev`
+- Production URL: `https://epd-sensor-dashboard.pages.dev`
 - Local dev server: `bun run dev` → <http://localhost:4321/>
 
 ## Data Analysis Script
