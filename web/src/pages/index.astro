@@ -896,10 +896,26 @@
           },
         });
 
-        // Battery Rate Chart (consumption/charge rate in %/hour)
-        const batteryRateData = sampled
-          .filter(d => d.battery_rate !== null)
-          .map(d => ({ x: d.timestamp * 1000, y: d.battery_rate }));
+        // Battery Rate Chart (computed from battery_percent differences)
+        // Use full data (not downsampled) with a sliding window for smoothing
+        const RATE_WINDOW_SEC = 15 * 60; // 15-minute window
+        const batteryRateComputed: { x: number; y: number }[] = [];
+        for (let i = 1; i < data.length; i++) {
+          if (data[i].battery_percent === null) continue;
+          // Find the point approximately RATE_WINDOW_SEC ago
+          let j = i - 1;
+          while (j > 0 && (data[i].timestamp - data[j].timestamp) < RATE_WINDOW_SEC) {
+            j--;
+          }
+          if (data[j].battery_percent === null) continue;
+          const dtSec = data[i].timestamp - data[j].timestamp;
+          // Skip if the window is less than half the target (not enough data yet)
+          if (dtSec < RATE_WINDOW_SEC * 0.5) continue;
+          const dtHours = dtSec / 3600;
+          const rate = (data[i].battery_percent - data[j].battery_percent) / dtHours;
+          batteryRateComputed.push({ x: data[i].timestamp * 1000, y: rate });
+        }
+        const batteryRateData = downsample(batteryRateComputed, 200);
 
         const ctx4 = document.getElementById('chart-battery-rate') as HTMLCanvasElement;
         if (batteryRateChart) {
@@ -963,6 +979,8 @@
             scales: {
               x: xAxisConfig,
               y: {
+                min: -10,
+                max: 10,
                 title: { display: true, text: '%/hr', color: '#9b59b6', font: { size: 11 } },
                 grid: { color: gridColor },
                 ticks: {
