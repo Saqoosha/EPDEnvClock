@@ -898,8 +898,8 @@
 
         // Battery Rate Chart (computed from battery_percent differences)
         // Use full data (not downsampled) with a sliding window for smoothing
-        const RATE_WINDOW_SEC = 15 * 60; // 15-minute window
-        const batteryRateComputed: { x: number; y: number }[] = [];
+        const RATE_WINDOW_SEC = 3 * 60 * 60; // 3-hour window for more stable readings
+        const batteryRateRaw: { x: number; y: number }[] = [];
         for (let i = 1; i < data.length; i++) {
           if (data[i].battery_percent === null) continue;
           // Find the point approximately RATE_WINDOW_SEC ago
@@ -913,7 +913,20 @@
           if (dtSec < RATE_WINDOW_SEC * 0.5) continue;
           const dtHours = dtSec / 3600;
           const rate = (data[i].battery_percent - data[j].battery_percent) / dtHours;
-          batteryRateComputed.push({ x: data[i].timestamp * 1000, y: rate });
+          batteryRateRaw.push({ x: data[i].timestamp * 1000, y: rate });
+        }
+
+        // Apply moving average smoothing (10-point window)
+        const SMOOTHING_WINDOW = 10;
+        const batteryRateComputed: { x: number; y: number }[] = [];
+        for (let i = 0; i < batteryRateRaw.length; i++) {
+          const start = Math.max(0, i - Math.floor(SMOOTHING_WINDOW / 2));
+          const end = Math.min(batteryRateRaw.length, i + Math.floor(SMOOTHING_WINDOW / 2) + 1);
+          let sum = 0;
+          for (let k = start; k < end; k++) {
+            sum += batteryRateRaw[k].y;
+          }
+          batteryRateComputed.push({ x: batteryRateRaw[i].x, y: sum / (end - start) });
         }
         const batteryRateData = downsample(batteryRateComputed, 200);
 
@@ -979,8 +992,8 @@
             scales: {
               x: xAxisConfig,
               y: {
-                min: -10,
-                max: 10,
+                min: -2,
+                max: 2,
                 title: { display: true, text: '%/hr', color: '#9b59b6', font: { size: 11 } },
                 grid: { color: gridColor },
                 ticks: {
