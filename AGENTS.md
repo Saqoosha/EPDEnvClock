@@ -19,8 +19,8 @@ board_manager:
   additional_urls:
     - https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 directories:
-  data: /Users/hiko/Desktop/EPDEnvClock/.arduino15
-  downloads: /Users/hiko/Desktop/EPDEnvClock/.arduino15/staging
+  data: /Users/hiko/Documents/repos/Personal/EPDEnvClock/.arduino15
+  downloads: /Users/hiko/Documents/repos/Personal/EPDEnvClock/.arduino15/staging
   user: /Users/hiko/Documents/Arduino
 EOF
 

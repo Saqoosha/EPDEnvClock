@@ -166,12 +166,12 @@ void setup()
   bool skipWifiDueToLowBattery = false;
 
   // Check if battery allows WiFi connection
-  // Skip WiFi if battery voltage is low OR invalid (-1.0 means sensor error)
+  // Skip WiFi only if battery voltage is genuinely low (not sensor error)
+  // Sensor error (-1.0V) should NOT block WiFi - we can't know battery state
   // Exception: allow WiFi when charging even if voltage is low
-  if ((g_batteryVoltage < 0.0f || g_batteryVoltage < kWifiMinBatteryVoltage) && !g_batteryCharging)
+  if (g_batteryVoltage >= 0.0f && g_batteryVoltage < kWifiMinBatteryVoltage && !g_batteryCharging)
   {
-    LOGW("Setup", "Skipping WiFi: %s (%.3fV)",
-         g_batteryVoltage < 0.0f ? "battery sensor error" : "low battery", g_batteryVoltage);
+    LOGW("Setup", "Skipping WiFi: low battery (%.3fV)", g_batteryVoltage);
     skipWifiDueToLowBattery = true;
     needFullNtpSync = false;
     measureDriftOnly = false;

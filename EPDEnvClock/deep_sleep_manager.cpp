@@ -11,6 +11,7 @@
 #include <SD.h>
 #include <sys/time.h>
 #include "logger.h"
+#include "fuel_gauge_manager.h"
 #include "sensor_manager.h"
 
 // Arduino/ESP32 toolchain sometimes misses the prototype in C++ translation units
@@ -797,7 +798,7 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
 
 void DeepSleepManager_HoldI2CPins()
 {
-  // I2C Pins for SCD41: SDA, SCL
+  // I2C Pins for SCD41 (Wire): SDA, SCL
   // We set them to INPUT_PULLUP to keep them high during deep sleep
   // This prevents glitches that might reset the sensor
 
@@ -810,7 +811,20 @@ void DeepSleepManager_HoldI2CPins()
   gpio_hold_en(sda);
   gpio_hold_en(scl);
 
-  LOGD(LogTag::DEEPSLEEP, "I2C pins held high for deep sleep");
+  // I2C Pins for MAX17048 (Wire1): SDA=14, SCL=16
+  // Without holding these HIGH, pins float during deep sleep and can
+  // cause I2C bus stuck condition, making MAX17048 unreachable on wake
+
+  gpio_num_t fgSda = (gpio_num_t)FUEL_GAUGE_SDA_PIN;
+  gpio_num_t fgScl = (gpio_num_t)FUEL_GAUGE_SCL_PIN;
+
+  pinMode(fgSda, INPUT_PULLUP);
+  pinMode(fgScl, INPUT_PULLUP);
+
+  gpio_hold_en(fgSda);
+  gpio_hold_en(fgScl);
+
+  LOGD(LogTag::DEEPSLEEP, "I2C pins held high for deep sleep (Wire + Wire1)");
 }
 
 void DeepSleepManager_ReleaseI2CPins()
@@ -821,7 +835,13 @@ void DeepSleepManager_ReleaseI2CPins()
   gpio_hold_dis(sda);
   gpio_hold_dis(scl);
 
-  LOGD(LogTag::DEEPSLEEP, "I2C pins hold released");
+  gpio_num_t fgSda = (gpio_num_t)FUEL_GAUGE_SDA_PIN;
+  gpio_num_t fgScl = (gpio_num_t)FUEL_GAUGE_SCL_PIN;
+
+  gpio_hold_dis(fgSda);
+  gpio_hold_dis(fgScl);
+
+  LOGD(LogTag::DEEPSLEEP, "I2C pins hold released (Wire + Wire1)");
 }
 
 void DeepSleepManager_HoldEPDPins()
