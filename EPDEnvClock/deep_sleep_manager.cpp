@@ -796,6 +796,24 @@ bool DeepSleepManager_LoadFrameBuffer(uint8_t *buffer, size_t size)
   }
 }
 
+static void checkGpioHoldEn(gpio_num_t pin, const char *name)
+{
+  esp_err_t err = gpio_hold_en(pin);
+  if (err != ESP_OK) {
+    LOGE(LogTag::DEEPSLEEP, "gpio_hold_en failed for %s (GPIO %d): %s",
+         name, (int)pin, esp_err_to_name(err));
+  }
+}
+
+static void checkGpioHoldDis(gpio_num_t pin, const char *name)
+{
+  esp_err_t err = gpio_hold_dis(pin);
+  if (err != ESP_OK) {
+    LOGE(LogTag::DEEPSLEEP, "gpio_hold_dis failed for %s (GPIO %d): %s",
+         name, (int)pin, esp_err_to_name(err));
+  }
+}
+
 void DeepSleepManager_HoldI2CPins()
 {
   // I2C Pins for SCD41 (Wire): SDA, SCL
@@ -808,10 +826,10 @@ void DeepSleepManager_HoldI2CPins()
   pinMode(sda, INPUT_PULLUP);
   pinMode(scl, INPUT_PULLUP);
 
-  gpio_hold_en(sda);
-  gpio_hold_en(scl);
+  checkGpioHoldEn(sda, "Wire SDA");
+  checkGpioHoldEn(scl, "Wire SCL");
 
-  // I2C Pins for MAX17048 (Wire1): SDA=14, SCL=16
+  // I2C Pins for MAX17048 (Wire1)
   // Without holding these HIGH, pins float during deep sleep and can
   // cause I2C bus stuck condition, making MAX17048 unreachable on wake
 
@@ -821,8 +839,8 @@ void DeepSleepManager_HoldI2CPins()
   pinMode(fgSda, INPUT_PULLUP);
   pinMode(fgScl, INPUT_PULLUP);
 
-  gpio_hold_en(fgSda);
-  gpio_hold_en(fgScl);
+  checkGpioHoldEn(fgSda, "Wire1 SDA");
+  checkGpioHoldEn(fgScl, "Wire1 SCL");
 
   LOGD(LogTag::DEEPSLEEP, "I2C pins held high for deep sleep (Wire + Wire1)");
 }
@@ -832,14 +850,14 @@ void DeepSleepManager_ReleaseI2CPins()
   gpio_num_t sda = (gpio_num_t)SENSOR_I2C_SDA_PIN;
   gpio_num_t scl = (gpio_num_t)SENSOR_I2C_SCL_PIN;
 
-  gpio_hold_dis(sda);
-  gpio_hold_dis(scl);
+  checkGpioHoldDis(sda, "Wire SDA");
+  checkGpioHoldDis(scl, "Wire SCL");
 
   gpio_num_t fgSda = (gpio_num_t)FUEL_GAUGE_SDA_PIN;
   gpio_num_t fgScl = (gpio_num_t)FUEL_GAUGE_SCL_PIN;
 
-  gpio_hold_dis(fgSda);
-  gpio_hold_dis(fgScl);
+  checkGpioHoldDis(fgSda, "Wire1 SDA");
+  checkGpioHoldDis(fgScl, "Wire1 SCL");
 
   LOGD(LogTag::DEEPSLEEP, "I2C pins hold released (Wire + Wire1)");
 }

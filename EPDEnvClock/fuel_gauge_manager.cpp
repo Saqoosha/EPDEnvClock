@@ -56,32 +56,50 @@ bool Charging_IsCharging() {
 
 bool FuelGauge_Init() {
   // MAX17048 uses separate I2C bus (Wire1) on GPIO 14/16
-  if (!wireInitialized) {
-    Wire1.begin(FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN);
-    Wire1.setClock(100000);
-    wireInitialized = true;
-    delay(50);
+  // Note: Must be called AFTER DeepSleepManager_ReleaseI2CPins() to ensure
+  // gpio_hold is released before Wire1 takes control of the pins.
+  constexpr int kMaxAttempts = 3;
+
+  for (int attempt = 1; attempt <= kMaxAttempts; attempt++) {
+    if (!wireInitialized) {
+      if (!Wire1.begin(FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN)) {
+        LOGE(LogTag::SENSOR, "Wire1.begin() failed (SDA:%d, SCL:%d, attempt %d/%d)",
+             FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN, attempt, kMaxAttempts);
+        continue;
+      }
+      Wire1.setClock(100000);
+      wireInitialized = true;
+      delay(50);
+    }
+
+    if (maxlipo.begin(&Wire1)) {
+      if (attempt > 1) {
+        LOGI(LogTag::SENSOR, "MAX17048 found on attempt %d", attempt);
+      }
+      LOGI(LogTag::SENSOR, "MAX17048 found on Wire1 (SDA:%d, SCL:%d)",
+           FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN);
+
+      // Quick Start to ensure SOC is calculated
+      // MAX17048 needs this after power-up or if SOC is stuck
+      // Takes ~175ms to complete per datasheet
+      maxlipo.quickStart();
+      delay(250);  // Wait for Quick Start to complete
+
+      fuelGaugeAvailable = true;
+      return true;
+    }
+
+    LOGW(LogTag::SENSOR, "MAX17048 not found (attempt %d/%d, SDA:%d, SCL:%d)",
+         attempt, kMaxAttempts, FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN);
+
+    // Tear down Wire1 and retry with fresh I2C bus init
+    Wire1.end();
+    wireInitialized = false;
+    delay(100);
   }
 
-  // Use Wire1 for MAX17048
-  if (!maxlipo.begin(&Wire1)) {
-    LOGW(LogTag::SENSOR, "MAX17048 not found on Wire1 (SDA:%d, SCL:%d)",
-         FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN);
-    fuelGaugeAvailable = false;
-    return false;
-  }
-
-  LOGI(LogTag::SENSOR, "MAX17048 found on Wire1 (SDA:%d, SCL:%d)",
-       FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN);
-
-  // Quick Start to ensure SOC is calculated
-  // MAX17048 needs this after power-up or if SOC is stuck
-  // Takes ~175ms to complete per datasheet
-  maxlipo.quickStart();
-  delay(250);  // Wait for Quick Start to complete
-
-  fuelGaugeAvailable = true;
-  return true;
+  fuelGaugeAvailable = false;
+  return false;
 }
 
 float FuelGauge_GetVoltage() {
@@ -106,7 +124,7 @@ float FuelGauge_GetVoltage() {
 
 float FuelGauge_GetPercent() {
   if (!fuelGaugeAvailable) {
-    return 0.0f;
+    return -1.0f;
   }
   float percent = maxlipo.cellPercent();
   // Clamp to 0-100 range
@@ -135,7 +153,7 @@ float FuelGauge_GetLinearPercent(float voltage) {
 
 float FuelGauge_GetChargeRate() {
   if (!fuelGaugeAvailable) {
-    return 0.0f;
+    return -1.0f;
   }
   return maxlipo.chargeRate();
 }

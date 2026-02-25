@@ -87,6 +87,9 @@ arduino-cli lib install "Adafruit MAX1704X"
 - **I2C Address**: 0x36
 - **Reported**: Voltage (V), State of Charge (%), Charge Rate (%/hr)
 - **Power**: Chip is powered by battery (must connect CELL+/CELL- to LiPo)
+- **Error handling**: All battery getters return `-1.0f` on error (voltage, percent, chargeRate)
+- **Init retry**: `FuelGauge_Init()` retries up to 3 times with Wire1 bus reset between attempts
+- **WiFi policy**: Sensor error (`-1.0V`) does NOT block WiFi — only genuinely low voltage does
 
 ### Battery Percentage Calculation
 
@@ -135,7 +138,8 @@ EPDEnvClock/
 - Deep sleep ~52-54 seconds, wake at minute boundary
 - Wi-Fi/NTP sync at the top of every hour
 - SD card power off during deep sleep (GPIO 42 LOW)
-- I2C pins held HIGH during sleep to keep sensor in idle mode
+- Both I2C buses held HIGH during sleep (Wire: SCD41, Wire1: MAX17048) to prevent bus stuck
+- WiFi skipped only on genuinely low battery (not on sensor error)
 
 ### Dual-Core Parallel Processing
 

@@ -188,6 +188,11 @@ void setup()
   }
   else
   {
+    if (g_batteryVoltage < 0.0f)
+    {
+      LOGW("Setup", "Battery sensor error (%.3fV) - WiFi NOT blocked (battery state unknown)", g_batteryVoltage);
+    }
+
     if (needFullNtpSync)
     {
       LOGI("Setup", "WiFi/NTP sync needed (top of hour or 30min)");

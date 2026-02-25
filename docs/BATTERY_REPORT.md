@@ -212,8 +212,10 @@ The battery labeled "1500mAh" has an **actual capacity of approximately 1200-140
 1. **Enter extended sleep below 3.3V**
    - Increase sleep duration to conserve power
 
-2. **Add MAX17048 reset on garbage values**
-   - Detect I2C failure and attempt recovery
+2. ~~**Add MAX17048 reset on garbage values**~~ ✅ Implemented (Feb 2025)
+   - `FuelGauge_Init()` retries up to 3 times with Wire1 bus reset between attempts
+   - Wire1 I2C pins (GPIO 14/16) held HIGH during deep sleep to prevent bus stuck
+   - Sensor error no longer blocks WiFi (only genuinely low voltage does)
 
 ---
 

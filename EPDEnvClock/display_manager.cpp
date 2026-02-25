@@ -446,10 +446,10 @@ bool performUpdate(const NetworkState &networkState, bool forceUpdate, bool full
 // Global variables for battery state
 // Note: ADC fallback was removed - no ADC battery port connected
 // All battery readings come from MAX17048 fuel gauge only
-float g_batteryVoltage = 0.0f;
-float g_batteryPercent = 0.0f;         // Linear percent (3.0V=0%, 4.2V=100%)
-float g_batteryMax17048Percent = 0.0f; // MAX17048 reported percent (for reference)
-float g_batteryChargeRate = 0.0f;
+float g_batteryVoltage = -1.0f;        // -1.0f = not yet read / sensor error
+float g_batteryPercent = -1.0f;        // Linear percent (3.4V=0%, 4.2V=100%)
+float g_batteryMax17048Percent = -1.0f; // MAX17048 reported percent (for reference)
+float g_batteryChargeRate = -1.0f;     // -1.0f = not yet read / sensor error
 bool g_batteryCharging = false;
 static bool s_fuelGaugeInitialized = false;
 
@@ -567,7 +567,7 @@ float DisplayManager_ReadBatteryVoltage()
     g_batteryVoltage = -1.0f;
     g_batteryPercent = -1.0f;
     g_batteryMax17048Percent = -1.0f;
-    g_batteryChargeRate = 0.0f;
+    g_batteryChargeRate = -1.0f;
     return -1.0f;
   }
 
@@ -581,7 +581,7 @@ float DisplayManager_ReadBatteryVoltage()
     g_batteryVoltage = -1.0f;
     g_batteryPercent = -1.0f;
     g_batteryMax17048Percent = -1.0f;
-    g_batteryChargeRate = 0.0f;
+    g_batteryChargeRate = -1.0f;
     return -1.0f;
   }
 
