@@ -34,13 +34,19 @@ arduino-cli --config-file arduino-cli.yaml core install esp32:esp32@2.0.17
 Use `arduwrap` wrapper for compile and upload (requires `arduwrap serve` running in another terminal):
 
 ```bash
-scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
+# Start server first (in a separate terminal/tmux pane)
+scripts/arduwrap serve --port /dev/cu.usbserial-2110 --baud 115200
+
+# Compile and upload
+scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi,UploadSpeed=460800 EPDEnvClock
 ```
 
 - Uses project-specific config from `arduino-cli.yaml` automatically
 - `--upload` flag is added automatically
 - Port is managed by the running server (no `-p` needed)
 - Serial monitoring is paused during upload, then reconnects automatically
+- **Upload speed**: 460800 baud (921600 is unstable on macOS Tahoe/Darwin 25, fails at baud rate change)
+- **FQBN options** are used for upload speed (`UploadSpeed=460800`), NOT `--build-property upload.speed=`
 
 ### Required Libraries
 
@@ -89,6 +95,7 @@ arduino-cli lib install "Adafruit MAX1704X"
 - **Power**: Chip is powered by battery (must connect CELL+/CELL- to LiPo)
 - **Error handling**: All battery getters return `-1.0f` on error (voltage, percent, chargeRate)
 - **Init retry**: `FuelGauge_Init()` retries up to 3 times with Wire1 bus reset between attempts
+- **I2C bus recovery**: On retry attempts 2+, `recoverI2CBus()` bit-bangs SCL up to 9 times to release a stuck SDA line, then sends STOP condition. Added Mar 2025 after MAX17048 hung for ~36 hours (SDA stuck LOW survived deep sleep cycles, only power cycle recovered it)
 - **WiFi policy**: Sensor error (`-1.0V`) does NOT block WiFi — only genuinely low voltage does
 
 ### Battery Percentage Calculation
@@ -254,6 +261,9 @@ sleepMs = (ms until next minute) - estimatedProcessingTime
 4. **EPD uses bit-banging SPI** (pins 11,12,45,46,47,48), SD uses hardware HSPI
 5. **Button pins are active LOW** with internal pullup
 6. **SD card needs power enable** (GPIO 42 HIGH) before use
+7. **Upload speed must be 460800** (not 921600) on macOS Tahoe — set via FQBN option `UploadSpeed=460800`
+8. **I2C bus can get stuck** across deep sleep — MAX17048 hung for 36hrs (Mar 2025), `recoverI2CBus()` now handles this
+9. **SD card logs go to `logs/`** directory (gitignored) — contains `sensor_logs/`, `error_logs/`, `serial_logs/`
 
 ## arduwrap Commands
 
@@ -261,7 +271,7 @@ The `scripts/arduwrap` wrapper provides convenient compile and serial log access
 
 ```bash
 # Compile and upload (requires serve running in another terminal)
-scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi EPDEnvClock
+scripts/arduwrap compile --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app,PSRAM=opi,UploadSpeed=460800 EPDEnvClock
 
 # Get serial log (in-memory buffer; default 512KB, configurable via `arduwrap serve --buffer-kb`)
 scripts/arduwrap log

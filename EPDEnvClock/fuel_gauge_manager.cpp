@@ -54,6 +54,42 @@ bool Charging_IsCharging() {
   return charging;
 }
 
+// Recover I2C bus by bit-banging SCL to release a stuck SDA line.
+// When a slave holds SDA LOW (e.g. mid-transfer interrupted by deep sleep),
+// toggling SCL up to 9 times clocks out the stuck byte/ACK, then a STOP
+// condition (SDA LOW→HIGH while SCL is HIGH) resets the bus state.
+void recoverI2CBus(uint8_t sdaPin, uint8_t sclPin) {
+  LOGI(LogTag::SENSOR, "I2C bus recovery on SDA:%d SCL:%d", sdaPin, sclPin);
+
+  pinMode(sdaPin, INPUT_PULLUP);
+  pinMode(sclPin, OUTPUT);
+
+  // Clock up to 9 times to let the slave release SDA
+  for (int i = 0; i < 9; i++) {
+    if (digitalRead(sdaPin) == HIGH) {
+      LOGD(LogTag::SENSOR, "I2C bus recovered after %d clock pulses", i);
+      break;
+    }
+    digitalWrite(sclPin, LOW);
+    delayMicroseconds(5);
+    digitalWrite(sclPin, HIGH);
+    delayMicroseconds(5);
+  }
+
+  // Generate STOP condition: SDA LOW→HIGH while SCL is HIGH
+  pinMode(sdaPin, OUTPUT);
+  digitalWrite(sdaPin, LOW);
+  delayMicroseconds(5);
+  digitalWrite(sclPin, HIGH);
+  delayMicroseconds(5);
+  digitalWrite(sdaPin, HIGH);
+  delayMicroseconds(5);
+
+  // Release pins back to input for Wire1 to take over
+  pinMode(sdaPin, INPUT_PULLUP);
+  pinMode(sclPin, INPUT_PULLUP);
+}
+
 bool FuelGauge_Init() {
   // MAX17048 uses separate I2C bus (Wire1) on GPIO 14/16
   // Note: Must be called AFTER DeepSleepManager_ReleaseI2CPins() to ensure
@@ -62,6 +98,13 @@ bool FuelGauge_Init() {
 
   for (int attempt = 1; attempt <= kMaxAttempts; attempt++) {
     if (!wireInitialized) {
+      // On retry, perform I2C bus recovery before re-initializing Wire1.
+      // This handles cases where SDA is stuck LOW (slave hung mid-transfer).
+      if (attempt > 1) {
+        recoverI2CBus(FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN);
+        delay(50);
+      }
+
       if (!Wire1.begin(FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN)) {
         LOGE(LogTag::SENSOR, "Wire1.begin() failed (SDA:%d, SCL:%d, attempt %d/%d)",
              FUEL_GAUGE_SDA_PIN, FUEL_GAUGE_SCL_PIN, attempt, kMaxAttempts);
